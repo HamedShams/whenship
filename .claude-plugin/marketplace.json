@@ -1,0 +1,15 @@
+{
+  "name": "whenship",
+  "description": "whenship: plan small-team work with real finish dates, deadline risk and what-ifs, inside Claude.",
+  "owner": {
+    "name": "Hamed Shams",
+    "url": "https://github.com/HamedShams"
+  },
+  "plugins": [
+    {
+      "name": "whenship",
+      "source": "./plugin",
+      "description": "Plan small-team work with real finish dates, deadline risk and what-ifs, computed by the whenship engine."
+    }
+  ]
+}

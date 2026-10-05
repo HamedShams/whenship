@@ -1,0 +1,10 @@
+{
+  "name": "whenship",
+  "version": "1.0.0",
+  "description": "When will it ship, honestly? Skills that make Claude plan small-team work with the whenship engine: real finish dates, deadline risk, what-ifs and options, instead of guessed dates. Pair it with the whenship connector for the interactive chart.",
+  "author": { "name": "Hamed Shams", "url": "https://github.com/HamedShams" },
+  "homepage": "https://github.com/HamedShams/whenship",
+  "repository": "https://github.com/HamedShams/whenship",
+  "license": "MIT",
+  "keywords": ["planning", "deadlines", "gantt", "capacity", "forecast", "prioritization"]
+}

@@ -1,0 +1,30 @@
+{
+  "about": "Prompts for checking that Claude uses whenship (skill + connector) instead of computing dates itself. should_trigger: Claude should load the whenship skill and call show_plan. should_not_trigger: unrelated date or planning talk.",
+  "should_trigger": [
+    "Sara has 4 client deliverables: 3, 5, 2 and 6 days, due the 14th, 20th, 23rd and 30th. Will she make them?",
+    "We have 3 backend devs and 2 frontend devs. Checkout is 6 BE days + 10 FE days, subscriptions 15 BE + 5 FE. When can we ship both?",
+    "Here's my task list from Linear with estimates. When will this milestone realistically be done?",
+    "I'm half-time on this project. Onboarding is 4 days, billing 5 days. Can I launch on November 9?",
+    "Which of these projects should we drop to hit the December release?",
+    "If we hire one more developer next month, how much sooner do we finish the roadmap?",
+    "Paste: Case | Who | Effort | Deadline … (a spreadsheet of client cases). Are we overcommitted?",
+    "What happens to our deadlines if Omar takes two weeks off in November?",
+    "Make me a Gantt chart for these five tasks with owners and due dates.",
+    "Our team works Saturday to Wednesday. Plan these releases and tell me which ones are at risk."
+  ],
+  "should_not_trigger": [
+    "What day of the week is 14 October 2026?",
+    "How many days are there between 3 March and 9 April?",
+    "Write a project status update email for my team.",
+    "Explain what a Gantt chart is.",
+    "Summarise this meeting transcript.",
+    "Convert 5 weeks into days."
+  ],
+  "checks": [
+    "Calls show_plan (or what_if / find_options) before stating any finish date.",
+    "Keeps the user's estimates unchanged in the plan sent to the tool.",
+    "Uses the dates and badges returned by the tool verbatim.",
+    "Uses the latest chart state after the user edits the chart.",
+    "When tools are missing, says so and offers the connector or the web app instead of hand-computing dates."
+  ]
+}

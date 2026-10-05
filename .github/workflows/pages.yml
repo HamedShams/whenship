@@ -1,0 +1,40 @@
+# Publishes the single-file app to GitHub Pages (the default address for share links from the offline file and
+# local MCP mode). Enable Pages first: Settings → Pages → Source: GitHub Actions. Then run this workflow.
+name: Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:ui
+      - run: |
+          mkdir -p site
+          cp dist/whenship.html site/index.html
+          cp dist/whenship.html site/whenship.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -97,12 +97,9 @@ Teams (`size: 3`), people per item (`maxPeople: 2`), `dependsOn`, `notBefore`, `
 
 whenship is one stateless Node service: the web app at `/`, the MCP connector at `/mcp`, a health check at `/healthz` and a privacy page at `/privacy`. No database, no accounts, no Docker.
 
-On Railway (or Render, Fly, any Node host):
+On Railway: create a service from this repository. `railway.json` sets the build, start command and health check. Optionally set `PUBLIC_URL` to your address (e.g. `https://whenship.example.com/`) for share links; otherwise the address requests come in on is used.
 
-1. Create a service from this repository.
-2. Build command `npm ci && npm run build`, start command `npm start`.
-3. Set `PUBLIC_URL` to your address (e.g. `https://whenship.example.com/`); it is used in share links.
-4. Health check path: `/healthz`.
+On Render, Fly or any other Node host: build with `npm ci && npm run build`, start with `npm start`, health check `/healthz`.
 
 The service listens on `$PORT`. Anywhere else: `npx whenship --host 0.0.0.0 --port 8080 --public-url https://… --no-open`.
 

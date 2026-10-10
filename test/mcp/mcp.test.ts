@@ -56,6 +56,10 @@ describe('MCP connector', () => {
       // directory rule: descriptions say what and when, not how Claude must behave
       expect(t.description).not.toMatch(/\b(you must|always call|never calculate|do not)\b/i);
     }
+    // switched-off features are not offered to Claude
+    expect(JSON.stringify(tools)).not.toMatch(/daysOff|addDaysOff/);
+    const exportFormats = (tools.find((t) => t.name === 'export_plan')!.inputSchema.properties as { format: { enum: string[] } }).format.enum;
+    expect(exportFormats).toEqual(['json', 'csv', 'ics', 'markdown', 'link']);
     const show = tools.find((t) => t.name === 'show_plan')!;
     expect((show._meta as { ui?: { resourceUri?: string } }).ui?.resourceUri).toBe(UI_URI);
     expect(tools.filter((t) => (t._meta as { ui?: unknown } | undefined)?.ui)).toHaveLength(1);
@@ -110,8 +114,8 @@ describe('MCP connector', () => {
     expect(text).toContain('**Before:**');
     expect(text).toContain('**After:**');
     expect(text).toMatch(/\| Research B \| .* \| .* \| -\d+ working days \|/);
-    expect(text).toContain('```yaml');
-    expect(text.indexOf('id: research-b')).toBeLessThan(text.indexOf('id: quick-fix'));
+    expect(text).toContain('```json');
+    expect(text.indexOf('"id":"research-b"')).toBeLessThan(text.indexOf('"id":"quick-fix"'));
   });
 
   it('what_if reports changes it could not apply', async () => {
@@ -128,8 +132,9 @@ describe('MCP connector', () => {
 
   it('export_plan returns every text format', async () => {
     const get = async (format: string) => textOf(await client.callTool({ name: 'export_plan', arguments: { plan: PLAN, format } }));
-    expect(await get('yaml')).toContain('client-deliverables.whenship.yaml');
-    expect(JSON.parse((await get('json')).replace(/```json\n|```/g, '')).items).toHaveLength(4);
+    const json = await get('json');
+    expect(json).toContain('client-deliverables.whenship.json');
+    expect(JSON.parse(json.slice(json.indexOf('{'), json.lastIndexOf('}') + 1)).items).toHaveLength(4);
     expect(await get('csv')).toMatch(/Appeal A/);
     expect(await get('ics')).toContain('BEGIN:VCALENDAR');
     expect(await get('markdown')).toContain('## Client deliverables');

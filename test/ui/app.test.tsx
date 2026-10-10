@@ -66,7 +66,7 @@ describe('app (web and widget share it)', () => {
     await act(() => button(root, 'Export').click());
     await act(() => button(document.body, 'Save plan').click());
     await act(() => new Promise((r) => setTimeout(r, 0)));
-    expect(host.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'client-deliverables.whenship.yaml', mime: 'application/yaml' }));
+    expect(host.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'client-deliverables.whenship.json', mime: 'application/json' }));
     await act(() => button(root, 'Copy link').click());
     expect(host.copy).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/example\.test\/#p=/));
   });
@@ -77,5 +77,60 @@ describe('app (web and widget share it)', () => {
     await act(() => (root.querySelector('[title^="Friday"]') as HTMLButtonElement).click());
     expect(text(root, '.headline')).not.toBe(before);
     expect(root.querySelector('[title^="Friday"]')!.getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+describe('people, deleting and the details pane', () => {
+  it('a new person gets a fresh name and colour, and their editor opens', async () => {
+    const { root } = mount();
+    const add = () => act(() => (root.querySelector('[aria-label="Add a person or team"]') as HTMLButtonElement).click());
+    await add();
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    // the editor that opened belongs to the new person
+    expect(document.querySelector('.popover')?.getAttribute('aria-label')).toBe('Edit Person 3');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await add();
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    const chips = [...root.querySelectorAll('[data-lane]')];
+    const names = chips.map((c) => c.textContent!.replace(/\d+%$/, '').trim());
+    expect(new Set(names).size).toBe(names.length);
+    const colors = chips.map((c) => (c.querySelector('.dot') as HTMLElement).style.background);
+    expect(new Set(colors).size).toBe(colors.length);
+  });
+
+  it('per-person days off are switched off in the person editor', async () => {
+    const { root } = mount();
+    await act(() => (root.querySelector('[data-lane="sara"]') as HTMLButtonElement).click());
+    expect(document.querySelector('.popover')!.textContent).not.toMatch(/Days off/);
+  });
+
+  it('deleting an item asks first; Cancel keeps it, Delete removes it', async () => {
+    const { root } = mount();
+    const firstDelete = () => root.querySelector('.row .row-del') as HTMLButtonElement;
+    await act(() => firstDelete().click());
+    expect(document.querySelector('.dialog.confirm h2')!.textContent).toBe('Delete "Quick fix for Acme"?');
+    await act(() => button(document.body, 'Cancel').click());
+    expect(document.querySelector('.dialog.confirm')).toBeNull();
+    expect(root.querySelectorAll('.row')).toHaveLength(7);
+    await act(() => firstDelete().click());
+    await act(() => (document.querySelector('.dialog.confirm .btn.danger') as HTMLButtonElement).click());
+    expect(root.querySelectorAll('.row')).toHaveLength(6);
+    expect(text(root, '.row')).not.toMatch(/Quick fix for Acme/);
+  });
+
+  it('the details pane has no move or delete buttons', async () => {
+    const { root } = mount();
+    await act(() => (root.querySelector('.row .num') as HTMLElement).click());
+    const details = root.querySelector('.details')!;
+    expect(details.textContent).toMatch(/Why these dates/);
+    expect(details.textContent).not.toMatch(/Move to top|Move to bottom|Delete item/);
+  });
+
+  it('the export menu saves JSON and offers no YAML', async () => {
+    const { root } = mount();
+    await act(() => button(root, 'Export').click());
+    const items = [...document.querySelectorAll('.menu button')].map((b) => b.textContent);
+    expect(items.join('|')).not.toMatch(/yaml/i);
+    expect(items[0]).toMatch(/^Save plan\.json/);
   });
 });

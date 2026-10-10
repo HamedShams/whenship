@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { FEATURES } from '../engine/features';
 import { LENSES, METHOD_NOTE, OVERRUN_TABLE, type LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { Popover, useAnchor } from './Popover';
@@ -6,16 +7,17 @@ import { Icon, Logo } from './lib';
 
 export type ExportKind = 'yaml' | 'json' | 'xlsx' | 'csv' | 'ics' | 'png' | 'svg' | 'md';
 
-export const EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
-  { kind: 'yaml', label: 'Save plan', hint: '.yaml: reopen or edit later' },
+const ALL_EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
+  { kind: 'json', label: 'Save plan', hint: '.json: reopen it here or in Claude' },
+  { kind: 'yaml', label: 'Save plan as YAML', hint: '.yaml' },
   { kind: 'xlsx', label: 'Excel', hint: '.xlsx with a Gantt sheet' },
   { kind: 'png', label: 'Image', hint: '.png of the chart' },
   { kind: 'ics', label: 'Calendar', hint: '.ics: dates into your calendar' },
   { kind: 'csv', label: 'CSV', hint: 'one row per item' },
   { kind: 'md', label: 'Summary', hint: '.md report' },
   { kind: 'svg', label: 'Vector image', hint: '.svg' },
-  { kind: 'json', label: 'JSON', hint: 'same as the plan file' },
 ];
+export const EXPORTS = ALL_EXPORTS.filter((x) => x.kind !== 'yaml' || FEATURES.yamlExport);
 
 interface Props {
   plan: NormalizedPlan;

@@ -40,7 +40,7 @@ export function Welcome({ today, onLoad, onBlank }: { today: string; onLoad: (p:
         <textarea
           id="paste"
           value={text}
-          placeholder={'Grant draft for Acme, 5d, due 7 Oct\nAppeal for Northwind, 4 days, due Oct 2\nResearch for Brightside, 6d\n\n(Spreadsheet rows, CSV, a Markdown table or a saved .whenship.yaml all work.)'}
+          placeholder={'Grant draft for Acme, 5d, due 7 Oct\nAppeal for Northwind, 4 days, due Oct 2\nResearch for Brightside, 6d\n\n(Spreadsheet rows, CSV, a Markdown table or a saved whenship .json plan all work.)'}
           onInput={(e) => {
             setText((e.currentTarget as HTMLTextAreaElement).value);
             setError('');
@@ -67,7 +67,7 @@ export function ImportDialog({ today, onLoad, onClose }: { today: string; onLoad
   const go = (value: string) => {
     const parsed = parsePlanText(value, today);
     if (!parsed.plan.items.length) {
-      setError('No items found. One item per line, a table with a header row, or a .whenship.yaml file.');
+      setError('No items found. One item per line, a table with a header row, or a saved whenship .json plan.');
       return;
     }
     onLoad(parsed.plan, parsed.errors.length ? `${parsed.errors.length} value(s) skipped` : undefined);
@@ -80,7 +80,7 @@ export function ImportDialog({ today, onLoad, onClose }: { today: string; onLoad
         <p class="note">Choose a saved plan file, or paste anything: a list, spreadsheet rows, CSV, a Markdown table, or a whenship link. This replaces the current plan (you can undo).</p>
         <input
           type="file"
-          accept=".yaml,.yml,.json,.csv,.tsv,.txt,.md"
+          accept=".json,.csv,.tsv,.txt,.md,.yaml,.yml"
           onChange={async (e) => {
             const f = (e.currentTarget as HTMLInputElement).files?.[0];
             if (f) go(await f.text());

@@ -34,6 +34,6 @@ export async function buildExport(kind: ExportKind, plan: NormalizedPlan, lens: 
     case 'png':
       return { name: `${base}.png`, mime: 'image/png', data: await svgToPng(toSvg(plan, lens, { dark })) };
     case 'md':
-      return { name: `${base}.md`, mime: 'text/markdown', data: `${renderReport(plan, { lens, method: true })}\n\n<details><summary>Plan file</summary>\n\n\`\`\`yaml\n${toYaml(plan)}\`\`\`\n\n</details>\n` };
+      return { name: `${base}.md`, mime: 'text/markdown', data: `${renderReport(plan, { lens, method: true })}\n\n<details><summary>Plan file</summary>\n\n\`\`\`json\n${toJson(plan)}\`\`\`\n\n</details>\n` };
   }
 }

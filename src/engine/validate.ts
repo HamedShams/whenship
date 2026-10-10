@@ -1,3 +1,4 @@
+import { FEATURES, type Features } from './features';
 import { isISODate, parseISO, todayLocal, toISO } from './dates';
 import {
   WEEKDAYS,
@@ -26,6 +27,8 @@ export interface ValidationResult {
 export interface ValidateOptions {
   /** Used when the plan has no start date. Defaults to today's local date. */
   today?: ISODate;
+  /** Override product switches (tests). */
+  features?: Partial<Features>;
 }
 
 type Loose = Record<string, unknown>;
@@ -123,6 +126,7 @@ function uniqueId(base: string, taken: Set<string>, fallback: string): string {
 export function validatePlan(input: unknown, options: ValidateOptions = {}): ValidationResult {
   const errors: Issue[] = [];
   const warnings: Issue[] = [];
+  const features: Features = { ...FEATURES, ...options.features };
   const raw: Loose = isObj(input) ? input : {};
   if (!isObj(input)) errors.push({ path: '', message: 'a plan must be an object with lanes and items' });
 
@@ -186,7 +190,12 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
     }
     const kind = obj.kind === 'person' || obj.kind === 'team' ? obj.kind : size > 1 ? 'team' : 'person';
     const color = typeof obj.color === 'string' && /^#[0-9a-f]{6}$/i.test(obj.color) ? obj.color : PALETTE[i % PALETTE.length]!;
-    registerLane({ id, name: name.slice(0, 60), kind, size, availability, daysOff: spanList(obj.daysOff, `${p}.daysOff`, errors), color });
+    let daysOff: NormalizedLane['daysOff'] = [];
+    if (features.personDaysOff) daysOff = spanList(obj.daysOff, `${p}.daysOff`, errors);
+    else if (Array.isArray(obj.daysOff) && obj.daysOff.length) {
+      warnings.push({ path: `${p}.daysOff`, message: 'days off per person are turned off for now; ignored (holidays for everyone still work)' });
+    }
+    registerLane({ id, name: name.slice(0, 60), kind, size, availability, daysOff, color });
   });
   if (rawLanes.length > LIMITS.lanes) errors.push({ path: 'lanes', message: `only the first ${LIMITS.lanes} lanes are used` });
 

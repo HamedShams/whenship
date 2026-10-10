@@ -14,20 +14,20 @@ whenship is a deterministic scheduler. It takes people or teams ("lanes"), work 
 | Tool | Use it to |
 |---|---|
 | `show_plan` | Schedule a plan and show the interactive chart. Always the first call. |
-| `what_if` | Compare changes against the current plan (reorder, effort, deadline, people, time off, working days). |
+| `what_if` | Compare changes against the current plan (reorder, effort, deadline, people, holidays, working days). |
 | `find_options` | Find the changes that meet more deadlines, each with its exact effect. |
-| `export_plan` | Get the plan as YAML (save file), JSON, CSV, iCalendar, Markdown or a share link. |
+| `export_plan` | Get the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link. |
 
-If no whenship tools are available, say so in one line and offer two ways forward: add the connector (custom connector URL from the whenship README), or open the web app and paste the plan. Then write the plan as a YAML file (format below) so nothing is lost. Do not fall back to computing dates by hand.
+If no whenship tools are available, say so in one line and offer two ways forward: add the connector (custom connector URL from the whenship README), or open the web app and paste the plan. Then write the plan as a JSON file (format below) so nothing is lost. Do not fall back to computing dates by hand.
 
 ## Workflow
 
 1. **Collect the plan from whatever the user gave you**: a list, a table, a screenshot, a tracker export, a few sentences. Map it to:
    - `lanes`: who does the work. A person (`{name: "Sara"}`), or a team or role with several people (`{name: "Back-end", size: 3}`). Add `availability` (percent of their time for this plan) when the user says someone is part-time or busy with other things.
    - `items`: in **priority order** (earlier items get people first). Each item has `work`: one entry per lane with `days` of effort, or the shorthand `who` + `days`.
-   - Optional: `deadline`, `value` (money at stake), `dependsOn` (items that must finish first), `notBefore` (waiting on something external), hand-offs (`after: "<lane>"` inside `work`), `calendar.workdays`, `calendar.holidays`, `daysOff` per lane.
+   - Optional: `deadline`, `value` (money at stake), `dependsOn` (items that must finish first), `notBefore` (waiting on something external), hand-offs (`after: "<lane>"` inside `work`), `calendar.workdays`, `calendar.holidays`.
 2. **Keep estimates exactly as given.** Never pad, round or "correct" them. If an estimate is missing, ask once, briefly, for the missing ones only. If the user wants a quick answer anyway, use a clearly labelled placeholder and say which items it affects.
-3. **Working days**: default Monday to Friday. Use the user's weekend when they mention it or it is clear from context (for example Saturday–Wednesday working weeks with Thursday and Friday off). Put public holidays and closures in `calendar.holidays`, and vacations in the person's `daysOff`.
+3. **Working days**: default Monday to Friday. Use the user's weekend when they mention it or it is clear from context (for example Saturday–Wednesday working weeks with Thursday and Friday off). Put public holidays, closures and team-wide days off in `calendar.holidays`. Days off for one person aren't supported yet: if someone's absence matters, say so and lower their `availability` for the plan instead.
 4. **Call `show_plan`.** Pass `start` only if the user gave one (otherwise it is today). The chart appears for the user; your text answer should still stand on its own.
 5. **Answer briefly**, in this order:
    - the headline the tool returned (deadlines late or tight, value at risk, end date);
@@ -52,40 +52,35 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
 ## Saving and sharing
 
 - whenship stores nothing on its servers. The plan lives in the chat, in the user's files, or in a link.
-- If you can write files (for example Claude Code, or Claude with file access), save `<title>.whenship.yaml` from `export_plan` with `format: "yaml"` when the user asks to save, or at the end of a planning session.
-- Otherwise, offer the share link (`export_plan` with `format: "link"`) and the YAML in a code block or document the user can keep. The chart's Export menu also gives Excel (with a Gantt sheet), PNG, calendar and CSV files.
+- If you can write files (for example Claude Code, or Claude with file access), save `<title>.whenship.json` from `export_plan` with `format: "json"` when the user asks to save, or at the end of a planning session. The file opens again on the whenship website and in Claude.
+- Otherwise, offer the share link (`export_plan` with `format: "link"`) and the JSON in a code block or document the user can keep. The chart's Export menu also gives Excel (with a Gantt sheet), PNG, calendar and CSV files.
 
 ## Plan format
 
-```yaml
-title: Client deliverables
-start: 2026-10-05            # optional, default today
-currency: "€"                # optional, for values
-calendar:
-  workdays: [mon, tue, wed, thu, fri]
-  holidays: [{ from: 2026-12-24, to: 2026-12-26, label: Holidays }]
-lanes:
-  - name: Sara
-  - name: Omar
-    availability: 50         # percent of his time for this plan
-  - name: Back-end
-    size: 3                  # a team of three
-items:                       # priority order
-  - name: Appeal for Northwind
-    who: Sara
-    days: 4
-    deadline: 2026-10-14
-    value: 20000
-  - name: Revise Lumen proposal
-    work:
-      - { lane: Omar, days: 1 }
-      - { lane: Sara, days: 3, after: Omar }   # Sara starts when Omar is done
-    deadline: 2026-10-20
-  - name: Checkout redesign
-    work:
-      - { lane: Back-end, days: 6, maxPeople: 2 }   # up to two people at once
-    dependsOn: [Appeal for Northwind]
-    notBefore: 2026-10-12                            # waiting for the client
+```json
+{
+  "title": "Client deliverables",
+  "start": "2026-10-05",
+  "currency": "€",
+  "calendar": {
+    "workdays": ["mon", "tue", "wed", "thu", "fri"],
+    "holidays": [{ "from": "2026-12-24", "to": "2026-12-26", "label": "Holidays" }]
+  },
+  "lanes": [
+    { "name": "Sara" },
+    { "name": "Omar", "availability": 50 },
+    { "name": "Back-end", "size": 3 }
+  ],
+  "items": [
+    { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14", "value": 20000 },
+    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" },
+    { "name": "Checkout redesign", "work": [{ "lane": "Back-end", "days": 6, "maxPeople": 2 }], "dependsOn": ["Appeal for Northwind"], "notBefore": "2026-10-12" }
+  ]
+}
 ```
+
+- `start` is optional (default today); `currency` only matters when items have a `value`.
+- `availability` is the percent of someone's working time available for this plan; `size` makes a lane a team.
+- `items` are in priority order. `after` inside `work` is a hand-off (Sara starts when Omar is done); `maxPeople` lets several people of a team work on one item at once; `notBefore` means waiting on something external.
 
 For advice on what to recommend and worked examples for different kinds of teams, see the `whenship-insights` skill.

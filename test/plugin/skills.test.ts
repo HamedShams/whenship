@@ -7,7 +7,7 @@ const dir = 'plugin/skills';
 const skills = readdirSync(dir).map((name) => ({ name, text: readFileSync(`${dir}/${name}/SKILL.md`, 'utf8') }));
 // Strict YAML, like the skill loader: an unquoted ": " in a description breaks loading.
 const front = (text: string) => YAML.parse(/^---\n([\s\S]*?)\n---/.exec(text)![1]!) as { name: string; description: string };
-const yamlBlocks = (text: string) => [...text.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => YAML.parse(m[1]!) as unknown);
+const planBlocks = (text: string) => [...text.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1]!) as unknown);
 
 describe('plugin skills', () => {
   it.each(skills)('$name has valid frontmatter', ({ name, text }) => {
@@ -18,8 +18,8 @@ describe('plugin skills', () => {
   });
 
   it('every example plan in the skills is valid as written', () => {
-    const plans = skills.flatMap((s) => yamlBlocks(s.text));
-    expect(plans.length).toBeGreaterThanOrEqual(7);
+    const plans = skills.flatMap((s) => planBlocks(s.text));
+    expect(plans.length).toBeGreaterThanOrEqual(7); // the format example plus six worked examples
     for (const p of plans) {
       const v = validatePlan(p, { today: '2026-10-05' });
       expect(v.errors, JSON.stringify(v.errors)).toEqual([]);
@@ -29,7 +29,7 @@ describe('plugin skills', () => {
   });
 
   it('the worked examples say what the engine actually computes', () => {
-    const plans = yamlBlocks(skills.find((s) => s.name === 'whenship-insights')!.text).map((p) => validatePlan(p, { today: '2026-10-05' }).plan);
+    const plans = planBlocks(skills.find((s) => s.name === 'whenship-insights')!.text).map((p) => validatePlan(p, { today: '2026-10-05' }).plan);
     const consultancy = analyze(plans[0]!);
     expect(headline(consultancy)).toMatch(/^1 of 5 deadlines late even as planned · 3 tight/);
     const lumen = consultancy.planned.byId.get('revise-lumen-proposal')!;

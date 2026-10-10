@@ -1,3 +1,4 @@
+import { FEATURES } from './features';
 import { validatePlan } from './validate';
 import type { DateSpan, ISODate, Lane, NormalizedPlan, Weekday } from './types';
 
@@ -87,6 +88,7 @@ export function applyChanges(base: NormalizedPlan, changes: Change[]): ApplyResu
         plan.lanes.push(c.lane as NormalizedPlan['lanes'][number]);
         break;
       case 'addDaysOff': {
+        if (!FEATURES.personDaysOff) { skip(c, 'days off per person are turned off for now (use a holiday)'); break; }
         const lane = findLane(plan, c.lane);
         if (!lane) { skip(c, `no lane "${c.lane}"`); break; }
         const span: DateSpan & { to: ISODate } = { from: c.from, to: c.to ?? c.from };

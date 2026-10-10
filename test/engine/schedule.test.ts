@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { criticalChain, explain, schedule } from '../../src/engine';
+import { criticalChain, explain, schedule, validatePlan } from '../../src/engine';
 import { plan } from '../helpers';
 
 const dates = (p: ReturnType<typeof plan>) => schedule(p).items.map((r) => [r.startDate, r.endDate]);
@@ -131,14 +131,30 @@ describe('scheduler: calendars', () => {
     expect(dates(p)).toEqual([['2026-09-26', '2026-10-03']]); // Sat → Sat, skipping Thu/Fri
   });
 
-  it('skips holidays and personal days off', () => {
+  it('skips holidays', () => {
     const p = plan({
+      calendar: { holidays: [{ from: '2026-09-28', label: 'Holiday' }] },
+      lanes: [{ name: 'Sara' }],
+      items: [{ name: 'A', who: 'Sara', days: 3 }],
+    });
+    // Thu 24, Fri 25, (Mon 28 holiday), Tue 29
+    expect(dates(p)).toEqual([['2026-09-24', '2026-09-29']]);
+  });
+
+  it('skips personal days off when that feature is switched on', () => {
+    const input = {
+      start: '2026-09-24',
       calendar: { holidays: [{ from: '2026-09-28', label: 'Holiday' }] },
       lanes: [{ name: 'Sara', daysOff: [{ from: '2026-09-29', to: '2026-09-30' }] }],
       items: [{ name: 'A', who: 'Sara', days: 3 }],
-    });
+    };
+    const on = validatePlan(input, { today: '2026-09-24', features: { personDaysOff: true } });
     // Thu 24, Fri 25, (Mon 28 holiday), (Tue 29 + Wed 30 off), Thu 1 Oct
-    expect(dates(p)).toEqual([['2026-09-24', '2026-10-01']]);
+    expect(dates(on.plan)).toEqual([['2026-09-24', '2026-10-01']]);
+    // switched off (the default): ignored, with a note
+    const off = validatePlan(input, { today: '2026-09-24' });
+    expect(off.plan.lanes[0]!.daysOff).toEqual([]);
+    expect(off.warnings.map((w) => w.message).join()).toMatch(/days off per person are turned off/);
   });
 
   it('plans far beyond the old 240-day horizon', () => {

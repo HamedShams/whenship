@@ -6,7 +6,7 @@ import { lensById, type LensId } from '../engine/lens';
 import { renderReport } from '../engine/report';
 import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
-import { shareUrl, toYaml } from '../io/format';
+import { shareUrl } from '../io/format';
 import { App, type Host } from './App';
 import { boot, FALLBACK_URL } from './config';
 import { bytesToBase64, Icon, Logo } from './lib';
@@ -60,7 +60,7 @@ function contextFor(plan: NormalizedPlan, lens: LensId): string {
     'effort, deadlines, people, working days), so this replaces any earlier version of the plan. Use these dates; do not ' +
     're-calculate them by hand.\n\n' +
     renderReport(plan, { lens, maxRows: 40, insights: false }) +
-    `\n\nPlan file (pass this as \`plan\` to whenship tools for what-ifs):\n\`\`\`yaml\n${toYaml(plan)}\`\`\``
+    `\n\nCurrent plan (pass this as \`plan\` to whenship tools for what-ifs):\n\`\`\`json\n${JSON.stringify(compactPlan(plan))}\n\`\`\``
   );
 }
 function scheduleSync(plan: NormalizedPlan, lens: LensId) {

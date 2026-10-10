@@ -1,6 +1,7 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { applyChanges } from '../engine/changes';
 import { formatDay, formatDayLong, dayParts } from '../engine/dates';
+import { FEATURES } from '../engine/features';
 import { PALETTE } from '../engine/validate';
 import { WEEKDAYS, type NormalizedLane, type NormalizedPlan, type Weekday } from '../engine/types';
 import { Popover, useAnchor } from './Popover';
@@ -19,12 +20,27 @@ export function Setup({ plan, onCommit }: { plan: NormalizedPlan; onCommit: (p: 
     commit([{ op: 'setWorkdays', days: on ? plan.calendar.workdays.filter((x) => x !== d) : WEEKDAYS.filter((x) => x === d || plan.calendar.workdays.includes(x)) }]);
   };
   const off = WEEKDAYS.filter((d) => !plan.calendar.workdays.includes(d));
-  const addLane = (el: HTMLElement) => {
-    const name = `Person ${plan.lanes.length + 1}`;
-    const next = applyChanges(plan, [{ op: 'addLane', lane: { id: '', name, color: PALETTE[plan.lanes.length % PALETTE.length]! } }]).plan;
+  // New people get a fresh name and an unused colour, and their editor opens under their own chip once it renders.
+  const peopleRef = useRef<HTMLDivElement>(null);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
+  const addLane = () => {
+    const taken = new Set(plan.lanes.map((l) => l.name.trim().toLowerCase()));
+    let n = plan.lanes.length + 1;
+    while (taken.has(`person ${n}`)) n++;
+    const used = new Set(plan.lanes.map((l) => l.color));
+    const color = PALETTE.find((c) => !used.has(c)) ?? PALETTE[plan.lanes.length % PALETTE.length]!;
+    const next = applyChanges(plan, [{ op: 'addLane', lane: { id: '', name: `Person ${n}`, color } }]).plan;
     onCommit(next);
-    pop.open(el, next.lanes[next.lanes.length - 1]!.id);
+    setJustAdded(next.lanes[next.lanes.length - 1]!.id);
   };
+  useEffect(() => {
+    if (!justAdded) return;
+    const chip = peopleRef.current?.querySelector<HTMLElement>(`[data-lane="${CSS.escape(justAdded)}"]`);
+    if (chip) {
+      pop.open(chip, justAdded);
+      setJustAdded(null);
+    }
+  }, [justAdded, plan]);
 
   return (
     <div class="setup">
@@ -43,18 +59,18 @@ export function Setup({ plan, onCommit }: { plan: NormalizedPlan; onCommit: (p: 
           {plan.calendar.holidays.length ? `${plan.calendar.holidays.length} holiday${plan.calendar.holidays.length === 1 ? '' : 's'}` : '+ holidays'}
         </button>
       </div>
-      <div class="setup-group" role="group" aria-label="People and teams">
+      <div class="setup-group" role="group" aria-label="People and teams" ref={peopleRef}>
         <span class="label">People</span>
         {plan.lanes.map((l) => (
-          <button key={l.id} class="chip" onClick={(e) => pop.open(e.currentTarget as HTMLElement, l.id)} title="Edit name, team size, availability and days off">
+          <button key={l.id} class="chip" data-lane={l.id} onClick={(e) => pop.open(e.currentTarget as HTMLElement, l.id)} title="Edit name, team size and availability">
             <span class="dot" style={{ background: l.color }} />
             {l.name}
             {l.kind === 'team' && <span class="muted">×{trim(l.size)}</span>}
             {l.availability !== 100 && <span class="muted">{trim(l.availability)}%</span>}
-            {l.daysOff.length > 0 && <span class="muted">· {l.daysOff.length} off</span>}
+            {FEATURES.personDaysOff && l.daysOff.length > 0 && <span class="muted">· {l.daysOff.length} off</span>}
           </button>
         ))}
-        <button class="add-chip" onClick={(e) => addLane(e.currentTarget as HTMLElement)} aria-label="Add a person or team">
+        <button class="add-chip" onClick={addLane} aria-label="Add a person or team">
           + person / team
         </button>
       </div>
@@ -162,35 +178,37 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
           ))}
         </div>
       </div>
-      <div class="field">
-        Days off {lane.kind === 'team' ? '(whole team)' : ''}
-        {lane.daysOff.map((d, i) => (
-          <div key={`${d.from}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', color: 'var(--fg)' }}>
-            <span>
-              {formatDay(d.from, year)}
-              {d.to !== d.from ? ` – ${formatDay(d.to, year)}` : ''}
-            </span>
-            <button class="icon-btn" aria-label="Remove days off" onClick={() => set({ daysOff: lane.daysOff.filter((_, k) => k !== i) })}>
-              <Icon.close />
+      {FEATURES.personDaysOff && (
+        <div class="field">
+          Days off {lane.kind === 'team' ? '(whole team)' : ''}
+          {lane.daysOff.map((d, i) => (
+            <div key={`${d.from}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', color: 'var(--fg)' }}>
+              <span>
+                {formatDay(d.from, year)}
+                {d.to !== d.from ? ` – ${formatDay(d.to, year)}` : ''}
+              </span>
+              <button class="icon-btn" aria-label="Remove days off" onClick={() => set({ daysOff: lane.daysOff.filter((_, k) => k !== i) })}>
+                <Icon.close />
+              </button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <input type="date" value={from} aria-label="Days off from" onInput={(e) => setFrom((e.currentTarget as HTMLInputElement).value)} />
+            <input type="date" value={to} aria-label="Days off to" onInput={(e) => setTo((e.currentTarget as HTMLInputElement).value)} />
+            <button
+              class="btn small"
+              disabled={!from}
+              onClick={() => {
+                onCommit(applyChanges(plan, [{ op: 'addDaysOff', lane: lane.id, from, ...(to ? { to } : {}) }]).plan);
+                setFrom('');
+                setTo('');
+              }}
+            >
+              Add
             </button>
           </div>
-        ))}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <input type="date" value={from} aria-label="Days off from" onInput={(e) => setFrom((e.currentTarget as HTMLInputElement).value)} />
-          <input type="date" value={to} aria-label="Days off to" onInput={(e) => setTo((e.currentTarget as HTMLInputElement).value)} />
-          <button
-            class="btn small"
-            disabled={!from}
-            onClick={() => {
-              onCommit(applyChanges(plan, [{ op: 'addDaysOff', lane: lane.id, from, ...(to ? { to } : {}) }]).plan);
-              setFrom('');
-              setTo('');
-            }}
-          >
-            Add
-          </button>
         </div>
-      </div>
+      )}
       <div class="actions">
         <button
           class="btn small ghost"

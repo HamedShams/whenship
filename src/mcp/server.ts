@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import * as z from 'zod/v4';
 import { analyze, headline } from '../engine/analysis';
+import { FEATURES } from '../engine/features';
 import { applyChanges, type Change } from '../engine/changes';
 import { formatDay, todayLocal } from '../engine/dates';
 import { findInsights } from '../engine/insights';
@@ -31,9 +32,9 @@ export const INSTRUCTIONS = `whenship is a deterministic scheduling engine for s
 For any question about when work will finish, whether deadlines hold, who is overloaded, or what to move, cut or add: put the work into a plan and call whenship. Do not work out dates, capacity or probabilities yourself; report the dates the tools return.
 
 - show_plan: schedules a plan and shows the interactive chart. Start here.
-- what_if: compares one or more changes against a plan (reorder, effort, deadline, people, time off, working days).
+- what_if: compares one or more changes against a plan (reorder, effort, deadline, people, holidays, working days).
 - find_options: searches changes that meet more deadlines, with exact effects.
-- export_plan: the plan as YAML (the save file), JSON, CSV, iCalendar, Markdown or a share link.
+- export_plan: the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link.
 
 The user can edit the chart directly. Their latest edits arrive in your context as the current plan; use that plan (not an older one) for follow-up calls.
 
@@ -50,7 +51,7 @@ const laneSchema = z.object({
   kind: z.enum(['person', 'team']).optional(),
   size: z.number().optional().describe('People in a team. Default 1'),
   availability: z.number().optional().describe('Percent of their working time available for this plan, 0-100. Default 100'),
-  daysOff: z.array(span).optional().describe('Vacations or other days this lane is away'),
+  ...(FEATURES.personDaysOff ? { daysOff: z.array(span).optional().describe('Vacations or other days this lane is away') } : {}),
 });
 
 const workSchema = z.object({
@@ -101,12 +102,15 @@ const changeSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('setNotBefore'), item: z.string(), date: isoDate.nullable().describe('Waiting on something external until this date; null clears it') }),
   z.object({ op: z.literal('setLane'), lane: z.string(), size: z.number().optional(), availability: z.number().optional(), name: z.string().optional() }),
   z.object({ op: z.literal('addLane'), lane: laneSchema }),
-  z.object({ op: z.literal('addDaysOff'), lane: z.string(), from: isoDate, to: isoDate.optional(), label: z.string().optional() }),
+  ...(FEATURES.personDaysOff ? [z.object({ op: z.literal('addDaysOff'), lane: z.string(), from: isoDate, to: isoDate.optional(), label: z.string().optional() })] : []),
   z.object({ op: z.literal('setWorkdays'), days: z.array(weekday) }),
   z.object({ op: z.literal('addHoliday'), from: isoDate, to: isoDate.optional(), label: z.string().optional() }),
   z.object({ op: z.literal('removeItem'), item: z.string() }),
   z.object({ op: z.literal('setStart'), date: isoDate }),
 ]);
+
+type ExportFormat = 'yaml' | 'json' | 'csv' | 'ics' | 'markdown' | 'link';
+const EXPORT_FORMATS = (['json', 'csv', 'ics', 'markdown', 'link'] as ExportFormat[]).concat(FEATURES.yamlExport ? ['yaml'] : []) as [ExportFormat, ...ExportFormat[]];
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
@@ -225,7 +229,7 @@ export function createServer(opts: ServerOptions): McpServer {
       description:
         'Compares a plan before and after one or more changes and reports which finish dates move and which deadlines ' +
         'are newly met or missed. Changes: move an item to a position, change effort, set or clear a deadline or a ' +
-        "can't-start-before date, change a lane's people or availability, add a person or team, add days off or a holiday, change working days, remove an " +
+        "can't-start-before date, change a lane's people or availability, add a person or team, add a holiday, change working days, remove an " +
         'item, change the start date. Returns the comparison and the changed plan.',
       inputSchema: z.object({ plan: planSchema, changes: z.array(changeSchema).min(1), lens: lensSchema }),
       annotations: { title: 'What if', ...READ_ONLY },
@@ -238,7 +242,7 @@ export function createServer(opts: ServerOptions): McpServer {
       if (r.skipped.length) parts.push(`**Skipped:**\n${r.skipped.map((s) => `- ${s.change.op}: ${s.reason}`).join('\n')}`);
       const notes = issuesText(v);
       if (notes) parts.push(notes);
-      parts.push(`Changed plan (pass it to show_plan to update the chart):\n\`\`\`yaml\n${toYaml(r.plan)}\`\`\``);
+      parts.push(`Changed plan (pass it to show_plan to update the chart):\n\`\`\`json\n${JSON.stringify(compactPlan(r.plan))}\n\`\`\``);
       return { content: [text(parts.join('\n\n'))] };
     },
   );
@@ -274,19 +278,19 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Export plan',
       description:
-        'Returns the plan as a file: yaml (the whenship save file, readable and re-openable), json, csv (one row per ' +
-        'item with dates), ics (calendar with finish dates and deadlines), markdown (the report), or link (a share link ' +
-        'with the whole plan inside it). Spreadsheet (XLSX) and image exports are in the chart’s Export menu.',
-      inputSchema: z.object({ plan: planSchema, format: z.enum(['yaml', 'json', 'csv', 'ics', 'markdown', 'link']), lens: lensSchema }),
+        'Returns the plan as a file: json (the whenship save file, re-openable on the website and in Claude), csv (one ' +
+        'row per item with dates), ics (calendar with finish dates and deadlines), markdown (the report), or link (a ' +
+        'share link with the whole plan inside it). Spreadsheet (XLSX) and image exports are in the chart’s Export menu.',
+      inputSchema: z.object({ plan: planSchema, format: z.enum(EXPORT_FORMATS), lens: lensSchema }),
       annotations: { title: 'Export plan', ...READ_ONLY },
     },
     async ({ plan: input, format, lens }) => {
       const v = validatePlan(input, { today: today() });
       const l: LensId = lens ?? 'planned';
       const slug = v.plan.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'plan';
-      const out: Record<typeof format, () => string> = {
+      const out: Record<ExportFormat, () => string> = {
         yaml: () => `Save as \`${slug}.whenship.yaml\`:\n\`\`\`yaml\n${toYaml(v.plan)}\`\`\``,
-        json: () => `\`\`\`json\n${toJson(v.plan)}\`\`\``,
+        json: () => `Save as \`${slug}.whenship.json\`:\n\`\`\`json\n${toJson(v.plan)}\`\`\``,
         csv: () => `\`\`\`csv\n${toCsv(v.plan, l)}\`\`\``,
         ics: () => `Save as \`${slug}.ics\`:\n\`\`\`\n${toIcs(v.plan, l, stamp())}\`\`\``,
         markdown: () => renderReport(v.plan, { lens: l, method: true }),

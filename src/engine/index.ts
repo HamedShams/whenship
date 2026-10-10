@@ -1,4 +1,5 @@
 export * from './types';
+export * from './features';
 export * from './dates';
 export * from './validate';
 export * from './calendar';

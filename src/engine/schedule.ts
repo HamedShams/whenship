@@ -313,7 +313,9 @@ function driverOf(r: ItemResult, res: ItemResult[], indexById: Map<string, numbe
     if (total >= 0.25) {
       // The blocker that finished last is the one this part waited for directly; following those gives a real chain.
       const endOf = (id: string) => res[indexById.get(id) ?? -1]?.end ?? -1;
-      const [top] = entries.filter(([, v]) => v >= 0.05 * total).sort((a, b) => endOf(b[0]) - endOf(a[0]) || b[1] - a[1]);
+      // Ignore crumbs, unless crumbs are all there is (many small items can add up to a real wait).
+      const strong = entries.filter(([, v]) => v >= 0.25);
+      const [top] = (strong.length ? strong : entries).sort((a, b) => endOf(b[0]) - endOf(a[0]) || b[1] - a[1]);
       return { kind: 'capacity', item: top![0], lane: part.lane, days: Math.round(total * 10) / 10 };
     }
     if (part.reason === 'handoff') {

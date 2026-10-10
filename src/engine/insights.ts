@@ -82,31 +82,41 @@ export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', lim
     }
   }
 
-  // reorder: smallest move up that rescues a late (or fragile) dated item
+  // reorder: the smallest move up that rescues a late dated item (or, if nothing is late, top priority for a fragile one)
   const lateIds = plan.items.filter((it) => it.deadline && !base.met.has(it.id)).map((it) => it.id);
-  const targets = lateIds.length
-    ? lateIds
-    : plan.items.filter((it) => it.deadline && (baseSchedule.byId.get(it.id)?.slack ?? 99) <= 2).map((it) => it.id);
-  for (const id of targets.slice(0, 12)) {
+  const rescuedAt = (id: string, pos: number) => {
+    const r = schedule(applyChanges(plan, [{ op: 'move', item: id, to: pos }]).plan, { factor }).byId.get(id);
+    return r?.end !== undefined && !r.late;
+  };
+  for (const id of lateIds.slice(0, 8)) {
     const idx = plan.items.findIndex((it) => it.id === id);
-    for (let pos = idx - 1; pos >= 0; pos--) {
-      const change: Change = { op: 'move', item: id, to: pos };
-      const m = measure(applyChanges(plan, [change]).plan, factor, nextFactor);
-      if (m.met.has(id) && !base.met.has(id)) {
-        candidates.push({ kind: 'reorder', title: `Move "${nameOf.get(id)}" up to #${pos + 1}`, changes: [change] });
-        break;
+    if (idx === 0 || !rescuedAt(id, 0)) continue; // even first place doesn't save it: not a reordering problem
+    // An item never finishes later when it moves up, so binary-search the lowest rank that still saves it.
+    let lo = 0, hi = idx - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (rescuedAt(id, mid)) lo = mid;
+      else hi = mid - 1;
+    }
+    candidates.push({ kind: 'reorder', title: lo === 0 ? `Move "${nameOf.get(id)}" to the top` : `Move "${nameOf.get(id)}" up to #${lo + 1}`, changes: [{ op: 'move', item: id, to: lo }] });
+  }
+  if (!lateIds.length) {
+    for (const it of plan.items) {
+      const i = plan.items.indexOf(it);
+      if (i > 0 && it.deadline && (baseSchedule.byId.get(it.id)?.slack ?? 99) <= 2 && candidates.filter((c) => c.kind === 'reorder').length < 6) {
+        candidates.push({ kind: 'reorder', title: `Move "${it.name}" to the top`, changes: [{ op: 'move', item: it.id, to: 0 }] });
       }
-      if (!lateIds.length && pos === 0) candidates.push({ kind: 'reorder', title: `Move "${nameOf.get(id)}" to the top`, changes: [change] });
     }
   }
 
-  // defer: undated work sitting in front of late deadlines
+  // defer: undated work sitting in front of late deadlines (the biggest pieces first)
   const lastLate = Math.max(-1, ...lateIds.map((id) => plan.items.findIndex((it) => it.id === id)));
-  plan.items.forEach((it, i) => {
-    if (i < lastLate && !it.deadline && it.work.some((w) => w.days > 0)) {
-      candidates.push({ kind: 'defer', title: `Do "${it.name}" after the dated work`, changes: [{ op: 'move', item: it.id, to: plan.items.length - 1 }] });
-    }
-  });
+  const effort = (it: NormalizedPlan['items'][number]) => it.work.reduce((t, w) => t + w.days, 0);
+  plan.items
+    .filter((it, i) => i < lastLate && !it.deadline && effort(it) > 0)
+    .sort((a, b) => effort(b) - effort(a))
+    .slice(0, 6)
+    .forEach((it) => candidates.push({ kind: 'defer', title: `Do "${it.name}" after the dated work`, changes: [{ op: 'move', item: it.id, to: plan.items.length - 1 }] }));
   // defer the lowest-value dated item that is in the way
   const inTheWay = plan.items.filter((it, i) => i < lastLate && it.deadline && it.value !== undefined).sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
   if (inTheWay[0]) {

@@ -1,6 +1,6 @@
 import type { Analysis } from '../engine/analysis';
 import { explain, formatMoney } from '../engine/analysis';
-import { applyChanges, moveItem } from '../engine/changes';
+import { applyChanges } from '../engine/changes';
 import { dayParts, formatDayLong } from '../engine/dates';
 import { describeWork } from '../engine/report';
 import type { NormalizedPlan } from '../engine/types';
@@ -12,14 +12,12 @@ export function Details({
   id,
   onCommit,
   onClose,
-  onSelect,
 }: {
   plan: NormalizedPlan;
   analysis: Analysis;
   id: string;
   onCommit: (p: NormalizedPlan, key?: string) => void;
   onClose: () => void;
-  onSelect: (id: string | null) => void;
 }) {
   const it = plan.items.find((x) => x.id === id);
   if (!it) return null;
@@ -28,7 +26,6 @@ export function Details({
   const year = dayParts(plan.start).year;
   const why = explain(analysis.current, id);
   const patch = (p: Partial<typeof it>, key?: string) => onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === id ? { ...x, ...p } : x)) }, []).plan, key);
-  const index = plan.items.indexOf(it);
   return (
     <section class="details" aria-label={`Details for ${it.name}`}>
       <div>
@@ -49,23 +46,6 @@ export function Details({
             <li key={line}>{line}</li>
           ))}
         </ul>
-        <div style={{ display: 'flex', gap: '6px', marginTop: '12px', flexWrap: 'wrap' }}>
-          <button class="btn small" disabled={index === 0} onClick={() => onCommit(moveItem(plan, id, 0))}>
-            Move to top
-          </button>
-          <button class="btn small" disabled={index === plan.items.length - 1} onClick={() => onCommit(moveItem(plan, id, plan.items.length - 1))}>
-            Move to bottom
-          </button>
-          <button
-            class="btn small ghost"
-            onClick={() => {
-              onCommit(applyChanges(plan, [{ op: 'removeItem', item: id }]).plan);
-              onSelect(null);
-            }}
-          >
-            <Icon.trash /> Delete item
-          </button>
-        </div>
       </div>
       <div>
         <div class="field-row">

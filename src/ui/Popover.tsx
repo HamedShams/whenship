@@ -47,7 +47,7 @@ export function Popover({
 
   useEffect(() => {
     const first = ref.current?.querySelector<HTMLElement>('input, select, button, textarea');
-    first?.focus();
+    first?.focus({ preventScroll: true });
   }, []);
 
   return (

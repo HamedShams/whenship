@@ -36,6 +36,7 @@ interface Drag {
 export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused }: Props) {
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const editor = useAnchor<{ item: string; lane: string | null }>();
 
   // live preview while dragging: same engine, new order
@@ -121,6 +122,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
 
   const topOf = (id: string, i: number) => (drag && drag.id === id ? drag.from * ROW + drag.dy : i * ROW);
   const year = dayParts(plan.start).year;
+  const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
 
   const addItem = () => {
@@ -152,6 +154,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>Who · effort</span>
           <span>Deadline</span>
           <span>Status</span>
+          <span />
         </div>
         <div class="rows" style={{ height: `${height}px` }}>
           {order.map((it, i) => {
@@ -222,6 +225,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 <div class="status">
                   <StatusPill status={r.status} problem={r.problem} badge={o?.badge} chance={o?.chance} endDate={r.endDate} year={year} />
                 </div>
+                <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
+                  <Icon.trash />
+                </button>
               </div>
             );
           })}
@@ -256,16 +262,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 .map((d) => {
                   const p = dayParts(toISO(d));
                   return (
-                    <div key={d} class="day" style={{ left: `${(d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
-                      {geo.ppd >= 18 ? (
-                        <>
-                          {DOW[p.weekday]}
-                          <br />
-                          {p.day}
-                        </>
-                      ) : (
-                        p.day
-                      )}
+                    <div key={d} class={cx('day', d === todayDay && 'today')} style={{ left: `${(d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
+                      {geo.ppd >= 18 && <span class="dow">{DOW[p.weekday]}</span>}
+                      <span class="dnum">{p.day}</span>
                     </div>
                   );
                 })}
@@ -276,9 +275,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
           ))}
           {todayX !== null && (
-            <div class="today" style={{ left: `${todayX + geo.ppd / 2}px` }}>
-              <span class="today-label">today</span>
-            </div>
+            <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />
           )}
         </div>
         <div class="rows" style={{ height: `${height}px` }}>
@@ -305,6 +302,19 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         </div>
       </div>
 
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete "${confirmDelete.name}"?`}
+          note="It's removed from the plan. You can undo this with ⌘/Ctrl Z."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            commitChange([{ op: 'removeItem', item: confirmDelete.id }]);
+            if (selected === confirmDelete.id) onSelect(null);
+            setConfirmDelete(null);
+          }}
+        />
+      )}
       {editor.el && editor.key && (
         <WorkEditor
           anchor={editor.el}
@@ -348,26 +358,32 @@ function BarRow(props: {
   const delta = props.dragging && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
   const endX = r.endDate ? x(r.endDate) + ppd : 0;
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
+  const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
   return (
     <div class={cx('bars', props.dim && 'dim')} style={{ top: `${props.top}px` }} onClick={props.onClick}>
       {props.lensActive && plannedR?.startDate && plannedR.endDate && (
         <div class="plan-ghost" title="Your estimate (as planned)" style={{ left: `${x(plannedR.startDate)}px`, width: `${x(plannedR.endDate) - x(plannedR.startDate) + ppd}px`, top: '5px', height: `${ROW - 10}px` }} />
       )}
+      {late && r.endDate && it.deadline && (
+        <div class="late-zone" title="Past the deadline" style={{ left: `${dueEnd}px`, width: `${Math.max(2, endX - dueEnd)}px`, top: '3px', height: `${ROW - 6}px` }} />
+      )}
       {parts.map((p, k) => {
         const s = props.shown.calendar.dateAt(p.start!);
         const e = props.shown.calendar.dateAt(p.end!);
+        const left = x(s) + 1;
+        const width = Math.max(4, x(e) - x(s) + ppd - 2);
+        const lateFrom = late ? Math.max(0, dueEnd - left) : width;
         return (
           <div
             key={p.lane}
             class={cx('bar', props.chain && 'chain')}
             title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}`}
-            style={{ left: `${x(s) + 1}px`, width: `${Math.max(4, x(e) - x(s) + ppd - 2)}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
-          />
+            style={{ left: `${left}px`, width: `${width}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
+          >
+            {lateFrom < width && <span class="bar-late" style={{ left: `${lateFrom}px` }} />}
+          </div>
         );
       })}
-      {late && r.endDate && it.deadline && (
-        <div class="late-tail" title="Past the deadline" style={{ left: `${x(it.deadline) + ppd}px`, width: `${Math.max(2, x(r.endDate) - x(it.deadline) - 1)}px`, top: '7px', height: `${inner}px` }} />
-      )}
       {it.deadline && (
         <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o.badge)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o.badge] : 'var(--fg3)' }} />
       )}
@@ -505,3 +521,30 @@ function WorkEditor({ anchor, plan, itemId, laneId, onClose, onCommit }: { ancho
 
 const shortName = (name: string) => (name.length > 10 ? name.slice(0, 9) + '…' : name);
 export const fmtDays = (d: number) => `${Number.isInteger(d) ? d : d.toFixed(1)}d`;
+
+/** A small "are you sure?" dialog. Cancel has focus, so Enter never deletes by accident; Escape cancels. */
+export function ConfirmDialog(p: { title: string; note: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    cancel.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && p.onCancel();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  return (
+    <div class="dialog-back" onClick={(e) => e.target === e.currentTarget && p.onCancel()}>
+      <div class="dialog confirm" role="alertdialog" aria-modal="true" aria-label={p.title}>
+        <h2>{p.title}</h2>
+        <p class="note">{p.note}</p>
+        <div class="actions">
+          <button ref={cancel} class="btn" onClick={p.onCancel}>
+            Cancel
+          </button>
+          <button class="btn danger" onClick={p.onConfirm}>
+            {p.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

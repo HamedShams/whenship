@@ -185,7 +185,7 @@ export function App(props: AppProps) {
             onFocused={() => setFocusId(null)}
           />
           {selected && plan.items.some((x) => x.id === selected) && (
-            <Details plan={plan} analysis={analysis} id={selected} onCommit={h.commit} onClose={() => setSelected(null)} onSelect={setSelected} />
+            <Details plan={plan} analysis={analysis} id={selected} onCommit={h.commit} onClose={() => setSelected(null)} />
           )}
           <p class="hint">Drag ⠿ to reprioritize · click any value to edit · click a row to see why it lands when it does.</p>
         </>

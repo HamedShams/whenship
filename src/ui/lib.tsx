@@ -116,7 +116,7 @@ export const Logo = ({ size = 22 }: { size?: number }) => (
 );
 
 /** A compact date ("14 Oct") that opens the native date picker; the real input sits invisibly on top. */
-export function DateButton(props: { value: string | undefined; onChange: (v: string | null) => void; label: string; placeholder: string; format: (iso: string) => string; class?: string }) {
+export function DateButton(props: { value: string | undefined; onChange: (v: string | null) => void; label: string; placeholder: string; format: (iso: string) => ComponentChildren; class?: string }) {
   return (
     <span class={cx('date-btn', !props.value && 'empty', props.class)}>
       <span aria-hidden="true">{props.value ? props.format(props.value) : props.placeholder}</span>

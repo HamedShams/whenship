@@ -138,27 +138,29 @@ export function App(props: AppProps) {
 
   return (
     <div class="app">
-      <Header
-        plan={plan}
-        lens={lens}
-        onLens={setLens}
-        onTitle={(t) => h.commit({ ...plan, title: t || 'Untitled plan' }, 'title')}
-        canUndo={h.canUndo}
-        canRedo={h.canRedo}
-        onUndo={h.undo}
-        onRedo={h.redo}
-        onExport={doExport}
-        onCopyLink={copyLink}
-        onOpen={() => setDialog({ kind: 'import' })}
-        extra={props.headerExtra}
-        compactBrand={host.mode === 'widget'}
-        empty={plan.items.length === 0}
-      />
+      <div class="toolbar">
+        <Header
+          plan={plan}
+          lens={lens}
+          onLens={setLens}
+          onTitle={(t) => h.commit({ ...plan, title: t || 'Untitled plan' }, 'title')}
+          canUndo={h.canUndo}
+          canRedo={h.canRedo}
+          onUndo={h.undo}
+          onRedo={h.redo}
+          onExport={doExport}
+          onCopyLink={copyLink}
+          onOpen={() => setDialog({ kind: 'import' })}
+          extra={props.headerExtra}
+          compactBrand={host.mode === 'widget'}
+          empty={plan.items.length === 0}
+        />
+        {!empty && <Setup plan={plan} onCommit={h.commit} />}
+      </div>
       {empty ? (
         <Welcome today={today} onLoad={loadPlan} onBlank={startBlank} />
       ) : (
         <>
-          <Setup plan={plan} onCommit={h.commit} />
           <Summary
             analysis={analysis}
             insights={insights}

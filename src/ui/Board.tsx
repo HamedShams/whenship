@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
 import { applyChanges, moveItem } from '../engine/changes';
 import { dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
-import { badgeLabel } from '../engine/analysis';
-import { lensById, type Badge } from '../engine/lens';
+import { badgeLabel, badgeShort } from '../engine/analysis';
+import { lensById, type Badge, type LensId } from '../engine/lens';
+import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
-import { Popover, useAnchor } from './Popover';
+import { useAnchor } from './Popover';
+import { Avatar, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
@@ -37,7 +39,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
-  const editor = useAnchor<{ item: string; lane: string | null }>();
+  const who = useAnchor<string>();
+  const [draft, setDraft] = useState('');
+  const draftRef = useRef<HTMLInputElement>(null);
+  const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
+  const [openWhoFor, setOpenWhoFor] = useState<string | null>(null);
 
   // live preview while dragging: same engine, new order
   const preview = useMemo(() => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : null), [plan, drag?.id, drag?.over, drag?.from, factor]);
@@ -91,6 +97,24 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     }
   }, [focusId, order]);
 
+  useEffect(() => {
+    if (!focusReq) return;
+    const el = nameRefs.current.get(focusReq.id);
+    if (!el) return;
+    el.focus();
+    if (focusReq.mode === 'end') el.setSelectionRange(el.value.length, el.value.length);
+    else el.select();
+    setFocusReq(null);
+  }, [focusReq, order]);
+  useEffect(() => {
+    if (!openWhoFor) return;
+    const cell = document.querySelector<HTMLElement>(`[data-who="${CSS.escape(openWhoFor)}"]`);
+    if (cell) {
+      who.open(cell, openWhoFor);
+      setOpenWhoFor(null);
+    }
+  }, [openWhoFor, order]);
+
   const laneOf = (id: string) => plan.lanes.find((l) => l.id === id);
   const commitChange = (changes: Parameters<typeof applyChanges>[1], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
 
@@ -125,34 +149,30 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
 
-  const addItem = () => {
-    const lane = plan.lanes[0];
-    const name = 'New item';
-    const base = lane ? plan : applyChanges(plan, [{ op: 'addLane', lane: { id: 'me', name: 'Me' } }]).plan;
-    const next = { ...base, items: [...base.items, { id: '', name, work: [{ lane: (lane ?? base.lanes[0]!).id, days: 3, maxPeople: 1 }], dependsOn: [] }] };
+  /** The always-there empty row at the bottom turns into a real item as soon as something is typed or picked. */
+  const createItem = (fields: Partial<NormalizedPlan['items'][number]>) => {
+    const next = { ...plan, items: [...plan.items, { id: '', name: 'New item', work: [], dependsOn: [], ...fields }] };
     const clean = applyChanges(next as NormalizedPlan, []).plan;
-    const id = clean.items[clean.items.length - 1]!.id;
     onCommit(clean);
-    onSelect(id);
-    requestAnimationFrame(() => {
-      const el = nameRefs.current.get(id);
-      el?.focus();
-      el?.select();
-    });
+    return clean.items[clean.items.length - 1]!.id;
+  };
+  const focusName = (index: number) => {
+    const next = order[index];
+    if (next) nameRefs.current.get(next.id)?.focus();
+    else draftRef.current?.focus();
   };
 
-  const height = order.length * ROW;
+  const height = (order.length + 1) * ROW; // + the empty row for a new item
 
   return (
     <div class="board" onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       {/* list */}
       <div class="list" role="list" aria-label="Items in priority order">
         <div class="list-head" aria-hidden="true">
-          <span />
           <span>#</span>
           <span>Item</span>
-          <span>Who · effort</span>
-          <span>Deadline</span>
+          <span>Who</span>
+          <span>Due</span>
           <span>Status</span>
           <span />
         </div>
@@ -161,6 +181,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             const r = shown.byId.get(it.id)!;
             const o = analysis.outlook.get(it.id);
             const isDragged = drag?.id === it.id;
+            const whoText = describeWork(plan, it.id);
             return (
               <div
                 key={it.id}
@@ -175,17 +196,18 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 <button
                   class="handle"
                   data-handle={it.id}
-                  aria-label={`Reorder ${it.name}. Drag, or use the arrow keys.`}
+                  aria-label={`#${i + 1} ${it.name}. Drag to reprioritize, or use the arrow keys.`}
                   title="Drag to reprioritize (or use ↑/↓)"
                   onPointerDown={(e) => onDown(e as unknown as PointerEvent, it.id, plan.items.indexOf(it))}
                   onKeyDown={(e) => onKeyMove(e as unknown as KeyboardEvent, it.id, plan.items.indexOf(it))}
                 >
+                  <span class="n">{i + 1}</span>
                   <Icon.grip />
                 </button>
-                <span class="num">{i + 1}</span>
                 <input
                   class="cell-input"
                   value={it.name}
+                  title={it.name}
                   aria-label="Item name"
                   ref={(el) => {
                     if (el) nameRefs.current.set(it.id, el);
@@ -194,36 +216,50 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     const name = (e.currentTarget as HTMLInputElement).value;
                     onCommit({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, name } : x)) }, `name:${it.id}`);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      focusName(i + 1);
+                    }
+                  }}
                   onFocus={() => onSelect(it.id)}
                 />
-                <div class="who">
-                  {it.work.map((w) => (
-                    <button
-                      key={w.lane}
-                      class="work-chip"
-                      title={`${laneOf(w.lane)?.name}: ${w.days} working day${w.days === 1 ? '' : 's'}${w.after ? ` after ${laneOf(w.after)?.name}` : ''}`}
-                      onClick={(e) => editor.open(e.currentTarget as HTMLElement, { item: it.id, lane: w.lane })}
-                    >
-                      <span class="dot" style={{ background: laneOf(w.lane)?.color }} />
-                      {shortName(laneOf(w.lane)?.name ?? w.lane)} {fmtDays(w.days)}
-                      {w.after ? <span title="hand-off">↪</span> : null}
-                    </button>
-                  ))}
-                  <button class="add-chip" aria-label={`Add who works on ${it.name}`} onClick={(e) => editor.open(e.currentTarget as HTMLElement, { item: it.id, lane: null })}>
-                    +
-                  </button>
-                </div>
+                <button class="who-cell" data-who={it.id} title={whoText} aria-label={`Who works on ${it.name}: ${it.work.length ? whoText : 'nobody yet'}`} onClick={(e) => who.open(e.currentTarget as HTMLElement, it.id)}>
+                  {it.work.length > 2 ? (
+                    <span class="who-part stack">
+                      {it.work.slice(0, 4).map((w) => (
+                        <Avatar key={w.lane} name={laneOf(w.lane)?.name ?? w.lane} color={laneOf(w.lane)?.color ?? '#868e96'} />
+                      ))}
+                      {it.work.length > 4 && <span class="more">+{it.work.length - 4}</span>}
+                      <span class="who-days">{fmtDays(it.work.reduce((t, w) => t + w.days, 0))}</span>
+                    </span>
+                  ) : it.work.length ? (
+                    it.work.map((w, k) => {
+                      const lane = laneOf(w.lane);
+                      return (
+                        <span key={w.lane} class="who-part">
+                          {k > 0 && <span class="sep">{w.after ? '→' : '+'}</span>}
+                          <Avatar name={lane?.name ?? w.lane} color={lane?.color ?? '#868e96'} />
+                          {it.work.length === 1 && <span class="who-name">{lane?.name ?? w.lane}</span>}
+                          <span class="who-days">{fmtDays(w.days)}</span>
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span class="who-empty">+ who</span>
+                  )}
+                </button>
                 <div class="due-cell">
                   <DateButton
                     value={it.deadline}
                     label={`Deadline for ${it.name}`}
                     placeholder="+ date"
-                    format={(d) => formatDay(d, year)}
+                    format={(d) => <DueLabel iso={d} year={year} />}
                     onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
                   />
                 </div>
                 <div class="status">
-                  <StatusPill status={r.status} problem={r.problem} badge={o?.badge} chance={o?.chance} endDate={r.endDate} year={year} />
+                  <StatusPill status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} year={year} />
                 </div>
                 <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
                   <Icon.trash />
@@ -231,11 +267,43 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
               </div>
             );
           })}
-        </div>
-        <div class="add-row">
-          <button class="btn small" onClick={addItem}>
-            <Icon.plus /> Add item
-          </button>
+          <div class="row draft" style={{ top: `${order.length * ROW}px` }}>
+            <span class="handle" aria-hidden="true">
+              <Icon.plus />
+            </span>
+            <input
+              ref={draftRef}
+              class="cell-input"
+              value={draft}
+              placeholder="Add an item…"
+              aria-label="New item: type its name"
+              onInput={(e) => {
+                const v = (e.currentTarget as HTMLInputElement).value;
+                if (!v.trim()) {
+                  setDraft(v);
+                  return;
+                }
+                const id = createItem({ name: v });
+                setDraft('');
+                setFocusReq({ id, mode: 'end' });
+              }}
+            />
+            <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
+              <span class="who-empty">+ who</span>
+            </button>
+            <div class="due-cell">
+              <DateButton
+                value={undefined}
+                label="New item: set a deadline"
+                placeholder="+ date"
+                format={(d) => d}
+                onChange={(date) => {
+                  if (!date) return;
+                  setFocusReq({ id: createItem({ deadline: date }), mode: 'select' });
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -315,16 +383,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           }}
         />
       )}
-      {editor.el && editor.key && (
-        <WorkEditor
-          anchor={editor.el}
-          plan={plan}
-          itemId={editor.key.item}
-          laneId={editor.key.lane}
-          onClose={editor.close}
-          onCommit={onCommit}
-        />
-      )}
+      {who.el && who.key && <WhoEditor anchor={who.el} plan={plan} itemId={who.key} onClose={who.close} onCommit={onCommit} />}
     </div>
   );
 }
@@ -348,7 +407,7 @@ function BarRow(props: {
 }) {
   const { it, shown, x, ppd } = props;
   const r = shown.byId.get(it.id)!;
-  const o = props.analysis.outlook.get(it.id);
+  const o = props.analysis.status.get(it.id);
   const parts = r.parts.filter((p) => p.start !== undefined && p.end !== undefined);
   const n = Math.max(1, parts.length);
   const inner = ROW - 14;
@@ -385,7 +444,7 @@ function BarRow(props: {
         );
       })}
       {it.deadline && (
-        <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o.badge)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o.badge] : 'var(--fg3)' }} />
+        <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }} />
       )}
       {r.endDate && (
         <span class={cx('end-label', late && 'late')} style={{ left: `${endX + 8}px`, top: `${ROW / 2 - 8}px` }}>
@@ -403,123 +462,49 @@ function BarRow(props: {
   );
 }
 
-export function StatusPill(p: { status: string; problem?: string | undefined; badge?: Badge | undefined; chance?: number | undefined; endDate?: string | undefined; year: number }) {
+export function StatusPill(p: {
+  status: string;
+  problem?: string | undefined;
+  badge?: Badge | undefined;
+  base?: Badge | undefined;
+  chance?: number | undefined;
+  lens: LensId;
+  endDate?: string | undefined;
+  year: number;
+}) {
   if (p.status === 'blocked') return <span class="pill blocked" title={p.problem}>blocked</span>;
-  if (p.status === 'empty') return <span class="pill empty">no effort</span>;
-  if (!p.badge) return <span class="sub" style={{ fontSize: '12px' }}>{p.endDate ? `done ${formatDay(p.endDate, p.year)}` : ''}</span>;
+  if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
+  if (!p.badge) return <span class="done-date" title={p.endDate ? `No deadline · done ${formatDay(p.endDate, p.year)}` : ''}>{p.endDate ? formatDay(p.endDate, p.year) : ''}</span>;
+  const lens = lensById(p.lens);
   const tip =
-    p.badge === 'safe'
-      ? 'On time even if work takes 2.7× as long'
-      : p.badge === 'likely'
-        ? 'On time if work takes the usual 1.6×, not at 2.7×'
-        : p.badge === 'tight'
-          ? 'On time only if everything goes to plan'
-          : 'Late even if everything goes to plan';
-  const pct = p.chance !== undefined ? ` · ~${Math.round(Math.min(0.99, p.chance) * 20) * 5}% chance` : '';
+    p.badge === 'late' && p.base && p.base !== 'late'
+      ? `Late if work takes ${lens.short} as long (${lens.label}). As planned: ${badgeLabel(p.base)}.`
+      : p.badge === 'safe'
+        ? 'On time even if work takes 2.7× as long'
+        : p.badge === 'likely'
+          ? 'On time if work takes the usual 1.6×, not at 2.7×'
+          : p.badge === 'tight'
+            ? 'On time only if everything goes to plan'
+            : 'Late even if everything goes to plan';
+  const pct = p.chance !== undefined ? ` · ~${Math.round(Math.min(0.99, p.chance) * 20) * 5}% chance as planned` : '';
   return (
     <span class={`pill ${p.badge}`} title={tip + pct}>
-      {badgeLabel(p.badge)}
+      {badgeShort(p.badge)}
     </span>
   );
 }
 
-function WorkEditor({ anchor, plan, itemId, laneId, onClose, onCommit }: { anchor: HTMLElement; plan: NormalizedPlan; itemId: string; laneId: string | null; onClose: () => void; onCommit: (p: NormalizedPlan, key?: string) => void }) {
-  const it = plan.items.find((x) => x.id === itemId);
-  if (!it) return null;
-  const used = new Set(it.work.map((w) => w.lane));
-  const free = plan.lanes.filter((l) => !used.has(l.id));
-  const part: NormalizedWork | undefined = laneId ? it.work.find((w) => w.lane === laneId) : undefined;
-  const lane = plan.lanes.find((l) => l.id === part?.lane);
-  const setPart = (patch: Partial<NormalizedWork>, key?: string) => {
-    const work = it.work.map((w) => (w.lane === part!.lane ? { ...w, ...patch } : w));
-    onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, work } : x)) }, []).plan, key);
-  };
-  if (!part) {
-    // add a new part
-    return (
-      <Popover anchor={anchor} onClose={onClose} label="Add who works on this">
-        <h4>Who else works on "{it.name}"?</h4>
-        {free.length === 0 && <p class="note">Everyone already has a part. Add a person or team in the bar above.</p>}
-        <div class="menu" style={{ padding: 0 }}>
-          {free.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => {
-                const work = [...it.work, { lane: l.id, days: 1, maxPeople: 1 }];
-                onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, work } : x)) }, []).plan);
-                onClose();
-              }}
-            >
-              <span>
-                <span class="dot" style={{ background: l.color, marginRight: '8px' }} />
-                {l.name}
-              </span>
-              <small>+1 day</small>
-            </button>
-          ))}
-        </div>
-      </Popover>
-    );
-  }
-  return (
-    <Popover anchor={anchor} onClose={onClose} label={`Edit ${lane?.name}'s part`}>
-      <h4>
-        <span class="dot" style={{ background: lane?.color, marginRight: '6px' }} />
-        {lane?.name} on "{it.name}"
-      </h4>
-      <div class="field-row">
-        <label class="field">
-          Effort (working days)
-          <input type="number" min="0" step="0.5" value={part.days} onInput={(e) => setPart({ days: Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0) }, `days:${it.id}:${part.lane}`)} />
-        </label>
-        {lane?.kind === 'team' && (
-          <label class="field">
-            Max people at once
-            <input type="number" min="1" step="1" value={part.maxPeople} onInput={(e) => setPart({ maxPeople: Math.max(1, Math.round(Number((e.currentTarget as HTMLInputElement).value) || 1)) }, `mp:${it.id}:${part.lane}`)} />
-          </label>
-        )}
-      </div>
-      {it.work.length > 1 && (
-        <label class="field">
-          Starts
-          <select
-            value={part.after ?? ''}
-            onChange={(e) => {
-              const v = (e.currentTarget as HTMLSelectElement).value;
-              setPart(v ? { after: v } : { after: undefined });
-            }}
-          >
-            <option value="">in parallel with the others</option>
-            {it.work
-              .filter((w) => w.lane !== part.lane)
-              .map((w) => (
-                <option key={w.lane} value={w.lane}>
-                  after {plan.lanes.find((l) => l.id === w.lane)?.name} is done (hand-off)
-                </option>
-              ))}
-          </select>
-        </label>
-      )}
-      <div class="actions">
-        <button
-          class="btn small ghost"
-          onClick={() => {
-            const work = it.work.filter((w) => w.lane !== part.lane).map((w) => (w.after === part.lane ? { ...w, after: undefined } : w));
-            onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, work } : x)) }, []).plan);
-            onClose();
-          }}
-        >
-          <Icon.trash /> Remove
-        </button>
-        <button class="btn small primary" onClick={onClose}>
-          Done
-        </button>
-      </div>
-    </Popover>
+/** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */
+function DueLabel({ iso, year }: { iso: string; year: number }) {
+  const y = Number(iso.slice(0, 4));
+  return y === year ? <>{formatDay(iso, year)}</> : (
+    <span class="due-2l">
+      {formatDay(iso, y)}
+      <small>{y}</small>
+    </span>
   );
 }
 
-const shortName = (name: string) => (name.length > 10 ? name.slice(0, 9) + '…' : name);
 export const fmtDays = (d: number) => `${Number.isInteger(d) ? d : d.toFixed(1)}d`;
 
 /** A small "are you sure?" dialog. Cancel has focus, so Enter never deletes by accident; Escape cancels. */

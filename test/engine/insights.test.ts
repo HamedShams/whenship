@@ -115,6 +115,8 @@ describe('large plans', () => {
     const ms = performance.now() - t0;
     expect(tips.length).toBeGreaterThan(0);
     for (const t of tips) expect(t.deltas.met).toBeGreaterThanOrEqual(0);
-    expect(ms).toBeLessThan(1500); // typically ~0.3 s on a laptop; generous for CI
+    // ~0.4 s on a laptop, up to ~2 s on shared CI runners. Before the binary search this took over a minute, so the
+    // bound guards against that kind of regression without flaking on a slow machine.
+    expect(ms).toBeLessThan(8000);
   });
 });

@@ -32,12 +32,19 @@ afterEach(() => {
 });
 
 describe('app (web and widget share it)', () => {
-  it('renders the plan: headline, rows, bars and status pills', () => {
+  it('renders the plan: headline, rows, bars and delivery dates coloured by status', () => {
     const { root, changes } = mount();
     expect(text(root, '.headline')).toMatch(/1 of 6 deadlines late even as planned/);
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
     expect(root.querySelectorAll('.bar').length).toBeGreaterThanOrEqual(7);
-    expect(text(root, '.row:nth-child(4) .status')).toBe('late');
+    // "Revise Lumen proposal" is late: its delivery date shows in a red pill
+    const late = root.querySelector('.row:nth-child(4) .status .pill.delivery')!;
+    expect(late.classList.contains('late')).toBe(true);
+    expect(late.textContent).toMatch(/^\d{1,2} [A-Z][a-z]{2}$/);
+    // an item without a deadline shows its plain delivery date
+    expect(root.querySelector('.row:nth-child(1) .status .pill')).toBeNull();
+    expect(text(root, '.row:nth-child(1) .status')).toMatch(/^\d{1,2} [A-Z][a-z]{2}$/);
+    expect(text(root, '.list-head')).toMatch(/Delivery/);
     expect(changes).toHaveLength(1); // the host hears about the initial plan (the widget syncs it)
   });
 
@@ -198,7 +205,7 @@ describe('the item list', () => {
 
   it('status pills follow the forecast lens', async () => {
     const { root } = mount();
-    const pills = () => realRows(root).map((r) => r.querySelector('.status')!.textContent);
+    const pills = () => realRows(root).map((r) => [...(r.querySelector('.status .pill')?.classList ?? [])].find((c) => ['safe', 'likely', 'tight', 'late'].includes(c)) ?? '');
     const asPlanned = pills();
     await act(() => button(root, 'Worst case').click());
     const worst = pills();
@@ -264,5 +271,37 @@ describe('timeline details', () => {
     expect(field().textContent).toMatch(/\w{3} \d+ \w{3}/);
     await act(() => (field().querySelector('[aria-label^="Clear"]') as HTMLButtonElement).click());
     expect(field().textContent).toBe('any time');
+  });
+});
+
+describe('the item inspector and day chips', () => {
+  it('shows the facts, why, and compact settings; dependencies are chips you can add and remove', async () => {
+    const { root } = mount();
+    const rows = [...root.querySelectorAll('.row:not(.draft)')];
+    await act(() => (rows[2]!.querySelector('.status') as HTMLElement).click()); // Research for Brightside
+    const insp = () => root.querySelector('.details')!;
+    expect(insp().querySelector('h3')!.textContent).toBe('Research for Brightside');
+    expect([...insp().querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['Delivery', 'Due', 'Who', 'Dates']);
+    expect(insp().querySelector('select[multiple]')).toBeNull();
+    const add = insp().querySelector('select.add-dep') as HTMLSelectElement;
+    add.value = 'quick-fix-for-acme';
+    await act(() => void add.dispatchEvent(new Event('change', { bubbles: true })));
+    expect(insp().querySelector('.dep-chip')!.textContent).toMatch(/Quick fix for Acme/);
+    await act(() => (insp().querySelector('.dep-chip button') as HTMLButtonElement).click());
+    expect(insp().querySelector('.dep-chip')).toBeNull();
+    await act(() => (insp().querySelector('[aria-label="Close details"]') as HTMLButtonElement).click());
+    expect(root.querySelector('.details')).toBeNull();
+  });
+
+  it('working-day chips show two letters', () => {
+    const { root } = mount();
+    expect([...root.querySelectorAll('.daychip')].map((b) => b.textContent)).toEqual(['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']);
+  });
+
+  it('who editor: one bordered row per person under a header row', async () => {
+    const { root } = mount();
+    await act(() => ([...root.querySelectorAll('.row:not(.draft) .who-cell')][3] as HTMLButtonElement).click());
+    expect(document.querySelectorAll('.who-pop .who-row:not(.who-head)')).toHaveLength(2);
+    expect(document.querySelectorAll('.who-pop .who-head')).toHaveLength(1);
   });
 });

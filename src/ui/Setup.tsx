@@ -7,7 +7,7 @@ import { WEEKDAYS, type NormalizedLane, type NormalizedPlan, type Weekday } from
 import { Popover, useAnchor } from './Popover';
 import { DateButton, Icon } from './lib';
 
-const LETTER: Record<Weekday, string> = { mon: 'M', tue: 'T', wed: 'W', thu: 'T', fri: 'F', sat: 'S', sun: 'S' };
+const SHORT: Record<Weekday, string> = { mon: 'Mo', tue: 'Tu', wed: 'We', thu: 'Th', fri: 'Fr', sat: 'Sa', sun: 'Su' };
 const NAME: Record<Weekday, string> = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 
 export function Setup({ plan, onCommit }: { plan: NormalizedPlan; onCommit: (p: NormalizedPlan, key?: string) => void }) {
@@ -52,7 +52,7 @@ export function Setup({ plan, onCommit }: { plan: NormalizedPlan; onCommit: (p: 
         <span class="label" title={off.length ? `Days off: ${off.map((d) => NAME[d]).join(', ')}` : 'Every day is a working day'}>Working days</span>
         {WEEKDAYS.map((d) => (
           <button key={d} class="daychip" aria-pressed={plan.calendar.workdays.includes(d)} title={`${NAME[d]}: ${plan.calendar.workdays.includes(d) ? 'working day' : 'day off'} (click to change)`} onClick={() => toggleDay(d)}>
-            {LETTER[d]}
+            {SHORT[d]}
           </button>
         ))}
         <button class="chip" onClick={(e) => pop.open(e.currentTarget as HTMLElement, '__holidays')} title="Holidays and other days off for everyone">

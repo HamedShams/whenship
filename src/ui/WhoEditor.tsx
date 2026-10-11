@@ -1,4 +1,3 @@
-import { Fragment } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { applyChanges } from '../engine/changes';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
@@ -51,21 +50,23 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
         <h4>Who works on "{it.name}"</h4>
         {it.work.length === 0 && <p class="note">{plan.lanes.length ? 'Nobody yet. Add a person or team below.' : 'Add a person or team in the bar above first.'}</p>}
         {it.work.length > 0 && (
-          <div class="who-grid" style={{ gridTemplateColumns: cols }}>
-            <span />
-            <span class="col-h">Days</span>
-            {anyTeam && (
-              <span class="col-h" title="Most people of a team who can work on it at the same time">
-                At once
-              </span>
-            )}
-            {multi && <span class="col-h">Starts</span>}
-            <span />
+          <div class="who-list">
+            <div class="who-row who-head" style={{ gridTemplateColumns: cols }}>
+              <span />
+              <span class="col-h">Days</span>
+              {anyTeam && (
+                <span class="col-h" title="Most people of a team who can work on it at the same time">
+                  At once
+                </span>
+              )}
+              {multi && <span class="col-h">Starts</span>}
+              <span />
+            </div>
             {it.work.map((w) => {
               const lane = laneOf(w.lane);
               const name = lane?.name ?? w.lane;
               return (
-                <Fragment key={w.lane}>
+                <div key={w.lane} class="who-row" style={{ gridTemplateColumns: cols }}>
                   <span class="who-person" title={name}>
                     <Avatar name={name} color={lane?.color ?? '#868e96'} />
                     <span>{name}</span>
@@ -114,7 +115,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
                   >
                     <Icon.close />
                   </button>
-                </Fragment>
+                </div>
               );
             })}
           </div>

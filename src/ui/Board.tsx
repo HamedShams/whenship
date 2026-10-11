@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
 import { applyChanges, moveItem } from '../engine/changes';
 import { dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
-import { badgeLabel, badgeShort } from '../engine/analysis';
+import { badgeLabel, chanceLabel } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
 import { useAnchor } from './Popover';
-import { Avatar, WhoEditor } from './WhoEditor';
+import { Avatar, initials, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
@@ -173,7 +173,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>Item</span>
           <span>Who</span>
           <span>Due</span>
-          <span>Status</span>
+          <span>Delivery</span>
           <span />
         </div>
         <div class="rows" style={{ height: `${height}px` }}>
@@ -225,7 +225,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   onFocus={() => onSelect(it.id)}
                 />
                 <button class="who-cell" data-who={it.id} title={whoText} aria-label={`Who works on ${it.name}: ${it.work.length ? whoText : 'nobody yet'}`} onClick={(e) => who.open(e.currentTarget as HTMLElement, it.id)}>
-                  {it.work.length > 2 ? (
+                  {it.work.length > 2 || (it.work.length === 2 && !twoFit(it.work, laneOf)) ? (
                     <span class="who-part stack">
                       {it.work.slice(0, 3).map((w) => (
                         <Avatar key={w.lane} name={laneOf(w.lane)?.name ?? w.lane} color={laneOf(w.lane)?.color ?? '#868e96'} />
@@ -259,7 +259,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   />
                 </div>
                 <div class="status">
-                  <StatusPill status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} year={year} />
+                  <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
                 </div>
                 <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
                   <Icon.trash />
@@ -465,7 +465,11 @@ function BarRow(props: {
   );
 }
 
-export function StatusPill(p: {
+/**
+ * The delivery date (under the selected lens), styled by deadline status: green when on time with room to spare
+ * (safe, likely), amber when tight, red when late. Plain when the item has no deadline.
+ */
+export function Delivery(p: {
   status: string;
   problem?: string | undefined;
   badge?: Badge | undefined;
@@ -473,28 +477,38 @@ export function StatusPill(p: {
   chance?: number | undefined;
   lens: LensId;
   endDate?: string | undefined;
+  deadline?: string | undefined;
   year: number;
 }) {
   if (p.status === 'blocked') return <span class="pill blocked" title={p.problem}>blocked</span>;
   if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
-  if (!p.badge) return <span class="done-date" title={p.endDate ? `No deadline · done ${formatDay(p.endDate, p.year)}` : ''}>{p.endDate ? formatDay(p.endDate, p.year) : ''}</span>;
+  if (!p.endDate) return <span class="done-date">—</span>;
+  const date = <DueLabel iso={p.endDate} year={p.year} />;
+  if (!p.badge) return <span class="done-date" title={`Delivered ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
   const lens = lensById(p.lens);
   const tip =
     p.badge === 'late' && p.base && p.base !== 'late'
       ? `Late if work takes ${lens.short} as long (${lens.label}). As planned: ${badgeLabel(p.base)}.`
       : p.badge === 'safe'
-        ? 'On time even if work takes 2.7× as long'
+        ? 'Safe: on time even if work takes 2.7× as long'
         : p.badge === 'likely'
-          ? 'On time if work takes the usual 1.6×, not at 2.7×'
+          ? 'Likely on time: on time if work takes the usual 1.6×, not at 2.7×'
           : p.badge === 'tight'
-            ? 'On time only if everything goes to plan'
+            ? 'Tight: on time only if everything goes to plan'
             : 'Late even if everything goes to plan';
-  const pct = p.chance !== undefined ? ` · ~${Math.round(Math.min(0.99, p.chance) * 20) * 5}% chance as planned` : '';
+  const due = p.deadline ? ` · due ${formatDay(p.deadline, p.year)}` : '';
+  const pct = p.chance !== undefined ? ` · ${chanceLabel(p.chance)} chance as planned` : '';
   return (
-    <span class={`pill ${p.badge}`} title={tip + pct}>
-      {badgeShort(p.badge)}
+    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Delivery ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
+      {date}
     </span>
   );
+}
+
+/** Rough check that two people's avatars and days fit side by side in the "who" cell. */
+function twoFit(work: NormalizedWork[], laneOf: (id: string) => { name: string } | undefined): boolean {
+  const width = work.reduce((t, w) => t + (initials(laneOf(w.lane)?.name ?? w.lane).length > 2 ? 25 : 19) + 4 + fmtDays(w.days).length * 6.6, 0);
+  return width + 14 <= 104;
 }
 
 /** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */

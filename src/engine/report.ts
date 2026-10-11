@@ -1,4 +1,4 @@
-import { analyze, badgeLabel, criticalChain, explain, formatMoney, headline, type Analysis } from './analysis';
+import { analyze, badgeLabel, chanceLabel, criticalChain, explain, formatMoney, headline, type Analysis } from './analysis';
 import { formatDay, formatDayLong, parseISO } from './dates';
 import { findInsights, type Insight } from './insights';
 import { LENSES, lensById, type LensId } from './lens';
@@ -115,7 +115,7 @@ export function renderReport(plan: NormalizedPlan, options: ReportOptions = {}):
 
 export function statusText(badge: string, chance: number | undefined, slack: number | undefined): string {
   const icon = { safe: '🟢', likely: '🟢', tight: '🟠', late: '🔴', unknown: '⚪' }[badge] ?? '';
-  const pct = chance !== undefined ? ` (~${Math.round(Math.min(0.99, chance) * 20) * 5}% chance)` : '';
+  const pct = chance !== undefined ? ` (${chanceLabel(chance)} chance)` : '';
   const slip = badge === 'late' && slack !== undefined ? `, ${-slack}d late` : '';
   return `${icon} ${badgeLabel(badge as never)}${slip}${pct}`;
 }

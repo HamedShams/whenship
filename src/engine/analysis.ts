@@ -99,6 +99,12 @@ export function badgeLabel(b: Badge): string {
   return { safe: 'safe', likely: 'likely on time', tight: 'tight', late: 'late', unknown: 'no date' }[b];
 }
 
+/** "~60%", rounded to 5; never claims certainty ("95%+", "under 5%"). */
+export function chanceLabel(c: number): string {
+  const p = Math.round(c * 20) * 5;
+  return p >= 95 ? '95%+' : p <= 5 ? 'under 5%' : `~${p}%`;
+}
+
 /** Short badge text for narrow places (the item list). */
 export function badgeShort(b: Badge): string {
   return { safe: 'safe', likely: 'likely', tight: 'tight', late: 'late', unknown: '—' }[b];

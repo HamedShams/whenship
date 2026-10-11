@@ -227,10 +227,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 <button class="who-cell" data-who={it.id} title={whoText} aria-label={`Who works on ${it.name}: ${it.work.length ? whoText : 'nobody yet'}`} onClick={(e) => who.open(e.currentTarget as HTMLElement, it.id)}>
                   {it.work.length > 2 ? (
                     <span class="who-part stack">
-                      {it.work.slice(0, 4).map((w) => (
+                      {it.work.slice(0, 3).map((w) => (
                         <Avatar key={w.lane} name={laneOf(w.lane)?.name ?? w.lane} color={laneOf(w.lane)?.color ?? '#868e96'} />
                       ))}
-                      {it.work.length > 4 && <span class="more">+{it.work.length - 4}</span>}
+                      {it.work.length > 3 && <span class="more">+{it.work.length - 3}</span>}
                       <span class="who-days">{fmtDays(it.work.reduce((t, w) => t + w.days, 0))}</span>
                     </span>
                   ) : it.work.length ? (
@@ -330,7 +330,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 .map((d) => {
                   const p = dayParts(toISO(d));
                   return (
-                    <div key={d} class={cx('day', d === todayDay && 'today')} style={{ left: `${(d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
+                    <div key={d} class={cx('day', d === todayDay && 'is-today')} style={{ left: `${(d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
                       {geo.ppd >= 18 && <span class="dow">{DOW[p.weekday]}</span>}
                       <span class="dnum">{p.day}</span>
                     </div>
@@ -416,6 +416,9 @@ function BarRow(props: {
   const baseR = props.base.byId.get(it.id);
   const delta = props.dragging && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
   const endX = r.endDate ? x(r.endDate) + ppd : 0;
+  // keep the finish-date label clear of a deadline diamond that sits just after the bar
+  const diamondX = it.deadline ? x(it.deadline) + ppd / 2 : null;
+  const labelX = diamondX !== null && diamondX > endX - 8 && diamondX < endX + 56 ? diamondX + 10 : endX + 8;
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
   const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
   return (
@@ -447,12 +450,12 @@ function BarRow(props: {
         <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }} />
       )}
       {r.endDate && (
-        <span class={cx('end-label', late && 'late')} style={{ left: `${endX + 8}px`, top: `${ROW / 2 - 8}px` }}>
+        <span class={cx('end-label', late && 'late')} style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
           {formatDay(r.endDate, props.year)}
         </span>
       )}
       {delta !== 0 && r.endDate && (
-        <span class={cx('delta', delta < 0 ? 'up' : 'down')} style={{ left: `${endX + 56}px`, top: `${ROW / 2 - 8}px` }}>
+        <span class={cx('delta', delta < 0 ? 'up' : 'down')} style={{ left: `${labelX + 48}px`, top: `${ROW / 2 - 8}px` }}>
           {delta > 0 ? `+${delta}d` : `${delta}d`}
         </span>
       )}

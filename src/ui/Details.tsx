@@ -4,7 +4,7 @@ import { applyChanges } from '../engine/changes';
 import { dayParts, formatDayLong } from '../engine/dates';
 import { describeWork } from '../engine/report';
 import type { NormalizedPlan } from '../engine/types';
-import { Icon } from './lib';
+import { DateButton, Icon } from './lib';
 
 export function Details({
   plan,
@@ -49,10 +49,17 @@ export function Details({
       </div>
       <div>
         <div class="field-row">
-          <label class="field">
+          <div class="field">
             Can't start before
-            <input type="date" value={it.notBefore ?? ''} onChange={(e) => patch({ notBefore: (e.currentTarget as HTMLInputElement).value || undefined })} />
-          </label>
+            <span class="date-field">
+              <DateButton value={it.notBefore} label="Can't start before" placeholder="any time" format={(d) => formatDayLong(d, year)} onChange={(d) => patch({ notBefore: d ?? undefined })} />
+              {it.notBefore && (
+                <button class="icon-btn" aria-label="Clear the can't-start-before date" title="Clear" onClick={() => patch({ notBefore: undefined })}>
+                  <Icon.close />
+                </button>
+              )}
+            </span>
+          </div>
         </div>
         <label class="field">
           Starts after (dependencies)

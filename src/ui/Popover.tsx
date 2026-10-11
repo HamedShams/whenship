@@ -16,7 +16,8 @@ export function Popover({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const placeRef = useRef<(() => void) | null>(null);
 
   // Stay attached to the anchor: re-place on any scroll (page, board, list) or resize, and close once the anchor
   // leaves the screen or the page (e.g. its row was deleted).
@@ -33,12 +34,20 @@ export function Popover({
       const bar = anchor.closest('.toolbar') ? null : document.querySelector('.toolbar');
       const topEdge = bar && getComputedStyle(bar).position === 'sticky' ? bar.getBoundingClientRect().bottom : 0;
       if (a.bottom < topEdge || a.top > vh || a.right < 0 || a.left > vw) return onClose();
-      const p = ref.current.getBoundingClientRect();
-      let top = a.bottom + 6;
-      if (top + p.height > vh - 8 && a.top - p.height - 6 > 8) top = a.top - p.height - 6;
-      const left = Math.max(8, Math.min(a.left, vw - p.width - 8));
-      setPos((old) => (old && old.top === Math.max(8, top) && old.left === left ? old : { top: Math.max(8, top), left }));
+      // Prefer below the anchor; flip above when there's more room there. Never taller than the room available, so
+      // a long popover scrolls inside itself instead of running off the screen.
+      const el = ref.current;
+      const natural = el.scrollHeight + 2;
+      const below = vh - a.bottom - 14;
+      const above = a.top - topEdge - 14;
+      const placeBelow = natural <= below || below >= above;
+      const maxHeight = Math.max(120, placeBelow ? below : above);
+      const height = Math.min(natural, maxHeight);
+      const top = placeBelow ? a.bottom + 6 : a.top - 6 - height;
+      const left = Math.max(8, Math.min(a.left, vw - el.getBoundingClientRect().width - 8));
+      setPos((old) => (old && old.top === top && old.left === left && old.maxHeight === maxHeight ? old : { top, left, maxHeight }));
     };
+    placeRef.current = place;
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(place);
     };
@@ -49,8 +58,13 @@ export function Popover({
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
+      placeRef.current = null;
     };
   }, [anchor, onClose]);
+  // content can grow or shrink (e.g. a person added in the editor): re-place after every render
+  useLayoutEffect(() => {
+    placeRef.current?.();
+  });
 
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
@@ -78,7 +92,7 @@ export function Popover({
       class={`popover ${className ?? ''}`}
       role="dialog"
       aria-label={label}
-      style={pos ? { top: `${pos.top}px`, left: `${pos.left}px` } : { top: '-9999px', left: '-9999px' }}
+      style={pos ? { top: `${pos.top}px`, left: `${pos.left}px`, maxHeight: `${pos.maxHeight}px` } : { top: '-9999px', left: '-9999px' }}
     >
       {children}
     </div>

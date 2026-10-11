@@ -128,6 +128,7 @@ button { cursor: pointer; }
 .list-head { display: grid; grid-template-columns: 28px 1fr 116px 62px 62px 22px; align-items: end; padding: 0 6px 7px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); font-weight: 600; gap: 5px; }
 .list-head > :first-child { text-align: center; }
 .rows { position: relative; }
+.list::after, .timeline::after { content: ''; display: block; height: 16px; }
 .row { position: absolute; left: 0; right: 0; height: var(--row); display: grid; grid-template-columns: 28px 1fr 116px 62px 62px 22px; gap: 5px; align-items: center; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); background: var(--bg); transition: top .16s ease; }
 .row.sel { background: var(--accent-bg); }
 .row-del { opacity: 0; padding: 3px; transition: opacity .12s; }
@@ -170,6 +171,8 @@ button { cursor: pointer; }
 .date-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .date-btn input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 .due-cell { overflow: hidden; }
+.date-field { display: flex; align-items: center; gap: 4px; }
+.date-field .date-btn { border-color: var(--border2); padding: 6px 8px; font-size: 13px; }
 .due-2l { display: flex; flex-direction: column; line-height: 1.1; }
 .due-2l small { font-size: 10px; color: var(--fg3); }
 .status { display: flex; justify-content: flex-start; overflow: hidden; }
@@ -183,7 +186,7 @@ button { cursor: pointer; }
 .month { position: absolute; top: 3px; font-size: 11.5px; font-weight: 600; color: var(--fg2); white-space: nowrap; padding-left: 4px; border-left: 1px solid var(--border2); height: 49px; }
 .day { position: absolute; top: 2px; display: flex; flex-direction: column; align-items: center; font-size: 10px; line-height: 13px; color: var(--fg3); }
 .day .dnum { font-size: 10.5px; color: var(--fg2); font-variant-numeric: tabular-nums; border-radius: 4px; padding: 0 3px; }
-.day.today .dnum { background: var(--fill); color: #fff; font-weight: 700; }
+.day.is-today .dnum { background: var(--fill); color: #fff; font-weight: 700; }
 .day.off { color: var(--fg3); opacity: .6; }
 .grid { position: absolute; inset: 52px 0 0 0; pointer-events: none; }
 .offday { position: absolute; top: 0; bottom: 0; background: var(--off); }
@@ -214,11 +217,13 @@ button { cursor: pointer; }
 .field input, .field select { min-width: 0; max-width: 100%; }
 .popover { position: fixed; z-index: 100; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 16px)); max-height: 80vh; overflow-x: hidden; overflow-y: auto; }
 .popover h4 { margin: 0 0 8px; font-size: 13px; }
-.who-pop { width: 340px; }
-.who-pop .part { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px 0; margin-bottom: 8px; }
-.who-pop .part-head { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
-.who-pop .part-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; }
-.who-pop .part-fields .field { margin-bottom: 8px; }
+.who-pop { width: 400px; max-width: min(400px, calc(100vw - 16px)); }
+.who-grid { display: grid; gap: 6px 6px; align-items: center; margin-bottom: 4px; }
+.who-grid .col-h { font-size: 11px; color: var(--fg3); }
+.who-grid input, .who-grid select { min-width: 0; width: 100%; border: 1px solid var(--border2); background: var(--bg); border-radius: var(--radius-sm); padding: 4px 6px; font-size: 13px; }
+.who-grid .na { color: var(--fg3); text-align: center; }
+.who-person { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+.who-person > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .add-who { border: 1px dashed var(--border2); background: var(--bg); border-radius: var(--radius-sm); padding: 5px 8px; font-size: 12.5px; color: var(--fg2); max-width: 220px; }
 .popover .actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .menu { display: flex; flex-direction: column; min-width: 230px; padding: 6px; }

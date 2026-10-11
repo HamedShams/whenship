@@ -179,7 +179,7 @@ describe('the item list', () => {
     expect(cell.getAttribute('aria-label')).toMatch(/Omar 1d \+ Sara 3d after Omar/);
     await act(() => cell.click());
     const pop = document.querySelector('.who-pop')!;
-    expect([...pop.querySelectorAll('.part-head b')].map((b) => b.textContent)).toEqual(['Omar', 'Sara']);
+    expect([...pop.querySelectorAll('.who-person')].map((b) => b.textContent)).toEqual(['OMOmar', 'SASara']);
     expect(pop.querySelector('select.add-who')).toBeNull(); // everyone already has a part
   });
 
@@ -215,5 +215,54 @@ describe('the item list', () => {
     expect(root.querySelector('.details')!.textContent).not.toMatch(/Value/);
     expect(root.querySelector('.toolbar > .topbar')).not.toBeNull();
     expect(root.querySelector('.toolbar > .setup')).not.toBeNull();
+  });
+});
+
+describe('timeline details', () => {
+  it("marks today in the header without borrowing the today line's style", () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const today = '2026-10-12';
+    const p = validatePlan(SAMPLES[0]!.build(today), { today }).plan; // the sample starts today (a Monday)
+    const host: Host = { mode: 'web', save: async () => 'saved', copy: async () => true, baseUrl: () => null };
+    act(() => render(<App host={host} initialPlan={p} today={today} />, root));
+    expect(root.querySelector('.day.is-today .dnum')!.textContent).toBe('12');
+    expect(root.querySelector('.day.today')).toBeNull();
+    expect(root.querySelectorAll('.today')).toHaveLength(1); // just the vertical line
+  });
+
+  it('keeps the finish-date label clear of a deadline right after the bar', async () => {
+    const { root } = mount();
+    // "Quick fix for Acme" finishes on the plan's first day; a deadline the next day puts the diamond right there
+    const row = root.querySelector('.row:not(.draft) input[type="date"]') as HTMLInputElement;
+    row.value = '2026-10-06';
+    await act(() => void row.dispatchEvent(new Event('change', { bubbles: true })));
+    const bars = root.querySelector('.bars')!;
+    const diamond = parseFloat((bars.querySelector('.deadline') as HTMLElement).style.left);
+    const label = parseFloat((bars.querySelector('.end-label') as HTMLElement).style.left);
+    expect(label).toBeGreaterThan(diamond + 6);
+  });
+
+  it('the who editor lists everyone on one line each, with a column only where it applies', async () => {
+    const { root } = mount();
+    const cell = [...root.querySelectorAll('.row:not(.draft) .who-cell')][0] as HTMLButtonElement;
+    await act(() => cell.click());
+    const pop = document.querySelector('.who-pop')!;
+    expect([...pop.querySelectorAll('.col-h')].map((h) => h.textContent)).toEqual(['Days']); // one person: no "Starts", no team column
+    const add = pop.querySelector('select.add-who') as HTMLSelectElement;
+    add.value = 'omar';
+    await act(() => void add.dispatchEvent(new Event('change', { bubbles: true })));
+    expect([...document.querySelectorAll('.who-pop .col-h')].map((h) => h.textContent)).toEqual(['Days', 'Starts']);
+    expect(document.querySelectorAll('.who-pop .who-person')).toHaveLength(2);
+  });
+
+  it("the can't-start-before date can be cleared, and shows nothing when empty", async () => {
+    const { root } = mount();
+    const last = [...root.querySelectorAll('.row:not(.draft)')].at(-1)!; // "Research for Helix" waits for the client
+    await act(() => (last.querySelector('.status') as HTMLElement).click());
+    const field = () => root.querySelector('.details .date-field')!;
+    expect(field().textContent).toMatch(/\w{3} \d+ \w{3}/);
+    await act(() => (field().querySelector('[aria-label^="Clear"]') as HTMLButtonElement).click());
+    expect(field().textContent).toBe('any time');
   });
 });

@@ -50,12 +50,12 @@ export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { da
   plan.items.forEach((it, i) => {
     const y = top + i * rowH;
     const r = a.current.byId.get(it.id)!;
-    const o = a.outlook.get(it.id);
+    const b = a.status.get(it.id);
     if (i % 2) out.push(`<rect x="0" y="${y}" width="${leftW}" height="${rowH}" fill="${c.row}"/>`);
     out.push(`<line x1="0" x2="${width}" y1="${y + rowH}" y2="${y + rowH}" stroke="${c.grid}"/>`);
     out.push(`<text x="16" y="${y + 19}" font-size="12" fill="${c.sub}">${i + 1}</text>`);
     out.push(`<text x="38" y="${y + 19}" font-size="12.5" fill="${c.fg}">${esc(it.name.length > 30 ? it.name.slice(0, 29) + '…' : it.name)}</text>`);
-    if (r.endDate) out.push(`<text x="${leftW - 12}" y="${y + 19}" font-size="11.5" text-anchor="end" fill="${o ? BADGE_COLOR[o.badge] : c.sub}">${esc(formatDay(r.endDate, year))}</text>`);
+    if (r.endDate) out.push(`<text x="${leftW - 12}" y="${y + 19}" font-size="11.5" text-anchor="end" fill="${b ? BADGE_COLOR[b] : c.sub}">${esc(formatDay(r.endDate, year))}</text>`);
     for (const p of r.parts) {
       if (p.start === undefined || p.end === undefined) continue;
       const lane = plan.lanes.find((ln) => ln.id === p.lane);
@@ -68,7 +68,7 @@ export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { da
     }
     if (it.deadline) {
       const dx = x(parseISO(it.deadline)!) + dayW / 2;
-      out.push(`<path d="M${dx} ${y + 6} l5 9 l-5 9 l-5 -9 z" fill="${o ? BADGE_COLOR[o.badge] : c.sub}" stroke="${c.bg}" stroke-width="1.5"/>`);
+      out.push(`<path d="M${dx} ${y + 6} l5 9 l-5 9 l-5 -9 z" fill="${b ? BADGE_COLOR[b] : c.sub}" stroke="${c.bg}" stroke-width="1.5"/>`);
     }
   });
   out.push(`<text x="16" y="${height - 14}" font-size="10.5" fill="${c.sub}">Made with whenship · ${esc(plan.start)} start · ◆ = deadline</text>`);

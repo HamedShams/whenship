@@ -15,12 +15,11 @@ const HTML = '<!doctype html><html><head><!--WHENSHIP_BOOT--></head><body><div i
 const PLAN = {
   title: 'Client deliverables',
   start: '2026-10-05',
-  currency: '€',
   lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
   items: [
-    { name: 'Quick fix', who: 'Sara', days: 1, value: 15000 },
-    { name: 'Appeal A', who: 'Sara', days: 4, deadline: '2026-10-14', value: 20000 },
-    { name: 'Research B', who: 'Sara', days: 5, deadline: '2026-10-16', value: 85000 },
+    { name: 'Quick fix', who: 'Sara', days: 1 },
+    { name: 'Appeal A', who: 'Sara', days: 4, deadline: '2026-10-14' },
+    { name: 'Research B', who: 'Sara', days: 5, deadline: '2026-10-16' },
     { name: 'Proposal C', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 3, after: 'Omar' }], deadline: '2026-10-20' },
   ],
 };
@@ -58,6 +57,9 @@ describe('MCP connector', () => {
     }
     // switched-off features are not offered to Claude
     expect(JSON.stringify(tools)).not.toMatch(/daysOff|addDaysOff/);
+    const planProps = ((tools.find((t) => t.name === 'show_plan')!.inputSchema.properties as Record<string, { properties: Record<string, { items?: { properties: Record<string, unknown> } }> }>).plan!).properties;
+    expect(Object.keys(planProps)).not.toContain('currency');
+    expect(Object.keys(planProps.items!.items!.properties)).not.toContain('value');
     const exportFormats = (tools.find((t) => t.name === 'export_plan')!.inputSchema.properties as { format: { enum: string[] } }).format.enum;
     expect(exportFormats).toEqual(['json', 'csv', 'ics', 'markdown', 'link']);
     const show = tools.find((t) => t.name === 'show_plan')!;

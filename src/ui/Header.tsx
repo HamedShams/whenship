@@ -137,6 +137,7 @@ export function Header(p: Props) {
           </table>
           <p class="note" style={{ margin: '6px 0' }}>
             Deadline badges show how much slip each deadline survives: <b>safe</b> (even at 2.7×), <b>likely</b> (at 1.6×), <b>tight</b> (only if all goes to plan), <b>late</b> (late even as planned).
+            With another lens on, any deadline its dates miss shows as <b>late</b>.
           </p>
           <details>
             <summary class="note" style={{ cursor: 'pointer' }}>For pros: where the numbers come from</summary>

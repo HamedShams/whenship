@@ -3,6 +3,7 @@ import { formatDay, parseISO } from './dates';
 import { formatMoney } from './analysis';
 import { LENSES, lensById, type LensId } from './lens';
 import { schedule, type Schedule } from './schedule';
+import { FEATURES, type Features } from './features';
 import type { NormalizedPlan } from './types';
 
 export type InsightKind = 'reorder' | 'defer' | 'availability' | 'add-person' | 'deadline';
@@ -53,7 +54,7 @@ function measure(plan: NormalizedPlan, factor: number, nextFactor: number): Metr
  * Searches realistic changes that would meet more deadlines (or make the plan sturdier) and returns the best few.
  * Everything is a real re-plan through the same engine, so every number in a suggestion is exact.
  */
-export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', limit = 3): Insight[] {
+export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', limit = 3, features: Pick<Features, 'itemValue'> = FEATURES): Insight[] {
   if (plan.items.length === 0 || plan.items.length > 200) return [];
   const factor = lensById(lens).factor;
   const nextLens = LENSES[Math.min(LENSES.findIndex((l) => l.factor === factor) + 1, LENSES.length - 1)] ?? LENSES[0]!;
@@ -117,8 +118,8 @@ export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', lim
     .sort((a, b) => effort(b) - effort(a))
     .slice(0, 6)
     .forEach((it) => candidates.push({ kind: 'defer', title: `Do "${it.name}" after the dated work`, changes: [{ op: 'move', item: it.id, to: plan.items.length - 1 }] }));
-  // defer the lowest-value dated item that is in the way
-  const inTheWay = plan.items.filter((it, i) => i < lastLate && it.deadline && it.value !== undefined).sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
+  // defer the lowest-value dated item that is in the way (only while values are switched on)
+  const inTheWay = features.itemValue ? plan.items.filter((it, i) => i < lastLate && it.deadline && it.value !== undefined).sort((a, b) => (a.value ?? 0) - (b.value ?? 0)) : [];
   if (inTheWay[0]) {
     candidates.push({ kind: 'defer', title: `Postpone "${inTheWay[0].name}" (lowest value in the way)`, changes: [{ op: 'move', item: inTheWay[0].id, to: plan.items.length - 1 }] });
   }
@@ -144,12 +145,12 @@ export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', lim
       met: m.met.size - base.met.size,
       metAtNextLens: m.metNext - base.metNext,
       lateDays: base.lateDays - m.lateDays,
-      valueLate: base.valueLate - m.valueLate,
+      valueLate: features.itemValue ? base.valueLate - m.valueLate : 0,
       endDays: base.end - m.end,
     };
     const useful = deltas.met > 0 || (deltas.met === 0 && (deltas.metAtNextLens > 0 || (c.kind !== 'deadline' && (deltas.lateDays > 0 || deltas.endDays >= 3))));
     if (!useful || deltas.met < 0) continue;
-    scored.push({ ...c, id: `${c.kind}:${JSON.stringify(c.changes)}`, deltas, newlyMet, newlyMissed, effect: describe(deltas, newlyMet, newlyMissed, nameOf, plan, nextLens.label) });
+    scored.push({ ...c, id: `${c.kind}:${JSON.stringify(c.changes)}`, deltas, newlyMet, newlyMissed, effect: describe(deltas, newlyMet, newlyMissed, nameOf, plan, nextLens.label, features.itemValue) });
   }
   scored.sort(
     (a, b) =>
@@ -181,13 +182,14 @@ function describe(
   names: Map<string, string>,
   plan: NormalizedPlan,
   nextLabel: string,
+  withValue: boolean,
 ): string {
   const list = (ids: string[]) => ids.slice(0, 3).map((id) => names.get(id)).join(', ') + (ids.length > 3 ? ', …' : '');
   const parts: string[] = [];
   if (d.met > 0) parts.push(`${d.met} more deadline${d.met === 1 ? '' : 's'} met (${list(met)})`);
   if (missed.length) parts.push(`but ${list(missed)} slip${missed.length === 1 ? 's' : ''}`);
   if (d.met === 0 && d.metAtNextLens > 0) parts.push(`${d.metAtNextLens} more deadline${d.metAtNextLens === 1 ? ' survives' : 's survive'} the "${nextLabel}" lens`);
-  if (d.valueLate > 0 && plan.items.some((it) => it.value)) parts.push(`${formatMoney(d.valueLate, plan.currency)} less at risk`);
+  if (withValue && d.valueLate > 0 && plan.items.some((it) => it.value)) parts.push(`${formatMoney(d.valueLate, plan.currency)} less at risk`);
   if (d.met <= 0 && d.lateDays > 0) parts.push(`${d.lateDays} fewer days late`);
   if (d.endDays > 0) parts.push(`all done ${d.endDays} working day${d.endDays === 1 ? '' : 's'} sooner`);
   return parts.join(' · ');

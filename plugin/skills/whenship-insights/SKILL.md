@@ -12,15 +12,14 @@ The engine tells you *what will happen*. This skill is about *what to do about i
 1. **Start from the headline.** Late items (late even as planned) need a decision. Tight items (on time only if nothing slips) need a conscious "we accept the risk" or a buffer. Safe and likely items need nothing.
 2. **Cheapest moves first.** Present options in this order, and only the ones the engine confirms:
    1. *Reorder*: moving a dated item ahead of undated or later work costs nothing.
-   2. *Defer or cut*: postpone undated or low-value work, or shrink scope (smaller first deliverable).
+   2. *Defer or cut*: postpone undated or less important work, or shrink scope (smaller first deliverable).
    3. *Protect time*: raise someone's availability (fewer meetings or support duty for two weeks).
    4. *Add a person*: the engine assumes they are productive from day one. For horizons under about six weeks, say that ramp-up and coordination usually eat much of the gain (Brooks's law).
    5. *Negotiate the date*: the engine tells you exactly how many working days to ask for.
 3. **Say what it costs.** A reorder that saves one deadline often makes another tight. `what_if` shows both sides; report both.
-4. **Value at risk ranks the pain.** When items have values, protect high value with near deadlines first (cost of delay). Check the order with `what_if`; do not assume.
-5. **Dates for other people.** For a client or stakeholder, give two dates: the *likely* date and the *safe-bet* date (call `show_plan` with `lens: "likely"` and `lens: "safe"`, or read the badges). Recommend promising the safe-bet date and working to the likely one.
-6. **Ask before changing their estimates.** The user's numbers are theirs. If an estimate looks off, say so and run a what-if; do not silently change it.
-7. **Keep it short.** Three bullets beat a report. The chart has the details.
+4. **Dates for other people.** For a client or stakeholder, give two dates: the *likely* date and the *safe-bet* date (call `show_plan` with `lens: "likely"` and `lens: "safe"`, or read the badges). Recommend promising the safe-bet date and working to the likely one.
+5. **Ask before changing their estimates.** The user's numbers are theirs. If an estimate looks off, say so and run a what-if; do not silently change it.
+6. **Keep it short.** Three bullets beat a report. The chart has the details.
 
 ## Worked examples
 
@@ -28,31 +27,30 @@ Each example shows a realistic request, the plan you would send to `show_plan`, 
 
 ### 1. Two-person consultancy, many client deadlines
 
-> "Sara and I run a grants consultancy. I'm only half-time on client work. Here's our list: quick fix for Acme (Sara, 1 day), Northwind appeal (Sara, 4 days, due the 14th, worth 20k), Brightside research (Sara 5 days, due the 20th, 85k), Lumen proposal (I prepare 1 day, then Sara 3 days, due the 20th, 24k), Orbit full application (Sara 6 days, due 10 Nov, 100k), Helix research (waiting for their questionnaire until the 15th; I do 1 day, then Sara 5, due 16 Nov, 100k). Are we OK?"
+> "Sara and I run a grants consultancy. I'm only half-time on client work. Here's our list: quick fix for Acme (Sara, 1 day), Northwind appeal (Sara, 4 days, due the 14th), Brightside research (Sara 5 days, due the 20th), Lumen proposal (I prepare 1 day, then Sara 3 days, due the 20th), Orbit full application (Sara 6 days, due 10 Nov), Helix research (waiting for their questionnaire until the 15th; I do 1 day, then Sara 5, due 16 Nov). Are we OK?"
 
 ```json
 {
   "title": "Client deliverables",
   "start": "2026-10-05",
-  "currency": "€",
   "lanes": [
     { "name": "Sara" },
     { "name": "Omar", "availability": 50 }
   ],
   "items": [
-    { "name": "Quick fix for Acme", "who": "Sara", "days": 1, "value": 15000 },
-    { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14", "value": 20000 },
-    { "name": "Research for Brightside", "who": "Sara", "days": 5, "deadline": "2026-10-20", "value": 85000 },
-    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20", "value": 24000 },
-    { "name": "Full application: Orbit", "who": "Sara", "days": 6, "deadline": "2026-11-10", "value": 100000 },
-    { "name": "Research for Helix", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 5, "after": "Omar" }], "notBefore": "2026-10-15", "deadline": "2026-11-16", "value": 100000 }
+    { "name": "Quick fix for Acme", "who": "Sara", "days": 1 },
+    { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14" },
+    { "name": "Research for Brightside", "who": "Sara", "days": 5, "deadline": "2026-10-20" },
+    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" },
+    { "name": "Full application: Orbit", "who": "Sara", "days": 6, "deadline": "2026-11-10" },
+    { "name": "Research for Helix", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 5, "after": "Omar" }], "notBefore": "2026-10-15", "deadline": "2026-11-16" }
   ]
 }
 ```
 
 Good answer shape:
 - "One deadline is late even as planned: **Lumen** finishes 21 Oct, a day after its deadline, because Sara is busy with Brightside and Northwind until 16 Oct. Three more are tight."
-- Options from `find_options`, e.g. "Do the Acme quick fix after the dated work → Lumen makes it, 24k € less at risk."
+- Options from `find_options`, e.g. "Do the Acme quick fix after the dated work → Lumen makes it."
 - The real constraint: "Almost everything queues behind Sara. Omar's prep work is never the bottleneck."
 - What to tell clients: "Promise Orbit for the safe-bet date, not the as-planned one."
 

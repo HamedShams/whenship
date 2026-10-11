@@ -68,7 +68,7 @@ const itemSchema = z.object({
   who: z.string().optional().describe('Shorthand for one lane instead of `work`'),
   days: z.number().optional().describe('Shorthand effort with `who`'),
   deadline: isoDate.optional(),
-  value: z.number().optional().describe('Optional business value (money) at stake'),
+  ...(FEATURES.itemValue ? { value: z.number().optional().describe('Optional business value (money) at stake') } : {}),
   dependsOn: z.array(z.string()).optional().describe('Ids or names of items that must finish first'),
   notBefore: isoDate.optional().describe('Waiting on something external: cannot start before this date'),
   note: z.string().optional(),
@@ -78,7 +78,7 @@ const planSchema = z
   .object({
     title: z.string().optional(),
     start: isoDate.optional().describe('First day of work. Default today'),
-    currency: z.string().optional().describe('For values, e.g. "€" or "USD"'),
+    ...(FEATURES.itemValue ? { currency: z.string().optional().describe('For values, e.g. "€" or "USD"') } : {}),
     calendar: z
       .object({
         workdays: z.array(weekday).optional().describe('Default mon-fri'),

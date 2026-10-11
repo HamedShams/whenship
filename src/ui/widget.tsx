@@ -128,8 +128,8 @@ function Card({ plan, lens }: { plan: NormalizedPlan; lens: LensId }) {
   const year = dayParts(plan.start).year;
   const text = headline(a);
   const risky = a.planned.items
-    .map((r) => ({ r, o: a.outlook.get(r.id) }))
-    .filter((x) => x.o && (x.o.badge === 'late' || x.o.badge === 'tight'))
+    .map((r) => ({ r, b: a.status.get(r.id) }))
+    .filter((x) => x.b === 'late' || x.b === 'tight')
     .slice(0, 4);
   const rows = a.current.items.slice(0, 8);
   const start = parseISO(plan.start)!;
@@ -147,11 +147,11 @@ function Card({ plan, lens }: { plan: NormalizedPlan; lens: LensId }) {
       <div style={{ fontSize: '14px', fontWeight: 600 }}>{text.charAt(0).toUpperCase() + text.slice(1)}</div>
       {risky.length > 0 && (
         <div class="risks">
-          {risky.map(({ r, o }) => (
+          {risky.map(({ r, b }) => (
             <div key={r.id} class="risk">
               <span>{r.name}</span>
               <span class="sub">{r.endDate ? formatDay(r.endDate, year) : ''}{r.deadline ? ` · due ${formatDay(r.deadline, year)}` : ''}</span>
-              <span class={`pill ${o!.badge}`}>{badgeLabel(o!.badge)}</span>
+              <span class={`pill ${b!}`}>{badgeLabel(b!)}</span>
             </div>
           ))}
         </div>

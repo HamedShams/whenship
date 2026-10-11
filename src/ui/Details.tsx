@@ -1,5 +1,5 @@
 import type { Analysis } from '../engine/analysis';
-import { explain, formatMoney } from '../engine/analysis';
+import { explain } from '../engine/analysis';
 import { applyChanges } from '../engine/changes';
 import { dayParts, formatDayLong } from '../engine/dates';
 import { describeWork } from '../engine/report';
@@ -50,20 +50,6 @@ export function Details({
       <div>
         <div class="field-row">
           <label class="field">
-            Value {plan.currency ? `(${plan.currency})` : ''}
-            <input
-              type="number"
-              min="0"
-              step="1000"
-              value={it.value ?? ''}
-              placeholder="optional"
-              onInput={(e) => {
-                const v = (e.currentTarget as HTMLInputElement).value;
-                patch({ value: v === '' ? undefined : Math.max(0, Number(v)) }, `value:${id}`);
-              }}
-            />
-          </label>
-          <label class="field">
             Can't start before
             <input type="date" value={it.notBefore ?? ''} onChange={(e) => patch({ notBefore: (e.currentTarget as HTMLInputElement).value || undefined })} />
           </label>
@@ -88,7 +74,6 @@ export function Details({
           Note
           <input value={it.note ?? ''} placeholder="e.g. waiting for the client's questionnaire" onInput={(e) => patch({ note: (e.currentTarget as HTMLInputElement).value || undefined }, `note:${id}`)} />
         </label>
-        {it.value !== undefined && <p class="sub">Value: {formatMoney(it.value, plan.currency)}</p>}
       </div>
     </section>
   );

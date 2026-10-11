@@ -27,16 +27,15 @@ export const SAMPLES: Sample[] = [
       return {
         title: 'Client deliverables',
         start: s,
-        currency: '€',
         lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
         items: [
-          { name: 'Quick fix for Acme', who: 'Sara', days: 1, value: 15000 },
-          { name: 'Appeal for Northwind', who: 'Sara', days: 4, deadline: at(s, 9), value: 20000 },
-          { name: 'Research for Brightside', who: 'Sara', days: 5, deadline: at(s, 15), value: 85000 },
-          { name: 'Revise Lumen proposal', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 3, after: 'Omar' }], deadline: at(s, 15), value: 24000 },
-          { name: 'Appeal for Kestrel', who: 'Sara', days: 5, deadline: at(s, 30), value: 20000 },
-          { name: 'Full application: Orbit', who: 'Sara', days: 6, deadline: at(s, 36), value: 100000 },
-          { name: 'Research for Helix', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }], deadline: at(s, 42), value: 100000, notBefore: at(s, 10), note: 'Waiting for the client questionnaire' },
+          { name: 'Quick fix for Acme', who: 'Sara', days: 1 },
+          { name: 'Appeal for Northwind', who: 'Sara', days: 4, deadline: at(s, 9) },
+          { name: 'Research for Brightside', who: 'Sara', days: 5, deadline: at(s, 15) },
+          { name: 'Revise Lumen proposal', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 3, after: 'Omar' }], deadline: at(s, 15) },
+          { name: 'Appeal for Kestrel', who: 'Sara', days: 5, deadline: at(s, 30) },
+          { name: 'Full application: Orbit', who: 'Sara', days: 6, deadline: at(s, 36) },
+          { name: 'Research for Helix', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }], deadline: at(s, 42), notBefore: at(s, 10), note: 'Waiting for the client questionnaire' },
         ],
       };
     },

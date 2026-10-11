@@ -138,7 +138,8 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
     start = options.today ?? todayLocal();
     if (raw.start !== undefined) errors.push({ path: 'start', message: `"${String(raw.start)}" is not a date; using ${start}` });
   }
-  const currency = typeof raw.currency === 'string' && raw.currency.trim() ? raw.currency.trim().slice(0, 8) : undefined;
+  const currency = features.itemValue && typeof raw.currency === 'string' && raw.currency.trim() ? raw.currency.trim().slice(0, 8) : undefined;
+  let valuesIgnored = false;
 
   // ── calendar ────────────────────────────────────────────────────────────
   const cal = isObj(raw.calendar) ? raw.calendar : {};
@@ -319,9 +320,13 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
       if (isISODate(v)) item[key] = toISO(parseISO(String(v))!);
       else errors.push({ path: `${p}.${key}`, message: `"${String(v)}" is not a date like 2026-10-07` });
     }
-    const value = parseNumberish(entry.value, 'money');
-    if (value !== null && value >= 0) item.value = value;
-    else if (entry.value !== undefined && entry.value !== null && entry.value !== '') errors.push({ path: `${p}.value`, message: 'must be a number' });
+    if (!features.itemValue) {
+      if (entry.value !== undefined && entry.value !== null && entry.value !== '') valuesIgnored = true;
+    } else {
+      const value = parseNumberish(entry.value, 'money');
+      if (value !== null && value >= 0) item.value = value;
+      else if (entry.value !== undefined && entry.value !== null && entry.value !== '') errors.push({ path: `${p}.value`, message: 'must be a number' });
+    }
     if (typeof entry.note === 'string' && entry.note.trim()) item.note = entry.note.trim().slice(0, 500);
     const deps = entry.dependsOn ?? entry.after ?? entry.depends;
     if (deps !== undefined) pendingDeps.push({ item, refs: Array.isArray(deps) ? deps : [deps], path: `${p}.dependsOn` });
@@ -341,6 +346,7 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
     }
   }
 
+  if (valuesIgnored) warnings.push({ path: 'items', message: 'values (money at stake) are turned off for now; ignored' });
   const plan: NormalizedPlan = { version: 1, title, start, calendar: { workdays, holidays }, lanes, items };
   if (currency) plan.currency = currency;
   return { plan, errors, warnings };

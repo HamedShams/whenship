@@ -58,7 +58,7 @@ describe('save files and links', () => {
 });
 
 describe('pasting tables and lists', () => {
-  it('reads a real-world deadline sheet (headers, "[Pend] 6 Days", "100k €", order column)', () => {
+  it('reads a real-world deadline sheet (headers, "[Pend] 6 Days", order column; values are ignored while switched off)', () => {
     const tsv = [
       'Value\tCase\tDeadline\tNext Deliverable\tEffort Needed\tTarget Deadline\tOrder',
       '100k €\tShop Atlas\t27 Oct\tAntrag Draft\t[Pend] 6 Days\t2 Nov\t5',
@@ -69,12 +69,12 @@ describe('pasting tables and lists', () => {
     const input = parseTable(tsv, '2026-09-23');
     const { plan: p, errors } = validatePlan({ start: '2026-09-24', ...input }, { today: '2026-09-23' });
     expect(errors).toEqual([]);
-    expect(p.currency).toBe('€');
+    expect(p.currency).toBeUndefined();
     expect(p.items.map((i) => [i.name, i.work[0]!.days, i.deadline ?? null, i.value])).toEqual([
-      ['Insure Pilot', 1, null, 15000],
-      ['Vela Widerspruch', 4, '2026-10-02', 20000],
-      ['Nimbus Finance', 5, '2026-10-07', 85000],
-      ['Shop Atlas', 6, '2026-10-27', 100000],
+      ['Insure Pilot', 1, null, undefined],
+      ['Vela Widerspruch', 4, '2026-10-02', undefined],
+      ['Nimbus Finance', 5, '2026-10-07', undefined],
+      ['Shop Atlas', 6, '2026-10-27', undefined],
     ]);
     expect(p.items[3]!.note).toBe('Antrag Draft');
     expect(schedule(p).byId.get('nimbus-finance')!.endDate).toBe('2026-10-07');
@@ -142,7 +142,7 @@ describe('exports', () => {
     const svg = toSvg(sample);
     expect(svg.startsWith('<svg')).toBe(true);
     expect(svg).toMatch(/Grant season/);
-    expect(svg).toMatch(/at risk|on track|late/);
+    expect(svg).toMatch(/on track|late|tight/);
     expect((svg.match(/<rect /g) ?? []).length).toBeGreaterThan(5);
     expect(svg).toMatch(/<path d="M/);
   });

@@ -25,12 +25,12 @@ If no whenship tools are available, say so in one line and offer two ways forwar
 1. **Collect the plan from whatever the user gave you**: a list, a table, a screenshot, a tracker export, a few sentences. Map it to:
    - `lanes`: who does the work. A person (`{name: "Sara"}`), or a team or role with several people (`{name: "Back-end", size: 3}`). Add `availability` (percent of their time for this plan) when the user says someone is part-time or busy with other things.
    - `items`: in **priority order** (earlier items get people first). Each item has `work`: one entry per lane with `days` of effort, or the shorthand `who` + `days`.
-   - Optional: `deadline`, `value` (money at stake), `dependsOn` (items that must finish first), `notBefore` (waiting on something external), hand-offs (`after: "<lane>"` inside `work`), `calendar.workdays`, `calendar.holidays`.
+   - Optional: `deadline`, `dependsOn` (items that must finish first), `notBefore` (waiting on something external), hand-offs (`after: "<lane>"` inside `work`), `calendar.workdays`, `calendar.holidays`.
 2. **Keep estimates exactly as given.** Never pad, round or "correct" them. If an estimate is missing, ask once, briefly, for the missing ones only. If the user wants a quick answer anyway, use a clearly labelled placeholder and say which items it affects.
-3. **Working days**: default Monday to Friday. Use the user's weekend when they mention it or it is clear from context (for example Saturday–Wednesday working weeks with Thursday and Friday off). Put public holidays, closures and team-wide days off in `calendar.holidays`. Days off for one person aren't supported yet: if someone's absence matters, say so and lower their `availability` for the plan instead.
+3. **Working days**: default Monday to Friday. Use the user's weekend when they mention it or it is clear from context (for example Saturday–Wednesday working weeks with Thursday and Friday off). Put public holidays and closures in `calendar.holidays`.
 4. **Call `show_plan`.** Pass `start` only if the user gave one (otherwise it is today). The chart appears for the user; your text answer should still stand on its own.
 5. **Answer briefly**, in this order:
-   - the headline the tool returned (deadlines late or tight, value at risk, end date);
+   - the headline the tool returned (deadlines late or tight, end date);
    - the items that are late or tight and, in a few words, why (the tool explains who was busy with what);
    - the best one to three options. Call `find_options` when anything is late or tight, and quote its effects;
    - one line on what the user can do in the chart: drag to reprioritise, click to edit, switch the forecast lens.
@@ -61,7 +61,6 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
 {
   "title": "Client deliverables",
   "start": "2026-10-05",
-  "currency": "€",
   "calendar": {
     "workdays": ["mon", "tue", "wed", "thu", "fri"],
     "holidays": [{ "from": "2026-12-24", "to": "2026-12-26", "label": "Holidays" }]
@@ -72,14 +71,14 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
     { "name": "Back-end", "size": 3 }
   ],
   "items": [
-    { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14", "value": 20000 },
+    { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14" },
     { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" },
     { "name": "Checkout redesign", "work": [{ "lane": "Back-end", "days": 6, "maxPeople": 2 }], "dependsOn": ["Appeal for Northwind"], "notBefore": "2026-10-12" }
   ]
 }
 ```
 
-- `start` is optional (default today); `currency` only matters when items have a `value`.
+- `start` is optional (default today).
 - `availability` is the percent of someone's working time available for this plan; `size` makes a lane a team.
 - `items` are in priority order. `after` inside `work` is a hand-off (Sara starts when Omar is done); `maxPeople` lets several people of a team work on one item at once; `notBefore` means waiting on something external.
 

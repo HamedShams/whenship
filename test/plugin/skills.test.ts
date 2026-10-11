@@ -35,7 +35,9 @@ describe('plugin skills', () => {
     const lumen = consultancy.planned.byId.get('revise-lumen-proposal')!;
     expect([lumen.endDate, lumen.late]).toEqual(['2026-10-21', true]);
     expect(consultancy.planned.byId.get('research-for-brightside')!.endDate).toBe('2026-10-16');
-    expect(findInsights(plans[0]!)[0]).toMatchObject({ title: 'Do "Quick fix for Acme" after the dated work', effect: expect.stringMatching(/^1 more deadline met \(Revise Lumen proposal\) · 24k € less at risk/) });
+    expect(findInsights(plans[0]!)[0]).toMatchObject({ title: 'Do "Quick fix for Acme" after the dated work', effect: expect.stringMatching(/^1 more deadline met \(Revise Lumen proposal\)/) });
+    // values are switched off, so no example may rely on them
+    for (const p of planBlocks(skills.map((x) => x.text).join('\n'))) expect(JSON.stringify(p)).not.toMatch(/"value"|"currency"/);
 
     expect(plans[3]!.calendar.holidays).toHaveLength(1);
     expect(plans[4]!.calendar.workdays).toEqual(['mon', 'tue', 'wed', 'sat', 'sun']);

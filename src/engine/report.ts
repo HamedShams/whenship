@@ -2,6 +2,7 @@ import { analyze, badgeLabel, criticalChain, explain, formatMoney, headline, typ
 import { formatDay, formatDayLong, parseISO } from './dates';
 import { findInsights, type Insight } from './insights';
 import { LENSES, lensById, type LensId } from './lens';
+import { FEATURES } from './features';
 import type { NormalizedPlan } from './types';
 
 const yearOf = (iso: string) => new Date(parseISO(iso)! * 86_400_000).getUTCFullYear();
@@ -56,14 +57,15 @@ export function renderReport(plan: NormalizedPlan, options: ReportOptions = {}):
   lines.push(`Assumptions: starts ${formatDayLong(plan.start, year)}; ${describeWorkdays(plan)}${holidays}; people: ${people || 'none yet'}.` + (lens.factor !== 1 ? ` Dates below use the **${lens.label} (${lens.short})** lens.` : ''));
   lines.push('');
   const rows = a.current.items.slice(0, options.maxRows ?? 60);
-  const hasValue = plan.items.some((it) => it.value !== undefined);
+  const hasValue = FEATURES.itemValue && plan.items.some((it) => it.value !== undefined);
   lines.push(`| # | Item | Who | Start | Finish | Deadline | Status${hasValue ? ' | Value' : ''} |`);
   lines.push(`|---|---|---|---|---|---|---|${hasValue ? '---|' : ''}`);
   rows.forEach((r, i) => {
     const it = plan.items[i]!;
     const o = a.outlook.get(r.id);
+    const b = a.status.get(r.id);
     const status =
-      r.status === 'blocked' ? `⛔ ${r.problem}` : r.status === 'empty' ? 'no effort yet' : o ? statusText(o.badge, o.chance, r.slack) : '—';
+      r.status === 'blocked' ? `⛔ ${r.problem}` : r.status === 'empty' ? 'no effort yet' : o && b ? statusText(b, o.chance, r.slack) : '—';
     const cells = [
       String(i + 1),
       it.name.replace(/\|/g, '/'),

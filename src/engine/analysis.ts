@@ -1,6 +1,7 @@
 import { formatDay, parseISO } from './dates';
 import { deadlineOutlook, lensById, type Badge, type LensId, type Outlook } from './lens';
 import { schedule, type ItemResult, type Schedule } from './schedule';
+import { FEATURES, type Features } from './features';
 import type { NormalizedPlan } from './types';
 
 export interface Analysis {
@@ -10,27 +11,37 @@ export interface Analysis {
   planned: Schedule;
   /** Schedule under the selected lens (same object as `planned` for "As planned"). */
   current: Schedule;
+  /** How much slip each deadline survives (independent of the lens). */
   outlook: Map<string, Outlook>;
+  /**
+   * Deadline status as shown under the selected lens: "late" when this lens's dates miss the deadline, otherwise the
+   * outlook badge. Under "As planned" it's the outlook badge.
+   */
+  status: Map<string, Badge>;
+  /** Counts of `status`. */
   counts: Record<Badge, number>;
-  /** Sum of `value` over dated items that are tight or late. */
+  /** Sum of `value` over dated items that are tight or late (0 while values are switched off). */
   valueAtRisk: number;
   dated: number;
 }
 
-export function analyze(plan: NormalizedPlan, lens: LensId = 'planned'): Analysis {
+export function analyze(plan: NormalizedPlan, lens: LensId = 'planned', features: Pick<Features, 'itemValue'> = FEATURES): Analysis {
   const planned = schedule(plan);
   const factor = lensById(lens).factor;
   const current = factor === 1 ? planned : schedule(plan, { factor });
   const outlook = deadlineOutlook(plan, planned);
+  const status = new Map<string, Badge>();
   const counts: Record<Badge, number> = { safe: 0, likely: 0, tight: 0, late: 0, unknown: 0 };
   let valueAtRisk = 0;
   for (const it of plan.items) {
     const o = outlook.get(it.id);
     if (!o) continue;
-    counts[o.badge]++;
-    if ((o.badge === 'tight' || o.badge === 'late') && it.value) valueAtRisk += it.value;
+    const b: Badge = o.badge !== 'unknown' && factor !== 1 && current.byId.get(it.id)?.late ? 'late' : o.badge;
+    status.set(it.id, b);
+    counts[b]++;
+    if (features.itemValue && (b === 'tight' || b === 'late') && it.value) valueAtRisk += it.value;
   }
-  return { plan, lens, planned, current, outlook, counts, valueAtRisk, dated: outlook.size };
+  return { plan, lens, planned, current, outlook, status, counts, valueAtRisk, dated: outlook.size };
 }
 
 /** The chain of items that sets an item's finish date (by default the last item to finish). */
@@ -88,6 +99,11 @@ export function badgeLabel(b: Badge): string {
   return { safe: 'safe', likely: 'likely on time', tight: 'tight', late: 'late', unknown: 'no date' }[b];
 }
 
+/** Short badge text for narrow places (the item list). */
+export function badgeShort(b: Badge): string {
+  return { safe: 'safe', likely: 'likely', tight: 'tight', late: 'late', unknown: '—' }[b];
+}
+
 export function formatMoney(value: number, currency?: string): string {
   const sym = currency ?? '';
   const abs = Math.abs(value);
@@ -96,19 +112,24 @@ export function formatMoney(value: number, currency?: string): string {
   return /^[A-Za-z]{3}$/.test(sym) ? `${num} ${sym.toUpperCase()}` : sym === '$' || sym === '£' ? `${sym}${num}` : `${num} ${sym}`;
 }
 
-/** One-sentence headline, e.g. "2 of 7 deadlines are tight or late · 349k € at risk · all done 12 Nov". */
+/** One-sentence headline, e.g. "2 of 7 deadlines late even as planned · 3 tight · all done 12 Nov". */
 export function headline(a: Analysis): string {
   const parts: string[] = [];
-  const atRisk = a.counts.tight + a.counts.late;
+  const lens = lensById(a.lens);
   if (a.dated) {
-    if (a.counts.late) parts.push(`${a.counts.late} of ${a.dated} deadlines late even as planned`);
-    if (a.counts.tight) parts.push(`${a.counts.tight} tight (on time only if nothing slips)`);
-    if (!atRisk) parts.push(`all ${a.dated} deadlines on track`);
+    if (lens.factor === 1) {
+      if (a.counts.late) parts.push(`${a.counts.late} of ${a.dated} deadlines late even as planned`);
+      if (a.counts.tight) parts.push(`${a.counts.tight} tight (on time only if nothing slips)`);
+      if (!a.counts.late && !a.counts.tight) parts.push(`all ${a.dated} deadlines on track`);
+    } else if (a.counts.late) {
+      parts.push(`${a.counts.late} of ${a.dated} deadlines late if work takes ${lens.short} as long`);
+    } else {
+      parts.push(`all ${a.dated} deadlines on time even at ${lens.short}`);
+    }
     if (a.valueAtRisk > 0) parts.push(`${formatMoney(a.valueAtRisk, a.plan.currency)} at risk`);
   }
   const year = parseISO(a.plan.start) !== null ? new Date(parseISO(a.plan.start)! * 86_400_000).getUTCFullYear() : undefined;
   if (a.planned.endDate) {
-    const lens = lensById(a.lens);
     parts.push(`all done ${formatDay(a.planned.endDate, year)}` + (lens.factor !== 1 && a.current.endDate ? ` (${lens.label} ${lens.short}: ${formatDay(a.current.endDate, year)})` : ''));
   }
   const blocked = a.planned.items.filter((r) => r.status === 'blocked').length;

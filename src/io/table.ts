@@ -3,6 +3,7 @@ import { parseLooseDate } from '../engine/dates';
 import { lensById, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule } from '../engine/schedule';
+import { FEATURES } from '../engine/features';
 import { parseNumberish } from '../engine/validate';
 import type { NormalizedPlan, PlanInput } from '../engine/types';
 
@@ -85,8 +86,10 @@ export function parseTable(text: string, today: string): PlanInput {
       const item: Record<string, unknown> = { name, work };
       const deadline = parseLooseDate(get('deadline'), today);
       if (deadline) item.deadline = deadline;
-      const value = parseNumberish(get('value'), 'money');
-      if (value !== null) item.value = value;
+      if (FEATURES.itemValue) {
+        const value = parseNumberish(get('value'), 'money');
+        if (value !== null) item.value = value;
+      }
       const note = get('note');
       if (note) item.note = note;
       const order = parseNumberish(get('order'), 'days');
@@ -94,7 +97,7 @@ export function parseTable(text: string, today: string): PlanInput {
     })
     .filter((x): x is { item: Record<string, unknown>; order: number; i: number } => x !== null)
     .sort((a, b) => a.order - b.order || a.i - b.i);
-  const currency = /€/.test(text) ? '€' : /\$/.test(text) ? '$' : /£/.test(text) ? '£' : undefined;
+  const currency = !FEATURES.itemValue ? undefined : /€/.test(text) ? '€' : /\$/.test(text) ? '$' : /£/.test(text) ? '£' : undefined;
   return { ...(currency ? { currency } : {}), items: items.map((x) => x.item) };
 }
 
@@ -128,10 +131,10 @@ export function toCsv(plan: NormalizedPlan, lens: LensId = 'planned'): string {
   const a = analyze(plan, lens);
   const likely = schedule(plan, { factor: 1.6 });
   const safe = schedule(plan, { factor: 2.7 });
-  const header = ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6x)', 'Safe finish (2.7x)', 'Value', 'Note'];
+  const header = ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6x)', 'Safe finish (2.7x)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'];
   const rows = plan.items.map((it, i) => {
     const r = a.planned.byId.get(it.id)!;
-    const o = a.outlook.get(it.id);
+    const o = a.outlook.get(it.id); // the CSV lists as-planned dates, so its status is the as-planned one
     const status = r.status === 'blocked' ? `blocked: ${r.problem}` : r.status === 'empty' ? 'no effort' : o ? o.badge : '';
     return [
       i + 1,
@@ -145,7 +148,7 @@ export function toCsv(plan: NormalizedPlan, lens: LensId = 'planned'): string {
       o?.chance !== undefined ? `${Math.round(o.chance * 100)}%` : '',
       likely.byId.get(it.id)!.endDate,
       safe.byId.get(it.id)!.endDate,
-      it.value,
+      ...(FEATURES.itemValue ? [it.value] : []),
       it.note,
     ].map(csvCell);
   });

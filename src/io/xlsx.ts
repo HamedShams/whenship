@@ -1,3 +1,4 @@
+import { FEATURES } from '../engine/features';
 import { strToU8, zipSync } from 'fflate';
 import { analyze } from '../engine/analysis';
 import { parseISO, toISO, weekdayIndex } from '../engine/dates';
@@ -111,12 +112,13 @@ export function toXlsx(plan: NormalizedPlan, lens: LensId = 'planned'): Uint8Arr
     [{ v: plan.title, s: st.bold }],
     [{ v: `Start ${plan.start} · ${describeWorkdays(plan)} · dates shown: ${l.label} (${l.short})` }],
     [],
-    ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6×)', 'Safe finish (2.7×)', 'Value', 'Note'].map(H),
+    ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6×)', 'Safe finish (2.7×)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'].map(H),
   ];
   plan.items.forEach((it, i) => {
     const r = a.current.byId.get(it.id)!;
     const o = a.outlook.get(it.id);
-    const status = r.status === 'blocked' ? `blocked: ${r.problem}` : r.status === 'empty' ? 'no effort' : o ? o.badge : '';
+    const b = a.status.get(it.id);
+    const status = r.status === 'blocked' ? `blocked: ${r.problem}` : r.status === 'empty' ? 'no effort' : b ?? '';
     planRows.push([
       T(i + 1),
       T(it.name),
@@ -129,7 +131,7 @@ export function toXlsx(plan: NormalizedPlan, lens: LensId = 'planned'): Uint8Arr
       o?.chance !== undefined ? T(`${Math.round(o.chance * 100)}%`) : null,
       D(likely.byId.get(it.id)!.endDate),
       D(safe.byId.get(it.id)!.endDate),
-      T(it.value),
+      ...(FEATURES.itemValue ? [T(it.value)] : []),
       T(it.note),
     ]);
   });

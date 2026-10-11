@@ -64,7 +64,7 @@ By default you see **your own estimates** (*As planned*). whenship never stretch
 | Safe bet | 2.7× | A date you can promise: about 85 in 100 projects are done by here. |
 | Worst case | 3.9× | When things go badly: only 1 in 20 projects run longer. |
 
-The badges use the same scale: *safe* means on time even at 2.7×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned.
+The badges use the same scale: *safe* means on time even at 2.7×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned. With another lens on, every deadline that lens's dates miss shows as *late*.
 
 The multipliers (P50 1.6×, P80 2.5×, P85 2.7×, P90 3.1×, P95 3.9×) are a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, with the midpoint sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
 
@@ -87,7 +87,7 @@ Plans are small JSON files (`*.whenship.json`) you can keep in a repo, edit by h
 }
 ```
 
-Items are in priority order. `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Omar is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `value`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
+Items are in priority order. `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Omar is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
 
 ## Self-host
 

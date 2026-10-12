@@ -154,6 +154,7 @@ export function App(props: AppProps) {
           extra={props.headerExtra}
           compactBrand={host.mode === 'widget'}
           empty={plan.items.length === 0}
+          caption={host.mode === 'widget' ? 'Plan · your edits reach Claude automatically' : 'Plan · saved in this browser'}
         />
         {!empty && <Setup plan={plan} onCommit={h.commit} />}
       </div>

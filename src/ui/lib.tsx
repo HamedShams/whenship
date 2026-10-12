@@ -103,6 +103,7 @@ export const Icon = {
   spark: () => <I><path d="M12 3v4" /><path d="M12 17v4" /><path d="M3 12h4" /><path d="M17 12h4" /><path d="m6 6 2.5 2.5" /><path d="m15.5 15.5 2.5 2.5" /><path d="m6 18 2.5-2.5" /><path d="m15.5 8.5 2.5-2.5" /></I>,
   chain: () => <I><path d="M4 12h4" /><path d="M16 12h4" /><rect x="8" y="9" width="8" height="6" rx="2" /></I>,
   open: () => <I><path d="M4 20h16" /><path d="M12 4v11" /><path d="m7 9 5-5 5 5" /></I>,
+  pencil: () => <I><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></I>,
 };
 
 export const Logo = ({ size = 22 }: { size?: number }) => (

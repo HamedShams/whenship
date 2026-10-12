@@ -46,12 +46,12 @@ export function Details({
       </header>
 
       <dl class="insp-facts">
-        <dt>Delivery</dt>
+        <dt>Expected delivery</dt>
         <dd>
           <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
           {o?.chance !== undefined && <span class="sub"> {chanceLabel(o.chance)} chance on time</span>}
         </dd>
-        <dt>Due</dt>
+        <dt>Deadline</dt>
         <dd>{it.deadline ? formatDayLong(it.deadline, year) : <span class="sub">no deadline</span>}</dd>
         <dt>Who</dt>
         <dd>{it.work.length ? describeWork(plan, id) : <span class="sub">nobody yet</span>}</dd>

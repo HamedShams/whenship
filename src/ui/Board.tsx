@@ -172,8 +172,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>#</span>
           <span>Item</span>
           <span>Who</span>
-          <span>Due</span>
-          <span>Delivery</span>
+          <span>Deadline</span>
+          <span>Expected delivery</span>
           <span />
         </div>
         <div class="rows" style={{ height: `${height}px` }}>
@@ -484,7 +484,7 @@ export function Delivery(p: {
   if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
   if (!p.endDate) return <span class="done-date">—</span>;
   const date = <DueLabel iso={p.endDate} year={p.year} />;
-  if (!p.badge) return <span class="done-date" title={`Delivered ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
+  if (!p.badge) return <span class="done-date" title={`Expected delivery ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
   const lens = lensById(p.lens);
   const tip =
     p.badge === 'late' && p.base && p.base !== 'late'
@@ -496,10 +496,10 @@ export function Delivery(p: {
           : p.badge === 'tight'
             ? 'Tight: on time only if everything goes to plan'
             : 'Late even if everything goes to plan';
-  const due = p.deadline ? ` · due ${formatDay(p.deadline, p.year)}` : '';
+  const due = p.deadline ? ` · deadline ${formatDay(p.deadline, p.year)}` : '';
   const pct = p.chance !== undefined ? ` · ${chanceLabel(p.chance)} chance as planned` : '';
   return (
-    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Delivery ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
+    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Expected delivery ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
       {date}
     </span>
   );
@@ -514,10 +514,12 @@ function twoFit(work: NormalizedWork[], laneOf: (id: string) => { name: string }
 /** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */
 function DueLabel({ iso, year }: { iso: string; year: number }) {
   const y = Number(iso.slice(0, 4));
-  return y === year ? <>{formatDay(iso, year)}</> : (
-    <span class="due-2l">
+  if (y === year) return <>{formatDay(iso, year)}</>;
+  // another year: "14 Jan" with a small raised "'27", on one line and in the same colour
+  return (
+    <span class="date-y" title={formatDay(iso, year)}>
       {formatDay(iso, y)}
-      <small>{y}</small>
+      <span class="yr">’{String(y).slice(2)}</span>
     </span>
   );
 }

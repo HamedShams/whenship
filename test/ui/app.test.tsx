@@ -44,7 +44,7 @@ describe('app (web and widget share it)', () => {
     // an item without a deadline shows its plain delivery date
     expect(root.querySelector('.row:nth-child(1) .status .pill')).toBeNull();
     expect(text(root, '.row:nth-child(1) .status')).toMatch(/^\d{1,2} [A-Z][a-z]{2}$/);
-    expect(text(root, '.list-head')).toMatch(/Delivery/);
+    expect([...root.querySelectorAll('.list-head span')].map((x) => x.textContent)).toEqual(['#', 'Item', 'Who', 'Deadline', 'Expected delivery', '']);
     expect(changes).toHaveLength(1); // the host hears about the initial plan (the widget syncs it)
   });
 
@@ -281,7 +281,7 @@ describe('the item inspector and day chips', () => {
     await act(() => (rows[2]!.querySelector('.status') as HTMLElement).click()); // Research for Brightside
     const insp = () => root.querySelector('.details')!;
     expect(insp().querySelector('h3')!.textContent).toBe('Research for Brightside');
-    expect([...insp().querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['Delivery', 'Due', 'Who', 'Dates']);
+    expect([...insp().querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['Expected delivery', 'Deadline', 'Who', 'Dates']);
     expect(insp().querySelector('select[multiple]')).toBeNull();
     const add = insp().querySelector('select.add-dep') as HTMLSelectElement;
     add.value = 'quick-fix-for-acme';
@@ -303,5 +303,31 @@ describe('the item inspector and day chips', () => {
     await act(() => ([...root.querySelectorAll('.row:not(.draft) .who-cell')][3] as HTMLButtonElement).click());
     expect(document.querySelectorAll('.who-pop .who-row:not(.who-head)')).toHaveLength(2);
     expect(document.querySelectorAll('.who-pop .who-head')).toHaveLength(1);
+  });
+});
+
+describe('dates in another year, and the plan name', () => {
+  it('shows another year as a small raised "’27" on the same line, in both date columns', async () => {
+    const { root } = mount();
+    const row = root.querySelectorAll('.row:not(.draft)')[1]!; // Appeal for Northwind
+    const date = row.querySelector('input[type="date"]') as HTMLInputElement;
+    date.value = '2027-01-14';
+    await act(() => void date.dispatchEvent(new Event('change', { bubbles: true })));
+    const due = row.querySelector('.due-cell .date-y')!;
+    expect(due.textContent).toBe('14 Jan’27');
+    expect(due.querySelector('.yr')!.textContent).toBe('’27');
+    expect(due.getAttribute('title')).toBe('14 Jan 2027');
+    expect(row.querySelector('.due-cell small')).toBeNull(); // no second line
+  });
+
+  it('the plan name reads as an editable document title, apart from the app name', async () => {
+    const { root } = mount();
+    const input = root.querySelector('.doc-title input') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Plan name');
+    expect(root.querySelector('.brand-sep')).not.toBeNull();
+    expect(text(root, '.doc-caption')).toBe('Plan · saved in this browser');
+    input.value = 'Q4 client work';
+    await act(() => void input.dispatchEvent(new Event('input', { bubbles: true })));
+    expect((root.querySelector('.doc-title input') as HTMLInputElement).value).toBe('Q4 client work');
   });
 });

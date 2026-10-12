@@ -35,6 +35,8 @@ interface Props {
   compactBrand?: boolean;
   /** No items yet: show only the title and Open. */
   empty?: boolean;
+  /** One line under the plan name, e.g. where it's saved. */
+  caption?: string;
 }
 
 export function Header(p: Props) {
@@ -45,7 +47,23 @@ export function Header(p: Props) {
         <Logo />
         {!p.compactBrand && <span>whenship</span>}
       </span>
-      <input class="title-input" value={p.plan.title} aria-label="Plan title" onInput={(e) => p.onTitle((e.currentTarget as HTMLInputElement).value)} />
+      <span class="brand-sep" aria-hidden="true" />
+      {/* The plan's own name, like a document title: editable in place, with a caption saying where it lives. */}
+      <div class="doc-title">
+        <label class="title-wrap" title="Rename this plan">
+          <input
+            class="title-input"
+            value={p.plan.title}
+            aria-label="Plan name"
+            placeholder="Untitled plan"
+            style={{ width: `${Math.min(36, Math.max(10, p.plan.title.length + 2))}ch` }}
+            onInput={(e) => p.onTitle((e.currentTarget as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          />
+          <Icon.pencil />
+        </label>
+        {p.caption && <span class="doc-caption">{p.caption}</span>}
+      </div>
       <span class="spacer" />
       {!p.empty && (
         <>

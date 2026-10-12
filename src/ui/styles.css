@@ -65,11 +65,17 @@ button { cursor: pointer; }
 .wrap { padding: 0 20px; }
 .toolbar { position: sticky; top: 0; z-index: 30; background: var(--bg); }
 .topbar { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg); flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: var(--fg2); text-decoration: none; }
 .brand svg { flex: none; }
-.title-input { font-weight: 650; font-size: 16px; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 4px 8px; min-width: 120px; max-width: 320px; }
-.title-input:hover { border-color: var(--border); }
+.brand-sep { width: 1px; height: 28px; background: var(--border2); margin: 0 2px; }
+.doc-title { display: flex; flex-direction: column; min-width: 0; }
+.title-wrap { position: relative; display: inline-flex; align-items: center; max-width: 100%; cursor: text; }
+.title-input { font-weight: 650; font-size: 15px; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 2px 26px 2px 6px; min-width: 0; max-width: min(360px, 60vw); text-overflow: ellipsis; }
+.title-wrap svg { position: absolute; right: 7px; width: 14px; height: 14px; color: var(--fg3); opacity: 0; transition: opacity .12s; pointer-events: none; }
+.title-wrap:hover .title-input { border-color: var(--border2); }
+.title-wrap:hover svg, .title-input:focus + svg { opacity: 1; }
 .title-input:focus { border-color: var(--accent); outline: none; background: var(--bg); }
+.doc-caption { font-size: 11px; color: var(--fg3); padding-left: 7px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spacer { flex: 1; }
 .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border2); background: var(--bg); border-radius: var(--radius-sm); padding: 6px 10px; font-size: 13px; line-height: 1.2; white-space: nowrap; }
 .btn:hover { background: var(--bg2); }
@@ -123,10 +129,11 @@ button { cursor: pointer; }
 
 /* ── board: list + timeline ───────────────────────────── */
 .board { display: flex; border-top: 1px solid var(--border); margin-top: 8px; position: relative; overflow: auto; flex: 1; }
-.list { flex: none; width: 452px; border-right: 1px solid var(--border); background: var(--bg); position: sticky; left: 0; z-index: 10; }
+.list { flex: none; width: 484px; border-right: 1px solid var(--border); background: var(--bg); position: sticky; left: 0; z-index: 10; }
 .list-head, .tl-head { height: 52px; border-bottom: 1px solid var(--border); background: var(--bg); position: sticky; top: 0; z-index: 5; }
 .list-head { display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; align-items: end; padding: 0 6px 7px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); font-weight: 600; gap: 5px; }
 .list-head > :first-child { text-align: center; }
+.list-head > span { line-height: 1.2; }
 .rows { position: relative; }
 .list::after, .timeline::after { content: ''; display: block; height: 16px; }
 .row { position: absolute; left: 0; right: 0; height: var(--row); display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; gap: 5px; align-items: center; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); background: var(--bg); transition: top .16s ease; }
@@ -173,12 +180,14 @@ button { cursor: pointer; }
 .due-cell { overflow: hidden; }
 .date-field { display: flex; align-items: center; gap: 4px; }
 .date-field .date-btn { border-color: var(--border2); height: 30px; padding: 0 8px; font-size: 13px; }
-.due-2l { display: flex; flex-direction: column; line-height: 1.1; }
-.due-2l small { font-size: 10px; color: var(--fg3); }
+.date-y { white-space: nowrap; }
+.date-y .yr { position: relative; top: -.4em; margin-left: 1px; font-size: .74em; font-weight: 600; opacity: .7; }
+.due-cell .date-btn { padding-left: 4px; padding-right: 4px; }
 .status { display: flex; justify-content: flex-start; overflow: hidden; }
 .row .status .pill { padding: 2px 8px; }
 .pill.delivery { font-variant-numeric: tabular-nums; }
-.pill.delivery .due-2l small { color: inherit; opacity: .75; }
+.row .status .pill.delivery { padding: 2px 7px; }
+.row .status .pill.delivery:has(.date-y) { padding: 2px 5px; }
 .done-date { font-size: 12px; color: var(--fg3); white-space: nowrap; }
 
 .timeline { flex: 1; min-width: 0; position: relative; }
@@ -212,7 +221,7 @@ button { cursor: pointer; }
 .insp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .insp-head h3 { flex: 1; margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .insp-num { font-size: 12px; color: var(--fg3); font-variant-numeric: tabular-nums; }
-.insp-facts { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; margin: 0 0 12px; align-items: center; }
+.insp-facts { display: grid; grid-template-columns: 112px 1fr; gap: 6px 10px; margin: 0 0 12px; align-items: center; }
 .insp-facts dt { color: var(--fg3); font-size: 12px; }
 .insp-facts dd { margin: 0; min-width: 0; }
 .insp-why { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 10px; }

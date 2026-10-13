@@ -3,6 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App, type Host } from '../../src/ui/App';
+import { autoZoom } from '../../src/ui/Board';
 import { validatePlan } from '../../src/engine';
 import { SAMPLES } from '../../src/io/samples';
 
@@ -329,5 +330,42 @@ describe('dates in another year, and the plan name', () => {
     input.value = 'Q4 client work';
     await act(() => void input.dispatchEvent(new Event('input', { bubbles: true })));
     expect((root.querySelector('.doc-title input') as HTMLInputElement).value).toBe('Q4 client work');
+  });
+});
+
+describe('timeline zoom and header scale', () => {
+  it('picks the zoom from the plan length', () => {
+    expect(autoZoom(40)).toBe('day');
+    expect(autoZoom(120)).toBe('week');
+    expect(autoZoom(400)).toBe('month');
+  });
+
+  it('always shows a scale: days when zoomed in, week starts when zoomed out', async () => {
+    const { root } = mount();
+    const seg = (label: string) => [...root.querySelectorAll('.seg.small button')].find((b) => b.textContent === label) as HTMLButtonElement;
+    // the sample plan is a few weeks long: days
+    expect(seg('Days').getAttribute('aria-pressed')).toBe('true');
+    expect(root.querySelectorAll('.ticks .day .dow').length).toBeGreaterThan(20);
+    for (const label of ['Weeks', 'Months']) {
+      await act(() => seg(label).click());
+      const weeks = [...root.querySelectorAll('.ticks .wk')];
+      expect(weeks.length, label).toBeGreaterThan(3);
+      expect(weeks.every((w) => /^\d{1,2}$/.test(w.textContent!)), label).toBe(true);
+      expect(root.querySelectorAll('.months .month').length, label).toBeGreaterThan(0);
+    }
+    await act(() => seg('Days').click());
+    expect(root.querySelectorAll('.ticks .wk')).toHaveLength(0);
+  });
+
+  it('a long plan zooms out on its own and still labels the weeks', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const today = '2026-10-05';
+    const p = validatePlan({ start: today, lanes: [{ name: 'Sara' }], items: [{ name: 'Big', who: 'Sara', days: 200 }] }, { today }).plan;
+    const host: Host = { mode: 'web', save: async () => 'saved', copy: async () => true, baseUrl: () => null };
+    act(() => render(<App host={host} initialPlan={p} today={today} />, root));
+    expect(root.querySelector('.seg.small [aria-pressed="true"]')!.textContent).toBe('Months');
+    expect(root.querySelectorAll('.ticks .wk').length).toBeGreaterThan(20);
+    expect(root.querySelector('.tick-today')!.textContent).toBe('5');
   });
 });

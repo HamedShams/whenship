@@ -25,6 +25,34 @@ interface Props {
   onCommit: (plan: NormalizedPlan, mergeKey?: string) => void;
   focusId: string | null;
   onFocused: () => void;
+  /** How much of the calendar each day gets (see `autoZoom`). */
+  zoom: Zoom;
+}
+
+export type Zoom = 'day' | 'week' | 'month';
+/** Pixels per calendar day for each zoom level. */
+export const ZOOM_PPD: Record<Zoom, number> = { day: 26, week: 10, month: 4 };
+
+/** The calendar days the chart covers: plan start → the last finish or deadline, plus a few days. */
+export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: string, extra?: Schedule | null) {
+  const start = parseISO(plan.start)!;
+  let end = start + 20;
+  const bump = (iso?: string) => {
+    if (iso) end = Math.max(end, parseISO(iso)!);
+  };
+  for (const r of analysis.current.items) bump(r.endDate);
+  for (const r of analysis.planned.items) bump(r.endDate);
+  if (extra) for (const r of extra.items) bump(r.endDate);
+  for (const it of plan.items) bump(it.deadline);
+  const t = parseISO(today);
+  if (t !== null && t > start && t < start + 400) end = Math.max(end, t);
+  end = Math.min(end + 6, start + 1100);
+  return { start, end, span: end - start + 1 };
+}
+
+/** Days for short plans, weeks for a few months, months beyond that. */
+export function autoZoom(span: number): Zoom {
+  return span <= 75 ? 'day' : span <= 260 ? 'week' : 'month';
 }
 
 interface Drag {
@@ -35,7 +63,7 @@ interface Drag {
   startY: number;
 }
 
-export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused }: Props) {
+export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom }: Props) {
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
@@ -52,22 +80,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
 
   // timeline geometry (calendar days, so dates line up with real weeks)
   const geo = useMemo(() => {
-    const start = parseISO(plan.start)!;
-    let end = start + 20;
-    const bump = (iso?: string) => {
-      if (iso) end = Math.max(end, parseISO(iso)!);
-    };
-    for (const r of analysis.current.items) bump(r.endDate);
-    for (const r of analysis.planned.items) bump(r.endDate);
-    if (preview) for (const r of preview.items) bump(r.endDate);
-    for (const it of plan.items) bump(it.deadline);
-    const t = parseISO(today);
-    if (t !== null && t > start && t < start + 400) end = Math.max(end, t);
-    end = Math.min(end + 6, start + 1100);
-    const span = end - start + 1;
-    const ppd = span <= 70 ? 28 : span <= 140 ? 18 : span <= 300 ? 10 : 6;
+    const { start, end, span } = timelineSpan(plan, analysis, today, preview);
+    const ppd = ZOOM_PPD[zoom];
     return { start, end, span, ppd, width: span * ppd };
-  }, [plan, analysis, preview, today]);
+  }, [plan, analysis, preview, today, zoom]);
   const x = (iso: string) => (parseISO(iso)! - geo.start) * geo.ppd;
 
   const offDays = useMemo(() => {
@@ -76,14 +92,39 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     const holidays = plan.calendar.holidays;
     for (let d = geo.start; d <= geo.end; d++) {
       const iso = toISO(d);
-      const off = !work.has((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[weekdayIndex(d)]!) || holidays.some((h) => iso >= h.from && iso <= h.to);
+      // zoomed out, weekend stripes are just noise: shade holidays only
+      const weekend = !work.has((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[weekdayIndex(d)]!);
+      const off = (weekend && geo.ppd >= 8) || holidays.some((h) => iso >= h.from && iso <= h.to);
       if (!off) continue;
       const last = spans[spans.length - 1];
       if (last && last.from + last.len === d) last.len++;
       else spans.push({ from: d, len: 1 });
     }
     return spans;
-  }, [plan.calendar, geo.start, geo.end]);
+  }, [plan.calendar, geo.start, geo.end, geo.ppd]);
+
+  // header scale: month blocks on top; under them every day (zoomed in) or every week start (zoomed out)
+  const scale = useMemo(() => {
+    const planYear = dayParts(plan.start).year;
+    const months: { left: number; width: number; label: string }[] = [];
+    for (let d = geo.start; d <= geo.end; ) {
+      const p = dayParts(toISO(d));
+      const next = Math.min(geo.end + 1, Date.UTC(p.year, p.month + 1, 1) / 86_400_000);
+      months.push({ left: (d - geo.start) * geo.ppd, width: (next - d) * geo.ppd, label: `${monthName(p.month)}${p.year !== planYear ? ` ${p.year}` : ''}` });
+      d = next;
+    }
+    const work = new Set(plan.calendar.workdays);
+    const t = parseISO(today);
+    const byDay = geo.ppd >= 18;
+    const ticks: { d: number; label: string; dow?: string; off?: boolean }[] = [];
+    for (let d = geo.start; d <= geo.end; d++) {
+      const p = dayParts(toISO(d));
+      if (byDay) ticks.push({ d, label: String(p.day), dow: DOW[p.weekday]!, off: !work.has((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[p.weekday]!) });
+      else if (p.weekday === 0 && (t === null || Math.abs(d - t) * geo.ppd >= 22)) ticks.push({ d, label: String(p.day) });
+    }
+    return { months, ticks, byDay };
+  }, [geo, plan.start, plan.calendar.workdays, today]);
+
 
   // keyboard focus for a freshly added item
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
@@ -287,31 +328,30 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       <div class="timeline" style={{ width: `${geo.width}px`, minWidth: `${geo.width}px` }}>
         <div class="tl-head" aria-hidden="true">
           <div class="months">
-            {Array.from({ length: geo.span }, (_, k) => geo.start + k)
-              .filter((d) => d === geo.start || dayParts(toISO(d)).day === 1)
-              .map((d) => {
-                const p = dayParts(toISO(d));
-                return (
-                  <div key={d} class="month" style={{ left: `${(d - geo.start) * geo.ppd}px` }}>
-                    {monthName(p.month)}
-                    {p.year !== year ? ` ${p.year}` : ''}
-                  </div>
-                );
-              })}
+            {scale.months.map((m) => (
+              <div key={m.left} class="month" style={{ left: `${m.left}px`, width: `${m.width}px` }}>
+                {m.width >= 34 ? m.label : ''}
+              </div>
+            ))}
           </div>
-          <div class="days">
-            {geo.ppd >= 10 &&
-              Array.from({ length: geo.span }, (_, k) => geo.start + k)
-                .filter((d) => geo.ppd >= 18 || weekdayIndex(d) === 0)
-                .map((d) => {
-                  const p = dayParts(toISO(d));
-                  return (
-                    <div key={d} class={cx('day', d === todayDay && 'is-today')} style={{ left: `${(d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
-                      {geo.ppd >= 18 && <span class="dow">{DOW[p.weekday]}</span>}
-                      <span class="dnum">{p.day}</span>
-                    </div>
-                  );
-                })}
+          <div class={cx('ticks', scale.byDay ? 'by-day' : 'by-week')}>
+            {scale.ticks.map((t) =>
+              scale.byDay ? (
+                <div key={t.d} class={cx('day', t.off && 'off', t.d === todayDay && 'is-today')} style={{ left: `${(t.d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
+                  <span class="dow">{t.dow}</span>
+                  <span class="dnum">{t.label}</span>
+                </div>
+              ) : (
+                <div key={t.d} class="wk" style={{ left: `${(t.d - geo.start) * geo.ppd}px` }}>
+                  {t.label}
+                </div>
+              ),
+            )}
+            {!scale.byDay && todayX !== null && todayDay !== null && (
+              <div class="tick-today" style={{ left: `${todayX + geo.ppd / 2}px` }}>
+                {dayParts(toISO(todayDay)).day}
+              </div>
+            )}
           </div>
         </div>
         <div class="grid" style={{ height: `${height}px` }}>

@@ -6,7 +6,7 @@ import { findInsights, type Insight } from '../engine/insights';
 import type { LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
-import { Board } from './Board';
+import { autoZoom, Board, timelineSpan, type Zoom } from './Board';
 import { Details } from './Details';
 import { buildExport, type ExportFile } from './exporters';
 import { Header, type ExportKind } from './Header';
@@ -61,6 +61,9 @@ export function App(props: AppProps) {
   }, [props.externalVersion]);
 
   const analysis = useMemo(() => analyze(plan, lens), [plan, lens]);
+  // timeline zoom: picked from the plan's length until the user chooses one
+  const [zoom, setZoom] = useState<Zoom | null>(null);
+  const zoomShown: Zoom = useMemo(() => zoom ?? autoZoom(timelineSpan(plan, analysis, today).span), [zoom, plan, analysis, today]);
   const settled = useDebounced(plan, 180);
   const insights: Insight[] = useMemo(() => findInsights(settled, lens), [settled, lens]);
   const pending = settled !== plan;
@@ -167,6 +170,8 @@ export function App(props: AppProps) {
             insights={insights}
             pending={pending}
             chainOn={chainOn}
+            zoom={zoomShown}
+            onZoom={setZoom}
             onChain={() => {
               setSelected(null);
               setChainOn((v) => !v);
@@ -186,6 +191,7 @@ export function App(props: AppProps) {
             onCommit={h.commit}
             focusId={focusId}
             onFocused={() => setFocusId(null)}
+            zoom={zoomShown}
           />
           {selected && plan.items.some((x) => x.id === selected) && (
             <Details plan={plan} analysis={analysis} id={selected} onCommit={h.commit} onClose={() => setSelected(null)} />

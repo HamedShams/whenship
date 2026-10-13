@@ -94,6 +94,7 @@ button { cursor: pointer; }
 .seg { display: inline-flex; background: var(--bg2); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
 .seg button { border: none; background: transparent; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; color: var(--fg2); display: inline-flex; gap: 5px; align-items: baseline; }
 .seg button small { font-size: 10.5px; color: var(--fg3); }
+.seg.small button { padding: 3px 10px; font-size: 12px; }
 .seg button[aria-pressed='true'] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 600; }
 .seg button[aria-pressed='true'] small { color: var(--fg2); }
 
@@ -130,10 +131,10 @@ button { cursor: pointer; }
 /* ── board: list + timeline ───────────────────────────── */
 .board { display: flex; border-top: 1px solid var(--border); margin-top: 8px; position: relative; overflow: auto; flex: 1; }
 .list { flex: none; width: 484px; border-right: 1px solid var(--border); background: var(--bg); position: sticky; left: 0; z-index: 10; }
-.list-head, .tl-head { height: 52px; border-bottom: 1px solid var(--border); background: var(--bg); position: sticky; top: 0; z-index: 5; }
-.list-head { display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; align-items: end; padding: 0 6px 7px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); font-weight: 600; gap: 5px; }
+.list-head, .tl-head { height: 52px; border-bottom: 1px solid var(--border2); background: var(--bg2); position: sticky; top: 0; z-index: 5; }
+.list-head { display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; align-items: center; padding: 0 6px 0 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg3); font-weight: 650; gap: 5px; }
 .list-head > :first-child { text-align: center; }
-.list-head > span { line-height: 1.2; }
+.list-head > span { line-height: 1.25; }
 .rows { position: relative; }
 .list::after, .timeline::after { content: ''; display: block; height: 16px; }
 .row { position: absolute; left: 0; right: 0; height: var(--row); display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; gap: 5px; align-items: center; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); background: var(--bg); transition: top .16s ease; }
@@ -193,13 +194,15 @@ button { cursor: pointer; }
 
 .timeline { flex: 1; min-width: 0; position: relative; }
 .tl-head { position: sticky; }
-.months { position: relative; height: 20px; }
-.days { position: relative; height: 32px; }
-.month { position: absolute; top: 3px; font-size: 11.5px; font-weight: 600; color: var(--fg2); white-space: nowrap; padding-left: 4px; border-left: 1px solid var(--border2); height: 49px; }
-.day { position: absolute; top: 2px; display: flex; flex-direction: column; align-items: center; font-size: 10px; line-height: 13px; color: var(--fg3); }
-.day .dnum { font-size: 10.5px; color: var(--fg2); font-variant-numeric: tabular-nums; border-radius: 4px; padding: 0 3px; }
+.months { position: relative; height: 22px; border-bottom: 1px solid var(--border); }
+.month { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 8px; border-left: 1px solid var(--border2); font-size: 11.5px; font-weight: 650; color: var(--fg); white-space: nowrap; overflow: hidden; }
+.ticks { position: relative; height: 29px; }
+.day { position: absolute; top: 2px; display: flex; flex-direction: column; align-items: center; font-size: 9.5px; line-height: 12px; color: var(--fg3); }
+.day .dnum { font-size: 11px; line-height: 13px; color: var(--fg2); font-variant-numeric: tabular-nums; border-radius: 4px; padding: 0 3px; }
 .day.is-today .dnum { background: var(--fill); color: #fff; font-weight: 700; }
-.day.off { color: var(--fg3); opacity: .6; }
+.wk { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 4px; border-left: 1px solid var(--border); font-size: 11px; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.tick-today { position: absolute; top: 7px; transform: translateX(-50%); background: var(--fill); color: #fff; font-size: 11px; font-weight: 700; line-height: 15px; padding: 0 4px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.day.off { opacity: .55; }
 .grid { position: absolute; inset: 52px 0 0 0; pointer-events: none; }
 .offday { position: absolute; top: 0; bottom: 0; background: var(--off); }
 .today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: .55; }

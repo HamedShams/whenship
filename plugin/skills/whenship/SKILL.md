@@ -24,7 +24,7 @@ If no whenship tools are available, say so in one line and offer two ways forwar
 
 1. **Collect the plan from whatever the user gave you**: a list, a table, a screenshot, a tracker export, a few sentences. Map it to:
    - `lanes`: who does the work. A person (`{name: "Sara"}`), or a team or role with several people (`{name: "Back-end", size: 3}`). Add `availability` (percent of their time for this plan) when the user says someone is part-time or busy with other things.
-   - `items`: in **priority order** (earlier items get people first). Each item has `work`: one entry per lane with `days` of effort, or the shorthand `who` + `days`.
+   - `items`: in **priority order** (earlier items get people first; an item's prerequisites in `dependsOn` are worked on at its priority). Each item has `work`: one entry per lane with `days` of effort, or the shorthand `who` + `days`.
    - Optional: `deadline`, `dependsOn` (items that must finish first), `notBefore` (waiting on something external), hand-offs (`after: "<lane>"` inside `work`), `calendar.workdays`, `calendar.holidays`.
 2. **Keep estimates exactly as given.** Never pad, round or "correct" them. If an estimate is missing, ask once, briefly, for the missing ones only. If the user wants a quick answer anyway, use a clearly labelled placeholder and say which items it affects.
 3. **Working days**: default Monday to Friday. Use the user's weekend when they mention it or it is clear from context (for example Saturday–Wednesday working weeks with Thursday and Friday off). Put public holidays and closures in `calendar.holidays`.

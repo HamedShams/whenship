@@ -88,7 +88,16 @@ export function explain(s: Schedule, id: string): string[] {
       lines.push(`waits ~${round(total)} day${round(total) === '1' ? '' : 's'} for ${who} (busy with ${list}${blockers.length > 3 ? ', …' : ''})`);
     }
   }
+  if (r.goesEarlyFor) lines.push(`goes ahead of its place in the list because "${itemName(s, r.goesEarlyFor)}" waits for it`);
   if (!lines.length) lines.push('starts as soon as the plan starts; nothing holds it back');
+  // teams work on several items side by side: say how many of them this item gets
+  const item = s.plan.items.find((x) => x.id === id);
+  for (const w of item?.work ?? []) {
+    const lane = s.plan.lanes.find((l) => l.id === w.lane);
+    if (lane && lane.size > 1 && w.days > 0) {
+      lines.push(`${lane.name} is a team of ${round(lane.size)}: ${w.maxPeople === 1 ? '1 person works' : `up to ${w.maxPeople} people work`} on this at a time, the others on other items`);
+    }
+  }
   if (r.deadline && r.slack !== undefined) {
     lines.push(r.slack < 0 ? `finishes ${-r.slack} working day${r.slack === -1 ? '' : 's'} after its deadline` : `has ${r.slack} working day${r.slack === 1 ? '' : 's'} of slack before its deadline`);
   }

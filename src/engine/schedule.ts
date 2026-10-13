@@ -51,6 +51,8 @@ export interface ItemResult {
   /** Working days between finish and deadline (negative = late). */
   slack?: number;
   driver?: Driver;
+  /** Set when this item is worked on ahead of its place in the list because a more urgent item waits for it. */
+  goesEarlyFor?: string;
 }
 
 export interface Schedule {
@@ -133,6 +135,24 @@ export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): S
       }
     }
   }
+  // Urgency: an item is as urgent as the most urgent item waiting for it, so a top item's prerequisites go first
+  // instead of queueing behind everything listed between them. Ties keep the list order.
+  const urgency = items.map((_, i) => i);
+  const boostedBy: (number | undefined)[] = new Array(n).fill(undefined);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let i = 0; i < n; i++) {
+      for (const dep of items[i]!.dependsOn) {
+        const di = indexById.get(dep);
+        if (di !== undefined && urgency[i]! < urgency[di]!) {
+          urgency[di] = urgency[i]!;
+          boostedBy[di] = boostedBy[i] ?? i;
+          changed = true;
+        }
+      }
+    }
+  }
+  const order = items.map((_, i) => i).sort((a, b) => urgency[a]! - urgency[b]! || a - b);
   const notBeforeIdx = items.map((it) => (it.notBefore ? cal.indexOnOrAfter(it.notBefore) : 0));
   const afterIdx = items.map((it) => it.work.map((w) => (w.after ? it.work.findIndex((x) => x.lane === w.after) : -1)));
   const load = new Map<string, number[]>(plan.lanes.map((l) => [l.id, []]));
@@ -148,7 +168,7 @@ export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): S
   for (; active > 0 && d < maxIndex; d++) {
     for (const l of plan.lanes) free.set(l.id, cal.capacity(l.id, d));
     consumers.clear();
-    for (let i = 0; i < n; i++) {
+    for (const i of order) {
       const r = res[i]!;
       if (r.status !== 'scheduled' || notBeforeIdx[i]! > d) continue;
       let depsReady = true;
@@ -240,6 +260,8 @@ export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): S
       }
     }
     if (r.status === 'scheduled') r.driver = driverOf(r, res, indexById);
+    const boost = boostedBy[r.position];
+    if (boost !== undefined && r.status === 'scheduled') r.goesEarlyFor = items[boost]!.id;
   }
 
   const out: Schedule = { plan, factor, calendar: cal, items: res, byId: new Map(res.map((r) => [r.id, r])), load };

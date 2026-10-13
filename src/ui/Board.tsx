@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
 import { applyChanges, moveItem } from '../engine/changes';
 import { dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
@@ -8,7 +8,7 @@ import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
 import { useAnchor } from './Popover';
-import { Avatar, initials, WhoEditor } from './WhoEditor';
+import { Avatar, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
@@ -224,31 +224,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   }}
                   onFocus={() => onSelect(it.id)}
                 />
-                <button class="who-cell" data-who={it.id} title={whoText} aria-label={`Who works on ${it.name}: ${it.work.length ? whoText : 'nobody yet'}`} onClick={(e) => who.open(e.currentTarget as HTMLElement, it.id)}>
-                  {it.work.length > 2 || (it.work.length === 2 && !twoFit(it.work, laneOf)) ? (
-                    <span class="who-part stack">
-                      {it.work.slice(0, 3).map((w) => (
-                        <Avatar key={w.lane} name={laneOf(w.lane)?.name ?? w.lane} color={laneOf(w.lane)?.color ?? '#868e96'} />
-                      ))}
-                      {it.work.length > 3 && <span class="more">+{it.work.length - 3}</span>}
-                      <span class="who-days">{fmtDays(it.work.reduce((t, w) => t + w.days, 0))}</span>
-                    </span>
-                  ) : it.work.length ? (
-                    it.work.map((w, k) => {
-                      const lane = laneOf(w.lane);
-                      return (
-                        <span key={w.lane} class="who-part">
-                          {k > 0 && <span class="sep">{w.after ? '→' : '+'}</span>}
-                          <Avatar name={lane?.name ?? w.lane} color={lane?.color ?? '#868e96'} />
-                          {it.work.length === 1 && <span class="who-name">{lane?.name ?? w.lane}</span>}
-                          <span class="who-days">{fmtDays(w.days)}</span>
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <span class="who-empty">+ who</span>
-                  )}
-                </button>
+                <WhoCell item={it} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
                 <div class="due-cell">
                   <DateButton
                     value={it.deadline}
@@ -505,11 +481,6 @@ export function Delivery(p: {
   );
 }
 
-/** Rough check that two people's avatars and days fit side by side in the "who" cell. */
-function twoFit(work: NormalizedWork[], laneOf: (id: string) => { name: string } | undefined): boolean {
-  const width = work.reduce((t, w) => t + (initials(laneOf(w.lane)?.name ?? w.lane).length > 2 ? 25 : 19) + 4 + fmtDays(w.days).length * 6.6, 0);
-  return width + 14 <= 104;
-}
 
 /** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */
 function DueLabel({ iso, year }: { iso: string; year: number }) {
@@ -524,7 +495,54 @@ function DueLabel({ iso, year }: { iso: string; year: number }) {
   );
 }
 
+/**
+ * Who works on an item, in a narrow cell: one person with name and days; two with avatar + days each (or stacked
+ * avatars if they don't fit, measured after layout); three or more as stacked avatars and the total days.
+ */
+function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'][number]; laneOf: (id: string) => NormalizedPlan['lanes'][number] | undefined; label: string; onOpen: (el: HTMLElement) => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const work = item.work;
+  const shape = work.map((w) => `${laneOf(w.lane)?.name}:${w.days}:${w.after ?? ''}`).join('|');
+  const [squeezed, setSqueezed] = useState<string | null>(null);
+  const stacked = work.length > 2 || (work.length === 2 && squeezed === shape);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && work.length === 2 && squeezed !== shape && el.scrollWidth > el.clientWidth + 1) setSqueezed(shape);
+  });
+  const color = (lane: string) => laneOf(lane)?.color ?? '#868e96';
+  const name = (lane: string) => laneOf(lane)?.name ?? lane;
+  return (
+    <button ref={ref} class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
+      {stacked ? (
+        <span class="who-part stack">
+          {work.slice(0, 3).map((w) => (
+            <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
+          ))}
+          {work.length > 3 && <span class="more">+{work.length - 3}</span>}
+          <span class="who-days">{fmtDays(work.reduce((t, w) => t + w.days, 0))}</span>
+        </span>
+      ) : work.length ? (
+        work.map((w, k) => {
+          const lane = laneOf(w.lane);
+          return (
+            <span key={w.lane} class="who-part">
+              {k > 0 && <span class="sep">{w.after ? '→' : '+'}</span>}
+              <Avatar name={name(w.lane)} color={color(w.lane)} />
+              {work.length === 1 && <span class="who-name">{name(w.lane)}</span>}
+              {work.length === 1 && lane?.kind === 'team' && <span class="who-team">×{fmtSize(lane.size)}</span>}
+              <span class="who-days">{fmtDays(w.days)}</span>
+            </span>
+          );
+        })
+      ) : (
+        <span class="who-empty">+ who</span>
+      )}
+    </button>
+  );
+}
+
 export const fmtDays = (d: number) => `${Number.isInteger(d) ? d : d.toFixed(1)}d`;
+const fmtSize = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 /** A small "are you sure?" dialog. Cancel has focus, so Enter never deletes by accident; Escape cancels. */
 export function ConfirmDialog(p: { title: string; note: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {

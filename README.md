@@ -33,6 +33,8 @@ whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overvie
 claude mcp add whenship -- npx -y whenship --stdio
 ```
 
+**Claude Desktop extension.** Build `dist/whenship.mcpb` with `npm run build && npm run build:mcpb`, then in Claude Desktop open Settings → Extensions → Install extension and pick the file. It runs on your computer with Desktop's built-in Node. Set `WHENSHIP_PUBLIC_URL` when building to choose where "Open in browser" and share links go.
+
 **Claude Desktop, Cursor, VS Code and other MCP clients (local)**
 
 ```json

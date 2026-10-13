@@ -132,14 +132,15 @@ export function headline(a: Analysis): string {
   const parts: string[] = [];
   const lens = lensById(a.lens);
   if (a.dated) {
+    const one = a.dated === 1;
     if (lens.factor === 1) {
-      if (a.counts.late) parts.push(`${a.counts.late} of ${a.dated} deadlines late even as planned`);
-      if (a.counts.tight) parts.push(`${a.counts.tight} tight (on time only if nothing slips)`);
-      if (!a.counts.late && !a.counts.tight) parts.push(`all ${a.dated} deadlines on track`);
+      if (a.counts.late) parts.push(one ? 'the deadline is late even as planned' : `${a.counts.late} of ${a.dated} deadlines late even as planned`);
+      if (a.counts.tight) parts.push(one ? 'the deadline is tight (on time only if nothing slips)' : `${a.counts.tight} tight (on time only if nothing slips)`);
+      if (!a.counts.late && !a.counts.tight) parts.push(one ? 'the deadline is on track' : `all ${a.dated} deadlines on track`);
     } else if (a.counts.late) {
-      parts.push(`${a.counts.late} of ${a.dated} deadlines late if work takes ${lens.short} as long`);
+      parts.push(one ? `the deadline is late if work takes ${lens.short} as long` : `${a.counts.late} of ${a.dated} deadlines late if work takes ${lens.short} as long`);
     } else {
-      parts.push(`all ${a.dated} deadlines on time even at ${lens.short}`);
+      parts.push(one ? `the deadline holds even at ${lens.short}` : `all ${a.dated} deadlines on time even at ${lens.short}`);
     }
     if (a.valueAtRisk > 0) parts.push(`${formatMoney(a.valueAtRisk, a.plan.currency)} at risk`);
   }

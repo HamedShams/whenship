@@ -103,6 +103,6 @@ describe('deadline outlook', () => {
     expect(headline(analyze(off.plan))).not.toMatch(/at risk/);
     // the dormant code still works when the switch is turned on
     const on = validatePlan(input, { today: '2026-09-24', features: { itemValue: true } });
-    expect(headline(analyze(on.plan, 'planned', { itemValue: true }))).toBe('1 of 1 deadlines late even as planned · 100k € at risk · all done 30 Sep');
+    expect(headline(analyze(on.plan, 'planned', { itemValue: true }))).toBe('the deadline is late even as planned · 100k € at risk · all done 30 Sep');
   });
 });

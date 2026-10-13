@@ -51,7 +51,8 @@
     "test:tz": "TZ=America/Los_Angeles vitest run test/engine && TZ=Asia/Tehran vitest run test/engine && TZ=Pacific/Kiritimati vitest run test/engine",
     "check": "npm run typecheck && npm run test && npm run test:tz",
     "prepublishOnly": "npm run build && npm run check",
-    "test:e2e": "npm run build && vitest run test/mcp"
+    "test:e2e": "npm run build && vitest run test/mcp",
+    "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

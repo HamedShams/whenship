@@ -42,12 +42,11 @@ If no whenship tools are available, say so in one line and offer two ways forwar
 The plan shows the user's own estimates by default ("As planned", 1×). Their numbers are never stretched. The lenses show how the same plan looks when work runs long the way it usually does:
 
 - **Likely (1.6×)**: about half of comparable work is done by here.
-- **Safe bet (2.7×)**: about 85 in 100 are done by here. A date you can promise.
-- **Worst case (3.9×)**: only 1 in 20 runs longer.
+- **Safe bet (3.1×)**: about 9 in 10 are done by here. A date you can promise.
 
-Deadline badges use the same scale: *safe* means on time even at 2.7×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, *late* means late even as planned. "Chance" is a rough reading of the same scale.
+Deadline badges use the same scale: *safe* means on time even at 3.1×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, *late* means late even as planned. With a lens on, any deadline that lens's dates miss shows as late. "Chance" is a rough reading of the same scale.
 
-Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns; P50 1.6×, P80 2.5×, P85 2.7×, P90 3.1×, P95 3.9×), sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. It is a practical, generic rule of thumb, not a formal industry standard; the team's own track record beats it.
+Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns; P50 1.6×, P90 3.1×), sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. The chance is a smooth curve through those two points. It is a practical, generic rule of thumb, not a formal industry standard; the team's own track record beats it.
 
 ## Saving and sharing
 

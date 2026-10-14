@@ -4,12 +4,12 @@ import type { NormalizedPlan } from './types';
 /**
  * Forecast lenses: "what if every piece of work takes k× as long as estimated".
  *
- * The multipliers are a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation
- * error combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, with the midpoint
- * sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. They are practical, generic rules of
- * thumb for converting an initial estimate into confidence-based forecasts, not a formal industry standard.
+ * Two outside-view multipliers: 1.6× (P50, half of comparable work is done by then) and 3.1× (P90, nine in ten).
+ * They come from a blended heuristic: Todd Little's 2006 lognormal model of software estimation error combined with
+ * Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a
+ * 50/50 Monte Carlo mixture. Practical, generic rules of thumb, not a formal industry standard.
  */
-export type LensId = 'planned' | 'likely' | 'safe' | 'worst';
+export type LensId = 'planned' | 'likely' | 'safe';
 
 export interface Lens {
   id: LensId;
@@ -24,28 +24,29 @@ export interface Lens {
 export const LENSES: readonly Lens[] = [
   { id: 'planned', label: 'As planned', factor: 1, percentile: null, short: '1×', blurb: 'Exactly what you entered: if everything goes to plan.' },
   { id: 'likely', label: 'Likely', factor: 1.6, percentile: 0.5, short: '1.6×', blurb: 'How it usually goes: about half of projects are done by here.' },
-  { id: 'safe', label: 'Safe bet', factor: 2.7, percentile: 0.85, short: '2.7×', blurb: 'A date you can promise: about 85 in 100 projects are done by here.' },
-  { id: 'worst', label: 'Worst case', factor: 3.9, percentile: 0.95, short: '3.9×', blurb: 'When things go badly: only 1 in 20 projects run longer.' },
+  { id: 'safe', label: 'Safe bet', factor: 3.1, percentile: 0.9, short: '3.1×', blurb: 'A date you can promise: about 9 in 10 projects are done by here.' },
 ];
 
-/** The full blended table (P50 … P95), for pros and for the chance calculation. */
-export const OVERRUN_TABLE: readonly { p: number; factor: number }[] = [
-  { p: 0.5, factor: 1.6 },
-  { p: 0.8, factor: 2.5 },
-  { p: 0.85, factor: 2.7 },
-  { p: 0.9, factor: 3.1 },
-  { p: 0.95, factor: 3.9 },
-];
+/** The two anchors of the overrun curve: P50 at 1.6×, P90 at 3.1×. */
+export const P50 = 1.6;
+export const P90 = 3.1;
 
 export const METHOD_NOTE =
   'People underestimate, so whenship can show how your plan looks when work runs long the way it usually does. ' +
-  'The multipliers (1.6× likely, 2.5× P80, 2.7× safe, 3.1× P90, 3.9× worst case) are a blended outside-view heuristic: ' +
-  "Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law " +
-  'findings on IT project overruns, with the midpoint sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo ' +
-  'mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.';
+  'The multipliers (1.6× likely: about half of projects are done by then; 3.1× safe bet: about 9 in 10) are a blended ' +
+  "outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et " +
+  "al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte " +
+  'Carlo mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.';
 
 export function lensById(id: string | undefined): Lens {
-  return LENSES.find((l) => l.id === id) ?? LENSES[0]!;
+  return LENSES.find((l) => l.id === toLensId(id)) ?? LENSES[0]!;
+}
+
+/** Reads a lens name, including ones from older versions ("worst" became the 3.1× safe bet). */
+export function toLensId(id: unknown): LensId | undefined {
+  if (id === 'planned' || id === 'likely' || id === 'safe') return id;
+  if (id === 'worst') return 'safe';
+  return undefined;
 }
 
 // ── normal distribution helpers ───────────────────────────────────────────
@@ -60,50 +61,18 @@ function erf(x: number): number {
 export function normalCdf(z: number): number {
   return 0.5 * (1 + erf(z / Math.SQRT2));
 }
-function normalInv(p: number): number {
-  // Acklam's rational approximation
-  const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924];
-  const b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857];
-  const c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878];
-  const d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742];
-  const pl = 0.02425;
-  if (p < pl) {
-    const q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0]! * q + c[1]!) * q + c[2]!) * q + c[3]!) * q + c[4]!) * q + c[5]!) / ((((d[0]! * q + d[1]!) * q + d[2]!) * q + d[3]!) * q + 1);
-  }
-  if (p > 1 - pl) {
-    const q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(((((c[0]! * q + c[1]!) * q + c[2]!) * q + c[3]!) * q + c[4]!) * q + c[5]!) / ((((d[0]! * q + d[1]!) * q + d[2]!) * q + d[3]!) * q + 1);
-  }
-  const q = p - 0.5;
-  const r = q * q;
-  return ((((((a[0]! * r + a[1]!) * r + a[2]!) * r + a[3]!) * r + a[4]!) * r + a[5]!) * q) / (((((b[0]! * r + b[1]!) * r + b[2]!) * r + b[3]!) * r + b[4]!) * r + 1);
-}
 
-const KNOTS = OVERRUN_TABLE.map((row) => ({ z: normalInv(row.p), ln: Math.log(row.factor) }));
+const Z90 = 1.2815516; // standard normal quantile of 0.9
+const SIGMA = Math.log(P90 / P50) / Z90;
 
 /**
- * P(actual / estimate ≤ k) under the blended table: log-linear between the table's quantiles in probit space,
- * extending the first and last segments outward. Exact at every table point (e.g. cdf(2.7) = 0.85).
+ * P(actual / estimate ≤ k): a lognormal curve through the two anchors (cdf(1.6) = 0.5, cdf(3.1) = 0.9). It also matches
+ * the rest of the blended table closely (P80 ≈ 2.5×, P95 ≈ 3.7×) and gives cdf(1) ≈ 0.18: about 1 plan in 5 finishes
+ * as estimated.
  */
 export function overrunCdf(k: number): number {
   if (!(k > 0)) return 0;
-  const ln = Math.log(k);
-  let lo = KNOTS[0]!, hi = KNOTS[1]!;
-  if (ln >= KNOTS[KNOTS.length - 1]!.ln) {
-    lo = KNOTS[KNOTS.length - 2]!;
-    hi = KNOTS[KNOTS.length - 1]!;
-  } else {
-    for (let i = 1; i < KNOTS.length; i++) {
-      if (ln <= KNOTS[i]!.ln) {
-        lo = KNOTS[i - 1]!;
-        hi = KNOTS[i]!;
-        break;
-      }
-    }
-  }
-  const z = lo.z + ((hi.z - lo.z) * (ln - lo.ln)) / (hi.ln - lo.ln);
-  return normalCdf(z);
+  return normalCdf(Math.log(k / P50) / SIGMA);
 }
 
 // ── deadline outlook ──────────────────────────────────────────────────────
@@ -111,13 +80,14 @@ export type Badge = 'safe' | 'likely' | 'tight' | 'late' | 'unknown';
 
 export interface Outlook {
   badge: Badge;
-  /** P(on time) assuming the whole plan runs long or short together, from the blended table. */
+  /** P(on time) assuming the whole plan runs long or short together, from the overrun curve. */
   chance?: number;
   /** Largest overrun factor at which the item still meets its deadline. */
   survives?: number;
 }
 
-const SWEEP = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.45, 1.6, 1.8, 2, 2.25, 2.5, 2.7, 2.9, 3.1, 3.5, 3.9, 4.5, 5.5, 7];
+// a grid of overrun factors (it must contain 1, P50 and P90) for finding where each deadline breaks
+const SWEEP = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.45, 1.6, 1.8, 2, 2.25, 2.5, 2.8, 3.1, 3.5, 4, 4.5, 5.5, 7];
 
 /**
  * For every dated item: which lens it survives (badge) and an approximate chance of being on time.
@@ -143,7 +113,7 @@ export function deadlineOutlook(plan: NormalizedPlan, base?: Schedule): Map<stri
       lastOk = i;
     }
     const isLate = (f: number) => lateAt(SWEEP.indexOf(f)) !== false;
-    const badge: Badge = isLate(1) ? 'late' : isLate(1.6) ? 'tight' : isLate(2.7) ? 'likely' : 'safe';
+    const badge: Badge = isLate(1) ? 'late' : isLate(P50) ? 'tight' : isLate(P90) ? 'likely' : 'safe';
     const survives = lastOk < 0 ? 0 : SWEEP[lastOk]!;
     // the true break-even factor lies between the last on-time and the first late factor: use their geometric middle
     const next = SWEEP[lastOk + 1];

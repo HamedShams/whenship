@@ -166,15 +166,42 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({ id, from: index, over: index, dy: 0, startY: e.clientY });
   };
+  // Bars: a press that moves up or down drags the item (like its handle); a press without moving selects it.
+  const pressed = useRef<{ id: string; index: number; x: number; y: number } | null>(null);
+  const onBarDown = (e: PointerEvent, id: string, index: number) => {
+    if (e.button !== 0) return;
+    pressed.current = { id, index, x: e.clientX, y: e.clientY };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
   const onMove = (e: PointerEvent) => {
+    const p = pressed.current;
+    if (p && !drag) {
+      if (Math.abs(e.clientY - p.y) > 4) {
+        pressed.current = null;
+        const dy = e.clientY - p.y;
+        setDrag({ id: p.id, from: p.index, over: Math.max(0, Math.min(plan.items.length - 1, Math.round(p.index + dy / ROW))), dy, startY: p.y });
+      }
+      return;
+    }
     if (!drag) return;
     const dy = e.clientY - drag.startY;
     const over = Math.max(0, Math.min(plan.items.length - 1, Math.round(drag.from + dy / ROW)));
     if (over !== drag.over || dy !== drag.dy) setDrag({ ...drag, over, dy });
   };
-  const onUp = () => {
+  const onUp = (e?: PointerEvent) => {
+    const p = pressed.current;
+    if (p) {
+      pressed.current = null;
+      const still = !!e && Math.abs(e.clientX - p.x) < 5 && Math.abs(e.clientY - p.y) < 5;
+      if (still) onSelect(selected === p.id ? null : p.id);
+      return;
+    }
     if (!drag) return;
     if (drag.over !== drag.from) onCommit(moveItem(plan, drag.id, drag.over));
+    setDrag(null);
+  };
+  const onCancel = () => {
+    pressed.current = null;
     setDrag(null);
   };
   const onKeyMove = (e: KeyboardEvent, id: string, index: number) => {
@@ -206,7 +233,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const height = (order.length + 1) * ROW; // + the empty row for a new item
 
   return (
-    <div class="board" onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+    <div class="board" onPointerMove={(e) => onMove(e as unknown as PointerEvent)} onPointerUp={(e) => onUp(e as unknown as PointerEvent)} onPointerCancel={onCancel}>
       {/* list */}
       <div class="list" role="list" aria-label="Items in priority order">
         <div class="list-head" aria-hidden="true">
@@ -380,7 +407,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
               dim={!!highlight && !highlight.has(it.id)}
               chain={!!highlight && highlight.has(it.id)}
               year={year}
-              onClick={() => onSelect(selected === it.id ? null : it.id)}
+              sel={selected === it.id}
+              onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
             />
           ))}
         </div>
@@ -419,7 +447,8 @@ function BarRow(props: {
   dim: boolean;
   chain: boolean;
   year: number;
-  onClick: () => void;
+  sel: boolean;
+  onPointerDown: (e: PointerEvent) => void;
 }) {
   const { it, shown, x, ppd } = props;
   const r = shown.byId.get(it.id)!;
@@ -438,7 +467,7 @@ function BarRow(props: {
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
   const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
   return (
-    <div class={cx('bars', props.dim && 'dim')} style={{ top: `${props.top}px` }} onClick={props.onClick}>
+    <div class={cx('bars', props.dim && 'dim', props.sel && 'sel')} style={{ top: `${props.top}px` }} onPointerDown={(e) => props.onPointerDown(e as unknown as PointerEvent)}>
       {props.lensActive && plannedR?.startDate && plannedR.endDate && (
         <div class="plan-ghost" title="Your estimate (as planned)" style={{ left: `${x(plannedR.startDate)}px`, width: `${x(plannedR.endDate) - x(plannedR.startDate) + ppd}px`, top: '5px', height: `${ROW - 10}px` }} />
       )}
@@ -506,9 +535,9 @@ export function Delivery(p: {
     p.badge === 'late' && p.base && p.base !== 'late'
       ? `Late if work takes ${lens.short} as long (${lens.label}). As planned: ${badgeLabel(p.base)}.`
       : p.badge === 'safe'
-        ? 'Safe: on time even if work takes 2.7× as long'
+        ? 'Safe: on time even if work takes 3.1× as long'
         : p.badge === 'likely'
-          ? 'Likely on time: on time if work takes the usual 1.6×, not at 2.7×'
+          ? 'Likely on time: on time if work takes the usual 1.6×, not at 3.1×'
           : p.badge === 'tight'
             ? 'Tight: on time only if everything goes to plan'
             : 'Late even if everything goes to plan';

@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { compactPlan, validatePlan, type ValidationResult } from '../engine/validate';
-import type { LensId } from '../engine/lens';
+import { toLensId, type LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { parseTable } from './table';
 
@@ -64,7 +64,7 @@ export function decodeShareLink(text: string): { plan: unknown; lens?: LensId } 
     const json = decompressFromEncodedURIComponent(m[1]!);
     if (!json) return null;
     const plan: unknown = JSON.parse(json);
-    const lens = m[2] as LensId | undefined;
+    const lens = toLensId(m[2]);
     return lens ? { plan, lens } : { plan };
   } catch {
     return null;

@@ -38,7 +38,7 @@ For any question about when work will finish, whether deadlines hold, who is ove
 
 The user can edit the chart directly. Their latest edits arrive in your context as the current plan; use that plan (not an older one) for follow-up calls.
 
-Effort is the user's own estimate. Never inflate it. Forecast lenses (likely 1.6×, safe bet 2.7×, worst case 3.9×) are a heuristic view, not a change to the plan: ${METHOD_NOTE}`;
+Effort is the user's own estimate. Never inflate it. Forecast lenses (likely 1.6×, safe bet 3.1×) are a heuristic view, not a change to the plan: ${METHOD_NOTE}`;
 
 // ── input schemas (descriptive, permissive: the engine validates and reports precise problems) ─────────────────
 const isoDate = z.string().describe('Calendar date, YYYY-MM-DD');
@@ -91,9 +91,9 @@ const planSchema = z
   .describe('A whenship plan. Pass the current plan (from the chart or the last tool result) unchanged unless the user asked for changes');
 
 const lensSchema = z
-  .enum(['planned', 'likely', 'safe', 'worst'])
+  .enum(['planned', 'likely', 'safe'])
   .optional()
-  .describe('Which dates to show: planned = as estimated (default), likely 1.6×, safe 2.7×, worst 3.9×');
+  .describe('Which dates to show: planned = as estimated (default), likely 1.6×, safe bet 3.1×');
 
 const changeSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('move'), item: z.string(), to: z.number().describe('New 1-based position') }),

@@ -114,7 +114,7 @@ describe('exports', () => {
     expect(ics.startsWith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\n')).toBe(true);
     expect(ics.trim().endsWith('END:VCALENDAR')).toBe(true);
     expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(4); // 2 items + 2 deadlines
-    expect(ics).toMatch(/SUMMARY:Appeal\\, with "quotes" \(Safe bet 2\.7×\)/);
+    expect(ics).toMatch(/SUMMARY:Appeal\\, with "quotes" \(Safe bet 3\.1×\)/);
     for (const line of ics.split('\r\n')) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
     expect(ics).toMatch(/DTSTART;VALUE=DATE:\d{8}/);
   });

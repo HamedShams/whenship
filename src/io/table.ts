@@ -1,6 +1,6 @@
 import { analyze } from '../engine/analysis';
 import { parseLooseDate } from '../engine/dates';
-import { lensById, type LensId } from '../engine/lens';
+import { lensById, P90, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule } from '../engine/schedule';
 import { FEATURES } from '../engine/features';
@@ -130,8 +130,8 @@ const csvCell = (v: string | number | undefined) => {
 export function toCsv(plan: NormalizedPlan, lens: LensId = 'planned'): string {
   const a = analyze(plan, lens);
   const likely = schedule(plan, { factor: 1.6 });
-  const safe = schedule(plan, { factor: 2.7 });
-  const header = ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6x)', 'Safe finish (2.7x)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'];
+  const safe = schedule(plan, { factor: P90 });
+  const header = ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6x)', 'Safe bet finish (3.1x)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'];
   const rows = plan.items.map((it, i) => {
     const r = a.planned.byId.get(it.id)!;
     const o = a.outlook.get(it.id); // the CSV lists as-planned dates, so its status is the as-planned one

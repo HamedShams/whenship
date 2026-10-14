@@ -107,7 +107,7 @@ export function renderReport(plan: NormalizedPlan, options: ReportOptions = {}):
   }
   if (options.method) {
     lines.push(
-      `_Status uses forecast lenses: ${LENSES.map((l) => `${l.label} ${l.short}`).join(', ')}. "Safe" = on time even if work takes 2.7× as long; "tight" = on time only if everything goes to plan. The multipliers are a blended outside-view heuristic (Little 2006 + Flyvbjerg et al. 2022), not an industry standard._`,
+      `_Status uses forecast lenses: ${LENSES.map((l) => `${l.label} ${l.short}`).join(', ')}. "Safe" = on time even if work takes 3.1× as long; "likely" = on time at 1.6×; "tight" = on time only if everything goes to plan. The multipliers are a blended outside-view heuristic (Little 2006 + Flyvbjerg et al. 2022), not an industry standard._`,
     );
   }
   return lines.join('\n').trim();

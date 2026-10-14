@@ -7,7 +7,7 @@ describe('validatePlan', () => {
     expect(errors).toEqual([]);
     expect(plan.start).toBe('2026-10-05');
     expect(plan.calendar.workdays).toEqual(['mon', 'tue', 'wed', 'thu', 'fri']);
-    expect(plan.title).toBe('Untitled plan');
+    expect(plan.title).toBe('Untitled WhenShip');
   });
 
   it('accepts shorthand items and resolves lanes by name (any case)', () => {

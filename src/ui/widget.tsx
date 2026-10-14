@@ -2,13 +2,13 @@ import { render } from 'preact';
 import { App as McpApp, applyDocumentTheme, applyHostFonts, applyHostStyleVariables, type McpUiHostContext } from '@modelcontextprotocol/ext-apps';
 import { analyze, badgeLabel, headline, type Analysis } from '../engine/analysis';
 import { dayParts, formatDay, parseISO, todayLocal } from '../engine/dates';
-import { lensById, type LensId } from '../engine/lens';
+import { lensById, toLensId, type LensId } from '../engine/lens';
 import { renderReport } from '../engine/report';
 import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
 import { App, type Host } from './App';
-import { boot, FALLBACK_URL } from './config';
+import { boot, FALLBACK_URL, VERSION } from './config';
 import { bytesToBase64, Icon, Logo } from './lib';
 
 /**
@@ -270,7 +270,7 @@ function applyHost(ctx: McpUiHostContext | undefined) {
 export async function bootWidget(root: HTMLElement) {
   rootEl = root;
   document.body.classList.add('widget');
-  app = new McpApp({ name: 'whenship', version: boot.version ?? '1.0.0' }, { availableDisplayModes: ['inline', 'fullscreen'] });
+  app = new McpApp({ name: 'whenship', version: VERSION }, { availableDisplayModes: ['inline', 'fullscreen'] });
 
   app.addEventListener('toolinputpartial', (p) => {
     if (state.plan) return;
@@ -288,7 +288,7 @@ export async function bootWidget(root: HTMLElement) {
   });
   app.addEventListener('toolinput', (p) => {
     const args = p.arguments as { plan?: unknown; lens?: LensId };
-    if (args?.lens) state.lens = args.lens;
+    if (args?.lens) state.lens = toLensId(args.lens) ?? state.lens;
     if (args?.plan && !state.plan) {
       state.plan = validatePlan(args.plan, { today }).plan;
       state.version++;
@@ -298,7 +298,7 @@ export async function bootWidget(root: HTMLElement) {
   app.addEventListener('toolresult', (r) => {
     const sc = r.structuredContent as { plan?: unknown; lens?: LensId; publicUrl?: string; createdAt?: number; seq?: number } | undefined;
     if (sc?.publicUrl) state.publicUrl = sc.publicUrl;
-    if (sc?.lens) state.lens = sc.lens;
+    if (sc?.lens) state.lens = toLensId(sc.lens) ?? state.lens;
     if (sc?.plan) {
       state.plan = validatePlan(sc.plan, { today }).plan;
       lastSynced = JSON.stringify([compactPlan(state.plan), state.lens]);

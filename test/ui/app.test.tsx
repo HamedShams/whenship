@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -208,7 +209,7 @@ describe('the item list', () => {
     const { root } = mount();
     const pills = () => realRows(root).map((r) => [...(r.querySelector('.status .pill')?.classList ?? [])].find((c) => ['safe', 'likely', 'tight', 'late'].includes(c)) ?? '');
     const asPlanned = pills();
-    await act(() => button(root, 'Worst case').click());
+    await act(() => button(root, 'Safe bet').click());
     const worst = pills();
     expect(worst.filter((t) => t === 'late').length).toBeGreaterThan(asPlanned.filter((t) => t === 'late').length);
     // the counts next to the headline agree with the pills
@@ -325,7 +326,7 @@ describe('dates in another year, and the plan name', () => {
     const { root } = mount();
     const input = root.querySelector('.doc-title input') as HTMLInputElement;
     expect(input.getAttribute('aria-label')).toBe('Plan name');
-    expect(root.querySelector('.brand-sep')).not.toBeNull();
+    expect(root.querySelector('.brand')!.textContent).toBe(''); // just the logo: no app name next to the plan name
     expect(text(root, '.doc-caption')).toBe('Plan · saved in this browser');
     input.value = 'Q4 client work';
     await act(() => void input.dispatchEvent(new Event('input', { bubbles: true })));
@@ -367,5 +368,81 @@ describe('timeline zoom and header scale', () => {
     expect(root.querySelector('.seg.small [aria-pressed="true"]')!.textContent).toBe('Months');
     expect(root.querySelectorAll('.ticks .wk').length).toBeGreaterThan(20);
     expect(root.querySelector('.tick-today')!.textContent).toBe('5');
+  });
+});
+
+describe('v1.3: selection, dragging bars, lenses, colours and title', () => {
+  const ptr = (type: string, el: Element, y: number, x = 10) =>
+    act(() => void el.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 })));
+
+  it('selecting an item highlights only that item; the chain shows only on request', async () => {
+    const { root } = mount();
+    const bars = () => [...root.querySelectorAll('.bars')];
+    await ptr('pointerdown', bars()[4]!, 100);
+    await ptr('pointerup', bars()[4]!, 100);
+    expect(root.querySelectorAll('.bars.sel')).toHaveLength(1);
+    expect(root.querySelectorAll('.bar.chain')).toHaveLength(0);
+    expect(root.querySelectorAll('.bars.dim')).toHaveLength(0);
+    // pick another one: the first is no longer selected
+    await ptr('pointerdown', bars()[1]!, 100);
+    await ptr('pointerup', bars()[1]!, 100);
+    expect(root.querySelectorAll('.bars.sel')).toHaveLength(1);
+    expect(bars()[1]!.classList.contains('sel')).toBe(true);
+    // "What sets the end date?" shows the chain of the selected item
+    await act(() => button(root, 'What sets the end date?').click());
+    expect(root.querySelectorAll('.bar.chain').length).toBeGreaterThan(0);
+  });
+
+  it('dragging a bar up or down reprioritises it, like the handle', async () => {
+    const { root } = mount();
+    const names = () => [...root.querySelectorAll('.row:not(.draft) .cell-input')].map((i) => (i as HTMLInputElement).value);
+    const first = names()[0];
+    const bar = root.querySelectorAll('.bars')[0]!;
+    await ptr('pointerdown', bar, 100);
+    await ptr('pointermove', bar, 100 + 44 * 2 + 3);
+    await ptr('pointerup', bar, 100 + 44 * 2 + 3);
+    expect(names()[2]).toBe(first);
+    expect(root.querySelectorAll('.bars.sel')).toHaveLength(0); // a drag isn't a click
+  });
+
+  it('three lenses with their multipliers, and a compact guide', async () => {
+    const { root } = mount();
+    expect([...root.querySelectorAll('.seg:not(.small) button')].map((b) => b.textContent)).toEqual(['As planned1×', 'Likely1.6×', 'Safe bet3.1×']);
+    await act(() => (root.querySelector('[aria-label="How the forecast lenses work"]') as HTMLButtonElement).click());
+    const pop = document.querySelector('.lens-pop')!;
+    expect(pop.querySelectorAll('.lens-row')).toHaveLength(3);
+    expect(pop.querySelectorAll('.badge-key .pill')).toHaveLength(4);
+    expect(pop.textContent).not.toMatch(/2\.7|3\.9|Worst/);
+  });
+
+  it('eight lane colours, without grey and the blue close to the app colour', async () => {
+    const { root } = mount();
+    await act(() => (root.querySelector('[data-lane="sara"]') as HTMLButtonElement).click());
+    const swatches = [...document.querySelectorAll('.popover [aria-label^="Colour #"]')].map((b) => b.getAttribute('aria-label')!.slice(7));
+    expect(swatches).toHaveLength(8);
+    expect(swatches).not.toContain('#868e96');
+    expect(swatches).not.toContain('#4c6ef5');
+  });
+
+  it('a nameless plan is "Untitled WhenShip"', async () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const host: Host = { mode: 'web', save: async () => 'saved', copy: async () => true, baseUrl: () => null };
+    const p = validatePlan({ lanes: [{ name: 'Me' }], items: [{ name: 'A', who: 'Me', days: 1 }] }, { today: '2026-10-05' }).plan;
+    act(() => render(<App host={host} initialPlan={p} today="2026-10-05" />, root));
+    const input = root.querySelector('.doc-title input') as HTMLInputElement;
+    expect(input.value).toBe('Untitled WhenShip');
+    input.value = '';
+    await act(() => void input.dispatchEvent(new Event('input', { bubbles: true })));
+    expect((root.querySelector('.doc-title input') as HTMLInputElement).value).toBe(''); // you can clear it while typing…
+    await act(() => void root.querySelector('.doc-title input')!.dispatchEvent(new FocusEvent('blur')));
+    expect((root.querySelector('.doc-title input') as HTMLInputElement).value).toBe('Untitled WhenShip'); // …and it comes back if left empty
+  });
+
+  it('the app version matches package.json', async () => {
+    const { VERSION } = await import('../../src/ui/config');
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+    expect(VERSION).toBe(pkg.version);
+    expect(pkg.version).toBe('1.3.0');
   });
 });

@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { todayLocal } from '../engine/dates';
-import type { LensId } from '../engine/lens';
+import { toLensId, type LensId } from '../engine/lens';
 import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { decodeShareLink } from '../io/format';
@@ -34,7 +34,7 @@ export function bootWeb(root: HTMLElement) {
       }
     }
     const savedLens = store.get(LENS_KEY);
-    if (savedLens === 'planned' || savedLens === 'likely' || savedLens === 'safe' || savedLens === 'worst') lens = savedLens;
+    lens = toLensId(savedLens);
   }
   if (!initial) initial = validatePlan({ items: [] }, { today }).plan;
 

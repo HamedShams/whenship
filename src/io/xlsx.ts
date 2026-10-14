@@ -2,7 +2,7 @@ import { FEATURES } from '../engine/features';
 import { strToU8, zipSync } from 'fflate';
 import { analyze } from '../engine/analysis';
 import { parseISO, toISO, weekdayIndex } from '../engine/dates';
-import { lensById, LENSES, METHOD_NOTE, type LensId } from '../engine/lens';
+import { lensById, LENSES, METHOD_NOTE, P90, type LensId } from '../engine/lens';
 import { describeWork, describeWorkdays } from '../engine/report';
 import { schedule } from '../engine/schedule';
 import type { NormalizedPlan } from '../engine/types';
@@ -101,7 +101,7 @@ export function toXlsx(plan: NormalizedPlan, lens: LensId = 'planned'): Uint8Arr
   const a = analyze(plan, lens);
   const l = lensById(lens);
   const likely = schedule(plan, { factor: 1.6 });
-  const safe = schedule(plan, { factor: 2.7 });
+  const safe = schedule(plan, { factor: P90 });
   const st = buildStyles([...new Set(plan.lanes.map((x) => x.color))]);
   const H = (v: string): Cell => ({ v, s: st.header });
   const D = (iso?: string): Cell | null => (iso ? { v: serial(iso), s: st.date } : null);
@@ -112,7 +112,7 @@ export function toXlsx(plan: NormalizedPlan, lens: LensId = 'planned'): Uint8Arr
     [{ v: plan.title, s: st.bold }],
     [{ v: `Start ${plan.start} · ${describeWorkdays(plan)} · dates shown: ${l.label} (${l.short})` }],
     [],
-    ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6×)', 'Safe finish (2.7×)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'].map(H),
+    ['Priority', 'Item', 'Who', 'Effort (days)', 'Start', 'Finish', 'Deadline', 'Status', 'Chance on time', 'Likely finish (1.6×)', 'Safe bet finish (3.1×)', ...(FEATURES.itemValue ? ['Value'] : []), 'Note'].map(H),
   ];
   plan.items.forEach((it, i) => {
     const r = a.current.byId.get(it.id)!;

@@ -1,6 +1,13 @@
 import type { ComponentChildren } from 'preact';
 import { FEATURES } from '../engine/features';
-import { LENSES, METHOD_NOTE, OVERRUN_TABLE, type LensId } from '../engine/lens';
+import { LENSES, METHOD_NOTE, type LensId } from '../engine/lens';
+import { DEFAULT_TITLE } from '../engine/validate';
+
+const LENS_HINT: Record<LensId, string> = {
+  planned: 'exactly what you entered',
+  likely: 'about half of projects are done by here',
+  safe: 'about 9 in 10 are done by here: a date to promise',
+};
 import type { NormalizedPlan } from '../engine/types';
 import { Popover, useAnchor } from './Popover';
 import { Icon, Logo } from './lib';
@@ -32,7 +39,6 @@ interface Props {
   onCopyLink: () => void;
   onOpen?: () => void;
   extra?: ComponentChildren;
-  compactBrand?: boolean;
   /** No items yet: show only the title and Open. */
   empty?: boolean;
   /** One line under the plan name, e.g. where it's saved. */
@@ -44,10 +50,8 @@ export function Header(p: Props) {
   return (
     <header class="topbar">
       <span class="brand" title="whenship: when will it ship, honestly?">
-        <Logo />
-        {!p.compactBrand && <span>whenship</span>}
+        <Logo size={26} />
       </span>
-      <span class="brand-sep" aria-hidden="true" />
       {/* The plan's own name, like a document title: editable in place, with a caption saying where it lives. */}
       <div class="doc-title">
         <label class="title-wrap" title="Rename this plan">
@@ -55,10 +59,11 @@ export function Header(p: Props) {
             class="title-input"
             value={p.plan.title}
             aria-label="Plan name"
-            placeholder="Untitled plan"
-            style={{ width: `${Math.min(36, Math.max(10, p.plan.title.length + 2))}ch` }}
+            placeholder={DEFAULT_TITLE}
+            style={{ width: `calc(${Math.min(34, Math.max(9, p.plan.title.length + 1))}ch + 40px)` }}
             onInput={(e) => p.onTitle((e.currentTarget as HTMLInputElement).value)}
             onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+            onBlur={(e) => !(e.currentTarget as HTMLInputElement).value.trim() && p.onTitle(DEFAULT_TITLE)}
           />
           <Icon.pencil />
         </label>
@@ -71,7 +76,7 @@ export function Header(p: Props) {
             {LENSES.map((l) => (
               <button key={l.id} aria-pressed={p.lens === l.id} aria-label={`${l.label} (${l.short})`} title={l.blurb} onClick={() => p.onLens(l.id)}>
                 {l.label}
-                {l.factor !== 1 && <small>{l.short}</small>}
+                <small>{l.short}</small>
               </button>
             ))}
           </div>
@@ -135,32 +140,38 @@ export function Header(p: Props) {
         </Popover>
       )}
       {menu.el && menu.key === 'info' && (
-        <Popover anchor={menu.el} onClose={menu.close} label="How the lenses work">
+        <Popover anchor={menu.el} onClose={menu.close} label="How the lenses work" className="lens-pop">
           <h4>How long things really take</h4>
-          <p class="note" style={{ margin: '0 0 6px' }}>
-            <b>Your numbers never change.</b> "As planned" shows exactly what you entered. The other lenses re-plan as if every task takes longer, the way work usually does:
+          <p class="note">
+            <b>Your numbers never change.</b> The lenses re-plan as if every task takes longer, the way work usually does.
           </p>
-          <table class="lens-table">
-            <tbody>
-              {LENSES.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    <b>{l.label}</b>
-                  </td>
-                  <td>{l.short}</td>
-                  <td class="sub">{l.blurb}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p class="note" style={{ margin: '6px 0' }}>
-            Deadline badges show how much slip each deadline survives: <b>safe</b> (even at 2.7×), <b>likely</b> (at 1.6×), <b>tight</b> (only if all goes to plan), <b>late</b> (late even as planned).
-            With another lens on, any deadline its dates miss shows as <b>late</b>.
-          </p>
+          <div class="lens-list">
+            {LENSES.map((l) => (
+              <div key={l.id} class="lens-row">
+                <span class="lens-x">{l.short}</span>
+                <b>{l.label}</b>
+                <span class="sub">{LENS_HINT[l.id]}</span>
+              </div>
+            ))}
+          </div>
+          <div class="badge-key" aria-label="What the badges mean">
+            <span>
+              <span class="pill safe">safe</span> even at 3.1×
+            </span>
+            <span>
+              <span class="pill likely">likely</span> at 1.6×
+            </span>
+            <span>
+              <span class="pill tight">tight</span> if nothing slips
+            </span>
+            <span>
+              <span class="pill late">late</span> even as planned
+            </span>
+          </div>
+          <p class="note">Badges say how much slip a deadline survives. With Likely or Safe bet on, any deadline those dates miss shows as late.</p>
           <details>
-            <summary class="note" style={{ cursor: 'pointer' }}>For pros: where the numbers come from</summary>
-            <p class="note">{METHOD_NOTE}</p>
-            <p class="note">Full table: {OVERRUN_TABLE.map((r) => `P${Math.round(r.p * 100)} ${r.factor}×`).join(' · ')}. The "~x% chance" in tooltips assumes the whole plan runs long or short together.</p>
+            <summary class="note">Where the numbers come from</summary>
+            <p class="note">{METHOD_NOTE} The "~x% chance" assumes the whole plan runs long or short together.</p>
           </details>
         </Popover>
       )}

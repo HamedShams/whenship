@@ -11,4 +11,5 @@ export const boot: BootConfig = (globalThis as { __WHENSHIP__?: BootConfig }).__
 /** Where share links point when the app runs from a local file and no address is known. */
 export const FALLBACK_URL = 'https://hamedshams.github.io/whenship/';
 export const REPO_URL = 'https://github.com/HamedShams/whenship';
-export const VERSION = boot.version ?? '1.0.0';
+/** Keep in step with package.json (a test checks it). */
+export const VERSION = boot.version ?? '1.3.0';

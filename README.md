@@ -5,7 +5,7 @@
 ![A whenship plan: two people, seven client deliverables, one deadline late and four tight](docs/example.svg)
 
 - **Real dates, not guesses.** A day-by-day scheduler handles priorities, part-time people, teams, hand-offs, dependencies, waiting on clients, weekends and holidays.
-- **Live what-if.** Drag to reprioritise and watch every date move before you drop. Change effort, people or working days and the whole plan updates instantly.
+- **Live what-if.** Drag an item (by its handle or its bar) to reprioritise and watch every date move before you drop. Change effort, people or working days and the whole plan updates instantly.
 - **Honest risk.** Every deadline gets a badge (safe, likely, tight, late) and a rough chance, from a forecast scale that never touches your own numbers.
 - **Options, not just warnings.** whenship searches reorders, deferrals, more time and extra people, and shows exactly which deadlines each one saves.
 - **No sign-up, nothing stored.** Your plan lives in your browser, your files, or a link that carries the whole plan.
@@ -63,12 +63,11 @@ By default you see **your own estimates** (*As planned*). whenship never stretch
 |---|---|---|
 | As planned | 1× | Exactly what you entered: if everything goes to plan. |
 | Likely | 1.6× | How it usually goes: about half of projects are done by here. |
-| Safe bet | 2.7× | A date you can promise: about 85 in 100 projects are done by here. |
-| Worst case | 3.9× | When things go badly: only 1 in 20 projects run longer. |
+| Safe bet | 3.1× | A date you can promise: about 9 in 10 projects are done by here. |
 
-The badges use the same scale: *safe* means on time even at 2.7×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned. With another lens on, every deadline that lens's dates miss shows as *late*.
+The badges use the same scale: *safe* means on time even at 3.1×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned. With another lens on, every deadline that lens's dates miss shows as *late*.
 
-The multipliers (P50 1.6×, P80 2.5×, P85 2.7×, P90 3.1×, P95 3.9×) are a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, with the midpoint sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
+The multipliers (P50 1.6×, P90 3.1×) come from a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. The "~x% chance" on each deadline is a smooth (lognormal) curve through those two points. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
 
 ## The plan file
 

@@ -13,8 +13,11 @@ import {
 } from './types';
 
 export const LIMITS = { items: 500, lanes: 50, partsPerItem: 20, maxDays: 10_000 } as const;
+/** The name of a plan nobody has named yet. */
+export const DEFAULT_TITLE = 'Untitled WhenShip';
 export const DEFAULT_WORKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri'];
-export const PALETTE = ['#4c6ef5', '#12b886', '#f59f00', '#e64980', '#7950f2', '#15aabf', '#fd7e14', '#82c91e', '#868e96', '#be4bdb'];
+/** Eight lane colours: distinct from each other, from the app's indigo, and from grey (used for "nobody"). */
+export const PALETTE = ['#12b886', '#f59f00', '#e64980', '#7950f2', '#15aabf', '#fd7e14', '#82c91e', '#be4bdb'];
 
 export interface ValidationResult {
   plan: NormalizedPlan;
@@ -131,7 +134,7 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
   if (!isObj(input)) errors.push({ path: '', message: 'a plan must be an object with lanes and items' });
 
   // ── basics ──────────────────────────────────────────────────────────────
-  const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 120) : 'Untitled plan';
+  const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 120) : DEFAULT_TITLE;
   let start: ISODate;
   if (isISODate(raw.start)) start = toISO(parseISO(String(raw.start))!);
   else {

@@ -1,6 +1,6 @@
 {
   "name": "whenship",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "When will it ship, honestly? A tiny planner for small teams: live what-if Gantt, deadline risk and realistic dates. Works in the browser, offline, and inside Claude as an MCP App.",
   "license": "MIT",
   "author": "Hamed Shams (https://github.com/HamedShams)",

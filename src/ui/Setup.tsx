@@ -167,7 +167,16 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
       </div>
       <label class="field">
         Time for this plan: {trim(lane.availability)}%
-        <input type="range" min="0" max="100" step="5" value={lane.availability} onInput={(e) => set({ availability: Number((e.currentTarget as HTMLInputElement).value) }, `avail:${lane.id}`)} />
+        <input
+          type="range"
+          class="range"
+          min="0"
+          max="100"
+          step="5"
+          value={lane.availability}
+          style={{ '--p': String(lane.availability / 100) }}
+          onInput={(e) => set({ availability: Number((e.currentTarget as HTMLInputElement).value) }, `avail:${lane.id}`)}
+        />
         <span class="sub" style={{ fontSize: '11.5px' }}>The rest goes to meetings, support and other work.</span>
       </label>
       <div class="field">

@@ -93,10 +93,12 @@ export function App(props: AppProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [h.undo, h.redo]);
 
+  // The chain of work behind a date is shown only on request ("What sets the end date?"): for the selected item if
+  // there is one, otherwise for the last item to finish. Selecting an item on its own highlights just that item.
   const highlight = useMemo(() => {
-    if (selected && analysis.current.byId.get(selected)?.end !== undefined) return new Set(criticalChain(analysis.current, selected));
-    if (chainOn) return new Set(criticalChain(analysis.current));
-    return null;
+    if (!chainOn) return null;
+    const from = selected && analysis.current.byId.get(selected)?.end !== undefined ? selected : undefined;
+    return new Set(criticalChain(analysis.current, from));
   }, [selected, chainOn, analysis]);
 
   const doExport = useCallback(
@@ -146,7 +148,7 @@ export function App(props: AppProps) {
           plan={plan}
           lens={lens}
           onLens={setLens}
-          onTitle={(t) => h.commit({ ...plan, title: t || 'Untitled plan' }, 'title')}
+          onTitle={(t) => h.commit({ ...plan, title: t }, 'title')}
           canUndo={h.canUndo}
           canRedo={h.canRedo}
           onUndo={h.undo}
@@ -155,7 +157,6 @@ export function App(props: AppProps) {
           onCopyLink={copyLink}
           onOpen={() => setDialog({ kind: 'import' })}
           extra={props.headerExtra}
-          compactBrand={host.mode === 'widget'}
           empty={plan.items.length === 0}
           caption={host.mode === 'widget' ? 'Plan · your edits reach Claude automatically' : 'Plan · saved in this browser'}
         />
@@ -172,10 +173,7 @@ export function App(props: AppProps) {
             chainOn={chainOn}
             zoom={zoomShown}
             onZoom={setZoom}
-            onChain={() => {
-              setSelected(null);
-              setChainOn((v) => !v);
-            }}
+            onChain={() => setChainOn((v) => !v)}
             onApply={(s) => {
               h.commit(applyChanges(plan, s.changes).plan);
               setToast(`Applied: ${s.title}. Undo with ⌘/Ctrl Z`);

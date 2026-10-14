@@ -1,20 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { LENSES, OVERRUN_TABLE, analyze, deadlineOutlook, headline, overrunCdf, schedule, validatePlan } from '../../src/engine';
+import { LENSES, P50, P90, analyze, deadlineOutlook, headline, lensById, overrunCdf, schedule, toLensId, validatePlan } from '../../src/engine';
 import { plan } from '../helpers';
 
 describe('forecast lenses', () => {
-  it('use the blended multipliers 1× / 1.6× / 2.7× / 3.9×', () => {
-    expect(LENSES.map((l) => [l.id, l.factor])).toEqual([
-      ['planned', 1],
-      ['likely', 1.6],
-      ['safe', 2.7],
-      ['worst', 3.9],
+  it('are As planned 1×, Likely 1.6× (P50) and Safe bet 3.1× (P90)', () => {
+    expect(LENSES.map((l) => [l.id, l.label, l.short, l.factor])).toEqual([
+      ['planned', 'As planned', '1×', 1],
+      ['likely', 'Likely', '1.6×', 1.6],
+      ['safe', 'Safe bet', '3.1×', 3.1],
     ]);
-    expect(OVERRUN_TABLE.map((r) => r.factor)).toEqual([1.6, 2.5, 2.7, 3.1, 3.9]);
+    expect([P50, P90]).toEqual([1.6, 3.1]);
   });
 
-  it('reproduce the table exactly as a distribution', () => {
-    for (const row of OVERRUN_TABLE) expect(overrunCdf(row.factor)).toBeCloseTo(row.p, 3);
+  it('read lens names from older versions ("worst" is now the safe bet)', () => {
+    expect(toLensId('worst')).toBe('safe');
+    expect(lensById('worst').factor).toBe(3.1);
+    expect(toLensId('nonsense')).toBeUndefined();
+  });
+
+  it('chance curve passes through both anchors and stays close to the rest of the blended table', () => {
+    expect(overrunCdf(1.6)).toBeCloseTo(0.5, 3);
+    expect(overrunCdf(3.1)).toBeCloseTo(0.9, 3);
+    // the original blended table: P80 2.5×, P85 2.7×, P95 3.9×
+    expect(overrunCdf(2.5)).toBeCloseTo(0.8, 1);
+    expect(overrunCdf(2.7)).toBeCloseTo(0.85, 1);
+    expect(overrunCdf(3.9)).toBeCloseTo(0.95, 1);
   });
 
   it('give a smooth, increasing chance curve', () => {
@@ -39,8 +49,9 @@ describe('deadline outlook', () => {
   it('labels each deadline by how much slip it survives', () => {
     expect(badge('2026-09-29').badge).toBe('late'); // late even as planned
     expect(badge('2026-09-30').badge).toBe('tight'); // only if all goes to plan
-    expect(badge('2026-10-06').badge).toBe('likely'); // survives 1.6× (8 days → Mon 5 Oct) but not 2.7×
-    expect(badge('2026-10-15').badge).toBe('safe'); // survives 2.7× (13.5 days)
+    expect(badge('2026-10-06').badge).toBe('likely'); // survives 1.6× (8 days → Mon 5 Oct) but not 3.1×
+    expect(badge('2026-10-14').badge).toBe('likely'); // 3.1× is 15.5 days → Thu 15 Oct: one day too late for safe
+    expect(badge('2026-10-15').badge).toBe('safe'); // survives 3.1×
   });
 
   it('turns survival into an approximate chance', () => {
@@ -82,16 +93,16 @@ describe('deadline outlook', () => {
       ],
     });
     const planned = analyze(p, 'planned');
-    const worst = analyze(p, 'worst');
+    const worst = analyze(p, 'safe');
     // the outlook (how much slip it survives) doesn't depend on the lens…
     expect(worst.outlook.get('a')!.badge).toBe(planned.outlook.get('a')!.badge);
     expect(planned.status.get('a')).toBe(planned.outlook.get('a')!.badge);
-    // …but the status shown under Worst case (3.9×) is late for every deadline its dates miss
+    // …but the status shown under Safe bet (3.1×) is late for every deadline its dates miss
     for (const id of ['a', 'b']) expect(worst.status.get(id)).toBe(worst.current.byId.get(id)!.late ? 'late' : worst.outlook.get(id)!.badge);
     expect(worst.status.get('a')).toBe('late');
     expect(planned.status.get('a')).not.toBe('late');
     expect(worst.counts.late).toBe([...worst.status.values()].filter((b) => b === 'late').length);
-    expect(headline(worst)).toMatch(/^\d of 2 deadlines late if work takes 3\.9× as long/);
+    expect(headline(worst)).toMatch(/^\d of 2 deadlines late if work takes 3\.1× as long/);
   });
 
   it('values stay out of everything while switched off', () => {

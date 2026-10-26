@@ -98,14 +98,9 @@ export function Header(p: Props) {
         </button>
       )}
       {!p.empty && (
-        <>
-          <button class="btn" onClick={p.onCopyLink} title="Copy a link that contains the whole plan (nothing is uploaded)">
-            <Icon.link /> Copy link
-          </button>
-          <button class="btn primary" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'export')} aria-haspopup="menu">
-            <Icon.download /> Export
-          </button>
-        </>
+        <button class="btn primary" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'export')} aria-haspopup="menu" title="Save, export or copy a link to this plan">
+          <Icon.download /> Export
+        </button>
       )}
       {p.extra}
 
@@ -125,15 +120,18 @@ export function Header(p: Props) {
                 <small>{x.hint}</small>
               </button>
             ))}
-            <hr />
             <button
               role="menuitem"
+              class="menu-link"
+              title="Copy a link that contains the whole plan (nothing is uploaded)"
               onClick={() => {
                 menu.close();
                 p.onCopyLink();
               }}
             >
-              <span>Copy link</span>
+              <span>
+                <Icon.link /> Copy link
+              </span>
               <small>the plan travels inside the URL</small>
             </button>
           </div>

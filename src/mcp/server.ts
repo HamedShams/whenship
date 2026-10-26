@@ -32,7 +32,7 @@ export const INSTRUCTIONS = `whenship is a deterministic scheduling engine for s
 For any question about when work will finish, whether deadlines hold, who is overloaded, or what to move, cut or add: put the work into a plan and call whenship. Do not work out dates, capacity or probabilities yourself; report the dates the tools return.
 
 - show_plan: schedules a plan and shows the interactive chart. Start here.
-- what_if: compares one or more changes against a plan (reorder, effort, deadline, people, holidays, working days).
+- what_if: compares a plan with a changed version of it: a list of simple changes (reorder, effort, deadline, people, holidays, working days), or a whole alternative plan for anything else (moving work between people, splitting or cutting items, dependencies, several changes at once).
 - find_options: searches changes that meet more deadlines, with exact effects.
 - export_plan: the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link.
 
@@ -227,21 +227,37 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'What if',
       description:
-        'Compares a plan before and after one or more changes and reports which finish dates move and which deadlines ' +
-        'are newly met or missed. Changes: move an item to a position, change effort, set or clear a deadline or a ' +
-        "can't-start-before date, change a lane's people or availability, add a person or team, add a holiday, change working days, remove an " +
-        'item, change the start date. Returns the comparison and the changed plan.',
-      inputSchema: z.object({ plan: planSchema, changes: z.array(changeSchema).min(1), lens: lensSchema }),
+        'Compares a plan before and after a change and reports which finish dates move and which deadlines are newly ' +
+        'met or missed. The change is a list of simple `changes` (move an item to a position, change effort, set or ' +
+        "clear a deadline or a can't-start-before date, change a lane's people or availability, add a person or team, " +
+        'add a holiday, change working days, remove an item, change the start date), or an `alternative`: a whole ' +
+        'changed copy of the plan, for anything else (moving work between people, splitting, cutting or adding items, ' +
+        'dependencies, hand-offs, several changes at once). Returns the comparison and the changed plan.',
+      inputSchema: z.object({
+        plan: planSchema,
+        changes: z.array(changeSchema).min(1).optional().describe('Simple changes, applied in order'),
+        // the same format as `plan`, which documents it; repeating the full schema would double the tool's size
+        alternative: z
+          .looseObject({})
+          .optional()
+          .describe('A changed copy of `plan`, in the same format, to compare against it. Items keep their name or id to be matched; `changes`, if also given, apply on top'),
+        lens: lensSchema,
+      }),
       annotations: { title: 'What if', ...READ_ONLY },
     },
-    async ({ plan: input, changes, lens }) => {
+    async ({ plan: input, changes, alternative, lens }) => {
+      if (!changes && !alternative) return { isError: true, content: [text('Nothing to compare: give `changes`, an `alternative` plan, or both.')] };
       const v = validatePlan(input, { today: today() });
-      const r = applyChanges(v.plan, toEngineChanges(changes));
+      // the alternative keeps the plan's start unless it sets its own, so only the intended differences show
+      const alt = alternative ? validatePlan({ start: v.plan.start, ...alternative }, { today: today() }) : null;
+      const r = applyChanges(alt?.plan ?? v.plan, toEngineChanges(changes ?? []));
       const l: LensId = lens ?? 'planned';
       const parts = [compare(v.plan, r.plan, l)];
       if (r.skipped.length) parts.push(`**Skipped:**\n${r.skipped.map((s) => `- ${s.change.op}: ${s.reason}`).join('\n')}`);
       const notes = issuesText(v);
       if (notes) parts.push(notes);
+      const altNotes = alt ? issuesText(alt) : '';
+      if (altNotes) parts.push(`**In the alternative plan:**\n\n${altNotes}`);
       parts.push(`Changed plan (pass it to show_plan to update the chart):\n\`\`\`json\n${JSON.stringify(compactPlan(r.plan))}\n\`\`\``);
       return { content: [text(parts.join('\n\n'))] };
     },

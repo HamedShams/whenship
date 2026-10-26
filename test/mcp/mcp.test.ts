@@ -67,6 +67,19 @@ describe('MCP connector', () => {
     expect(tools.filter((t) => (t._meta as { ui?: unknown } | undefined)?.ui)).toHaveLength(1);
   });
 
+  it('offers exactly the three forecast lenses, with the current numbers only', async () => {
+    const { tools } = await client.listTools();
+    for (const t of tools) {
+      const lens = (t.inputSchema.properties as Record<string, { enum?: string[]; description?: string }>).lens;
+      expect(lens?.enum, t.name).toEqual(['planned', 'likely', 'safe']);
+      expect(lens?.description).toMatch(/likely 1\.6×, safe bet 3\.1×/);
+    }
+    // nothing anywhere still describes the retired lenses (safe bet 2.7×, worst case 3.9×)
+    const everything = JSON.stringify(tools) + (client.getInstructions() ?? '');
+    expect(everything).not.toMatch(/worst|2\.7×|3\.9×|2\.5×|P80/i);
+    expect(client.getInstructions()).toMatch(/likely 1\.6×, safe bet 3\.1×/);
+  });
+
   it('gives the model instructions to use the engine instead of its own math', () => {
     const instructions = client.getInstructions() ?? '';
     expect(instructions).toMatch(/Do not work out dates/);
@@ -118,6 +131,44 @@ describe('MCP connector', () => {
     expect(text).toMatch(/\| Research B \| .* \| .* \| -\d+ working days \|/);
     expect(text).toContain('```json');
     expect(text.indexOf('"id":"research-b"')).toBeLessThan(text.indexOf('"id":"quick-fix"'));
+  });
+
+  it('what_if compares a whole alternative plan: work moved to someone else', async () => {
+    const alternative = { ...PLAN, items: PLAN.items.map((it) => (it.name === 'Research B' ? { ...it, who: 'Omar' } : it)) };
+    const r = (await client.callTool({ name: 'what_if', arguments: { plan: PLAN, alternative } })) as ToolResult;
+    const text = textOf(r);
+    expect(r.isError).toBeFalsy();
+    expect(text).toContain('**Before:**');
+    // Omar (half time) finishes Research B the same day Sara would have, but then starts Proposal C two days later
+    expect(text).not.toMatch(/\| Research B \| /);
+    expect(text).toMatch(/\| Proposal C \| 21 Oct \| 23 Oct \| \+2 working days \|/);
+    const changed = JSON.parse(text.slice(text.lastIndexOf('```json') + 7, text.lastIndexOf('```')));
+    expect(changed.items.find((x: { name: string }) => x.name === 'Research B').work[0].lane).toBe('omar');
+  });
+
+  it('what_if alternatives can split and cut items, keep the plan start, and take changes on top', async () => {
+    const { start: _start, ...noStart } = PLAN;
+    const alternative = {
+      ...noStart,
+      items: [
+        ...PLAN.items.filter((it) => it.name !== 'Research B' && it.name !== 'Quick fix'),
+        { name: 'Research B part 1', who: 'Sara', days: 2, deadline: '2026-10-16' },
+        { name: 'Research B part 2', who: 'Omar', days: 3 },
+      ],
+    };
+    const text = textOf(await client.callTool({ name: 'what_if', arguments: { plan: PLAN, alternative, changes: [{ op: 'setDeadline', item: 'Appeal A', date: '2026-10-30' }] } }));
+    expect(text).toMatch(/\| Research B part 1 \| — \| .* \| new \|/);
+    expect(text).toMatch(/\| Research B \| .* \| removed \|/);
+    expect(text).toMatch(/\| Quick fix \| .* \| removed \|/);
+    const changed = JSON.parse(text.slice(text.lastIndexOf('```json') + 7, text.lastIndexOf('```')));
+    expect(changed.start).toBe('2026-10-05'); // not today
+    expect(changed.items.find((x: { name: string }) => x.name === 'Appeal A').deadline).toBe('2026-10-30');
+  });
+
+  it('what_if needs changes or an alternative', async () => {
+    const r = (await client.callTool({ name: 'what_if', arguments: { plan: PLAN } })) as ToolResult;
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/give `changes`, an `alternative` plan, or both/);
   });
 
   it('what_if reports changes it could not apply', async () => {

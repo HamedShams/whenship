@@ -63,21 +63,29 @@ function contextFor(plan: NormalizedPlan, lens: LensId): string {
     `\n\nCurrent plan (pass this as \`plan\` to whenship tools for what-ifs):\n\`\`\`json\n${JSON.stringify(compactPlan(plan))}\n\`\`\``
   );
 }
+function pushContext(plan: NormalizedPlan, lens: LensId) {
+  clearTimeout(syncTimer);
+  lastSynced = JSON.stringify([compactPlan(plan), lens]);
+  return app
+    .updateModelContext({
+      content: [{ type: 'text', text: contextFor(plan, lens) }],
+      structuredContent: { plan: compactPlan(plan), lens },
+    })
+    .catch(() => undefined);
+}
 function scheduleSync(plan: NormalizedPlan, lens: LensId) {
   if (state.superseded) return;
-  const sig = JSON.stringify([compactPlan(plan), lens]);
-  if (sig === lastSynced) return;
+  if (JSON.stringify([compactPlan(plan), lens]) === lastSynced) return;
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => {
-    lastSynced = sig;
-    void app
-      .updateModelContext({
-        content: [{ type: 'text', text: contextFor(plan, lens) }],
-        structuredContent: { plan: compactPlan(plan), lens },
-      })
-      .catch(() => undefined);
-  }, 600);
+  syncTimer = setTimeout(() => void pushContext(plan, lens), 600);
 }
+
+// ── ask Claude from the chart ──────────────────────────────────────────────
+/** Posted to the chat as the user's message; the chart's current state goes along as context. */
+const ASK_CLAUDE =
+  "Find better options for this plan than the chart's suggestions. Try what they can't: moving work between people, " +
+  'splitting or cutting items, changing dependencies, and combinations. Check each idea with whenship what_if and give ' +
+  'me the best two or three with their exact effects.';
 
 // ── host adapter for the shared App ────────────────────────────────────────
 const host: Host = {
@@ -118,6 +126,16 @@ const host: Host = {
     state.plan = plan;
     state.lens = lens;
     scheduleSync(plan, lens);
+  },
+  canAskClaude: () => !state.superseded && !!app?.getHostCapabilities()?.message,
+  async askClaude(plan, lens) {
+    try {
+      await pushContext(plan, lens); // Claude must see the chart as it is now, not as of the last debounce
+      const res = await app.sendMessage({ role: 'user', content: [{ type: 'text', text: ASK_CLAUDE }] });
+      return !res?.isError;
+    } catch {
+      return false;
+    }
   },
 };
 const base = () => state.publicUrl ?? FALLBACK_URL;
@@ -203,6 +221,7 @@ async function openFull() {
 }
 
 function draw() {
+  applyInsets();
   if (state.superseded) {
     render(
       <div class="superseded">
@@ -256,6 +275,19 @@ function draw() {
     return;
   }
   render(<Card plan={plan} lens={state.lens} />, rootEl);
+}
+
+/**
+ * Claude's message box floats over the bottom of a fullscreen app. Keep that strip clear (the item card sits above it
+ * and the page can scroll past it); hosts that report a safe area get exactly that.
+ */
+const COMPOSER_ALLOWANCE = 120;
+function applyInsets() {
+  const ctx = app?.getHostContext();
+  const inset = ctx?.safeAreaInsets?.bottom ?? 0;
+  const claude = !ctx?.userAgent || /claude/i.test(ctx.userAgent);
+  const bottom = state.displayMode === 'fullscreen' && claude ? Math.max(inset, COMPOSER_ALLOWANCE) : inset;
+  document.documentElement.style.setProperty('--safe-bottom', `${bottom}px`);
 }
 
 function applyHost(ctx: McpUiHostContext | undefined) {

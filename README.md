@@ -33,7 +33,7 @@ whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overvie
 claude mcp add whenship -- npx -y whenship --stdio
 ```
 
-**Claude Desktop extension.** Build `dist/whenship.mcpb` with `npm run build && npm run build:mcpb`, then in Claude Desktop open Settings → Extensions → Install extension and pick the file. It runs on your computer with Desktop's built-in Node. Set `WHENSHIP_PUBLIC_URL` when building to choose where "Open in browser" and share links go.
+**Claude Desktop extension.** Download `whenship.mcpb` from the [latest release](https://github.com/HamedShams/whenship/releases/latest), then in Claude Desktop open Settings → Extensions → Install extension and pick the file (or double-click it). It runs on your computer with Desktop's built-in Node and shows the same interactive chart. To update, install the newer file over the old one. To build it yourself: `npm run build && npm run build:mcpb` (set `WHENSHIP_PUBLIC_URL` to choose where "Open in browser" and share links go).
 
 **Claude Desktop, Cursor, VS Code and other MCP clients (local)**
 
@@ -53,7 +53,9 @@ claude plugin install whenship@whenship
 
 The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/SKILL.md) (workflow and plan format) and [plugin/skills/whenship-insights](plugin/skills/whenship-insights/SKILL.md) (recommendations, with worked examples for consultancies, product squads, solo founders, agencies, teams with a Saturday–Wednesday week, and teams working with AI agents).
 
-Tools: `show_plan` (schedule and chart), `what_if` (compare changes), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
+Tools: `show_plan` (schedule and chart), `what_if` (compare a list of changes, or a whole alternative version of the plan), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
+
+In the chart, **Ask Claude for better options** posts a request to the chat. Claude then tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and answers with the best two or three and their exact effects.
 
 ## How the forecast works
 
@@ -68,6 +70,51 @@ By default you see **your own estimates** (*As planned*). whenship never stretch
 The badges use the same scale: *safe* means on time even at 3.1×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned. With another lens on, every deadline that lens's dates miss shows as *late*.
 
 The multipliers (P50 1.6×, P90 3.1×) come from a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. The "~x% chance" on each deadline is a smooth (lognormal) curve through those two points. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
+
+## Reading the chart
+
+| Mark | Meaning |
+|---|---|
+| Bar | When someone works on the item, one colour per person or team. An item with several people has one thin bar each. |
+| ◆ Diamond | The item's deadline (the usual Gantt milestone mark). Green: on time. Amber: tight. Red: late. |
+| Hatched stripes | The part of the work that runs past the deadline. |
+| Vertical line | Today. |
+| Dashed outline | Only with *Likely* or *Safe bet* on: your own estimate, while the bar shows the stretched dates. |
+
+A key above the chart repeats this, and hovering any mark gives its dates.
+
+## How the dates and suggestions work
+
+**The scheduler.** whenship walks the calendar one working day at a time. Each day, items get people in priority order, up to what each item can use: a person's share of time (`availability`), a team's size, how many people may work on one item (`maxPeople`) and the work left. It respects hand-offs, dependencies, can't-start-before dates, working days and holidays. An item's prerequisites are worked on at its priority, so a top item never waits behind unrelated work for something it needs. The same plan always gives the same dates. Tests check it against an independent reference scheduler on 400 random plans.
+
+**The suggestions** are not AI. They come from a fixed try-and-measure loop:
+
+1. Build a short menu of single changes (below).
+2. Re-plan the whole schedule for each one with the same engine.
+3. Keep only the changes that meet more deadlines or make the plan sturdier (more deadlines survive the next lens, fewer days late, or a clearly earlier finish).
+4. Rank them: most deadlines met, then the cheapest kind of move, then most deadlines that survive the next lens, then fewest days late, then earliest finish. Show the top 3, at most 2 of a kind.
+
+| Kind | What it tries | Cost rank |
+|---|---|---|
+| Reorder | The smallest move up that saves a late item (found by binary search) | Free |
+| Defer | Undated work that sits in front of late deadlines moves behind the dated work | Free |
+| More time | A part-timer goes to 100% | Low |
+| More people | One more person in that lane | High |
+| Negotiate | The exact extra working days a late item needs | Last resort |
+
+It doesn't try every possibility (10 items already have 3.6 million possible orders). It takes a few milliseconds on normal plans and is switched off above 200 items.
+
+**How far to trust it.**
+
+- The numbers are exact. Every effect shown comes from a real re-plan, so it can't invent one.
+- The coverage is narrow:
+  - one change at a time, so it never finds combinations ("reorder *and* one extra day");
+  - a fixed menu: it never moves work from one person to another, splits or cuts scope, puts a second person on an item, drops a dependency or adds overtime;
+  - "one more person" is productive from day one and costs nothing, which is optimistic;
+  - it counts deadlines but doesn't know which ones are hard, or which client matters most;
+  - its ordering is good, not provably the best.
+
+**The Claude layer covers the gaps.** In Claude, `find_options` returns the same menu. For anything else, Claude writes the changed plan and checks it with `what_if` before it recommends anything, so every number it quotes still comes from the engine. *Ask Claude for better options* in the chart starts exactly that.
 
 ## The plan file
 

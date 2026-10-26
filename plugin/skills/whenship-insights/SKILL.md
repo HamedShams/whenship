@@ -16,10 +16,13 @@ The engine tells you *what will happen*. This skill is about *what to do about i
    3. *Protect time*: raise someone's availability (fewer meetings or support duty for two weeks).
    4. *Add a person*: the engine assumes they are productive from day one. For horizons under about six weeks, say that ramp-up and coordination usually eat much of the gain (Brooks's law).
    5. *Negotiate the date*: the engine tells you exactly how many working days to ask for.
-3. **Say what it costs.** A reorder that saves one deadline often makes another tight. `what_if` shows both sides; report both.
-4. **Dates for other people.** For a client or stakeholder, give two dates: the *likely* date and the *safe-bet* date (call `show_plan` with `lens: "likely"` and `lens: "safe"`, or read the badges). Recommend promising the safe-bet date and working to the likely one.
-5. **Ask before changing their estimates.** The user's numbers are theirs. If an estimate looks off, say so and run a what-if; do not silently change it.
-6. **Keep it short.** Three bullets beat a report. The chart has the details.
+3. **Go beyond the menu.** `find_options` tries one change at a time from a fixed menu (reorder, defer, more time, one more person, a later deadline). Often a better idea is outside it: move work from the busiest person to someone with room, split an item into a first deliverable and the rest, cut scope, drop a dependency, or combine two changes. Write the changed plan in full and call `what_if` with it as `alternative` (keep the names of items that stay). Recommend it only if the comparison shows it helps, and quote its numbers.
+4. **Say what it costs.** A reorder that saves one deadline often makes another tight. `what_if` shows both sides; report both.
+5. **Dates for other people.** For a client or stakeholder, give two dates: the *likely* date and the *safe-bet* date (call `show_plan` with `lens: "likely"` and `lens: "safe"`, or read the badges). Recommend promising the safe-bet date and working to the likely one.
+6. **Ask before changing their estimates.** The user's numbers are theirs. If an estimate looks off, say so and run a what-if; do not silently change it.
+7. **Keep it short.** Three bullets beat a report. The chart has the details.
+
+When the user presses **Ask Claude for better options** in the chart, the request arrives as a chat message and the chart's current plan is in your context. That is step 3: try a few alternatives the chart's own suggestions can't (reassigning, splitting, cutting, combinations), check each with `what_if`, and present the best two or three with their exact effects. If nothing beats the chart's suggestions, say so.
 
 ## Worked examples
 

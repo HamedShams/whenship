@@ -145,7 +145,7 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
     onCommit(applyChanges({ ...plan, lanes: plan.lanes.map((l) => (l.id === lane.id ? { ...l, ...patch } : l)) }, []).plan, key);
   const usedBy = plan.items.filter((it) => it.work.some((w) => w.lane === lane.id)).length;
   return (
-    <Popover anchor={anchor} onClose={onClose} label={`Edit ${lane.name}`}>
+    <Popover anchor={anchor} onClose={onClose} label={`Edit ${lane.name}`} className="lane-pop">
       <label class="field">
         Name
         <input value={lane.name} onInput={(e) => set({ name: (e.currentTarget as HTMLInputElement).value || lane.name }, `lname:${lane.id}`)} />

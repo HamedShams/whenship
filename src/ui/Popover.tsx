@@ -30,9 +30,7 @@ export function Popover({
       if (!anchor.isConnected) return onClose();
       const a = anchor.getBoundingClientRect();
       const vw = window.innerWidth, vh = window.innerHeight;
-      // anchors in the page body can slide under the sticky toolbar: treat its bottom edge as the top of the screen
-      const bar = anchor.closest('.toolbar') ? null : document.querySelector('.toolbar');
-      const topEdge = bar && getComputedStyle(bar).position === 'sticky' ? bar.getBoundingClientRect().bottom : 0;
+      const topEdge = stickyEdge(anchor);
       if (a.bottom < topEdge || a.top > vh || a.right < 0 || a.left > vw) return onClose();
       // Prefer below the anchor; flip above when there's more room there. Never taller than the room available, so
       // a long popover scrolls inside itself instead of running off the screen.
@@ -97,6 +95,19 @@ export function Popover({
       {children}
     </div>
   );
+}
+
+/**
+ * Anchors in the page can slide under the sticky toolbar, and rows in the board under its sticky header: the lowest of
+ * those edges counts as the top of the screen.
+ */
+function stickyEdge(anchor: HTMLElement): number {
+  let edge = 0;
+  for (const [sel, applies] of [['.toolbar', true], ['.board-head', !!anchor.closest('.board')]] as const) {
+    const bar = applies ? document.querySelector(sel) : null;
+    if (bar && !bar.contains(anchor) && getComputedStyle(bar).position === 'sticky') edge = Math.max(edge, bar.getBoundingClientRect().bottom);
+  }
+  return edge;
 }
 
 /** Hook for "click a chip, open a popover anchored to it". */

@@ -26,6 +26,7 @@ export function Summary({
   zoom,
   onZoom,
   onApply,
+  onAskClaude,
 }: {
   analysis: Analysis;
   insights: Insight[];
@@ -35,6 +36,8 @@ export function Summary({
   zoom: Zoom;
   onZoom: (z: Zoom) => void;
   onApply: (s: Insight) => void;
+  /** Set inside Claude: posts a request for more options to the chat. */
+  onAskClaude?: (() => void) | undefined;
 }) {
   const text = headline(analysis);
   const c = analysis.counts;
@@ -65,7 +68,7 @@ export function Summary({
           </button>
         )}
       </div>
-      {insights.length > 0 && (
+      {(insights.length > 0 || onAskClaude) && (
         <div class="insights" aria-label="Suggestions">
           {insights.map((s) => (
             <div key={s.id} class="insight">
@@ -81,7 +84,20 @@ export function Summary({
               </div>
             </div>
           ))}
-          
+          {onAskClaude && (
+            <div class="insight ask">
+              <span class="kind">
+                <Icon.spark /> Claude
+              </span>
+              <b>Ask Claude for better options</b>
+              <div class="insight-foot">
+                <p>Claude can try what this list can't: moving work between people, splitting or cutting items, combinations. Each idea is checked by the engine.</p>
+                <button class="btn small primary" onClick={onAskClaude} title="Posts the request to the chat; Claude sees this chart as it is now">
+                  Ask Claude
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -61,6 +61,15 @@ interface Drag {
   over: number;
   dy: number;
   startY: number;
+  /** Started from the bar in the timeline (not the row's handle). */
+  byBar?: boolean;
+}
+
+/** Dragging must never select text or leave focus behind in another row. */
+function startDragging() {
+  window.getSelection?.()?.removeAllRanges();
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.closest('.board')) active.blur();
 }
 
 export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom }: Props) {
@@ -72,6 +81,17 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const draftRef = useRef<HTMLInputElement>(null);
   const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
   const [openWhoFor, setOpenWhoFor] = useState<string | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef<HTMLDivElement>(null);
+  const followScroll = () => {
+    if (boardRef.current && scaleRef.current) scaleRef.current.style.transform = `translateX(${-boardRef.current.scrollLeft}px)`;
+  };
+  useLayoutEffect(followScroll);
+  // a sideways swipe over the scale scrolls the board
+  const scrollFromHead = (e: WheelEvent) => {
+    const b = boardRef.current;
+    if (b && Math.abs(e.deltaX) > Math.abs(e.deltaY)) b.scrollLeft += e.deltaX;
+  };
 
   // live preview while dragging: same engine, new order
   const preview = useMemo(() => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : null), [plan, drag?.id, drag?.over, drag?.from, factor]);
@@ -164,12 +184,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (e.button !== 0) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    startDragging();
     setDrag({ id, from: index, over: index, dy: 0, startY: e.clientY });
   };
   // Bars: a press that moves up or down drags the item (like its handle); a press without moving selects it.
   const pressed = useRef<{ id: string; index: number; x: number; y: number } | null>(null);
   const onBarDown = (e: PointerEvent, id: string, index: number) => {
     if (e.button !== 0) return;
+    e.preventDefault(); // no text selection across the rows it passes
     pressed.current = { id, index, x: e.clientX, y: e.clientY };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
@@ -179,7 +201,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       if (Math.abs(e.clientY - p.y) > 4) {
         pressed.current = null;
         const dy = e.clientY - p.y;
-        setDrag({ id: p.id, from: p.index, over: Math.max(0, Math.min(plan.items.length - 1, Math.round(p.index + dy / ROW))), dy, startY: p.y });
+        startDragging();
+        setDrag({ id: p.id, from: p.index, over: Math.max(0, Math.min(plan.items.length - 1, Math.round(p.index + dy / ROW))), dy, startY: p.y, byBar: true });
       }
       return;
     }
@@ -233,10 +256,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const height = (order.length + 1) * ROW; // + the empty row for a new item
 
   return (
-    <div class="board" onPointerMove={(e) => onMove(e as unknown as PointerEvent)} onPointerUp={(e) => onUp(e as unknown as PointerEvent)} onPointerCancel={onCancel}>
-      {/* list */}
-      <div class="list" role="list" aria-label="Items in priority order">
-        <div class="list-head" aria-hidden="true">
+    <div class={cx('board-wrap', drag && 'is-dragging')} onPointerMove={(e) => onMove(e as unknown as PointerEvent)} onPointerUp={(e) => onUp(e as unknown as PointerEvent)} onPointerCancel={onCancel}>
+      {/* Column titles and the calendar scale: outside the scrolling board so they can stick under the toolbar while the
+          page scrolls; the scale follows the board's horizontal scroll. */}
+      <div class="board-head" aria-hidden="true" onWheel={scrollFromHead}>
+        <div class="list-head">
           <span>#</span>
           <span>Item</span>
           <span>Who</span>
@@ -244,173 +268,180 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>Expected delivery</span>
           <span />
         </div>
-        <div class="rows" style={{ height: `${height}px` }}>
-          {order.map((it, i) => {
-            const r = shown.byId.get(it.id)!;
-            const o = analysis.outlook.get(it.id);
-            const isDragged = drag?.id === it.id;
-            const whoText = describeWork(plan, it.id);
-            return (
-              <div
-                key={it.id}
-                role="listitem"
-                class={cx('row', selected === it.id && 'sel', isDragged && 'dragging', highlight && !highlight.has(it.id) && 'dim')}
-                style={{ top: `${topOf(it.id, i)}px` }}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).closest('input, button, select')) return;
-                  onSelect(selected === it.id ? null : it.id);
-                }}
-              >
-                <button
-                  class="handle"
-                  data-handle={it.id}
-                  aria-label={`#${i + 1} ${it.name}. Drag to reprioritize, or use the arrow keys.`}
-                  title="Drag to reprioritize (or use ↑/↓)"
-                  onPointerDown={(e) => onDown(e as unknown as PointerEvent, it.id, plan.items.indexOf(it))}
-                  onKeyDown={(e) => onKeyMove(e as unknown as KeyboardEvent, it.id, plan.items.indexOf(it))}
-                >
-                  <span class="n">{i + 1}</span>
-                  <Icon.grip />
-                </button>
-                <input
-                  class="cell-input"
-                  value={it.name}
-                  title={it.name}
-                  aria-label="Item name"
-                  ref={(el) => {
-                    if (el) nameRefs.current.set(it.id, el);
-                  }}
-                  onInput={(e) => {
-                    const name = (e.currentTarget as HTMLInputElement).value;
-                    onCommit({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, name } : x)) }, `name:${it.id}`);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      focusName(i + 1);
-                    }
-                  }}
-                  onFocus={() => onSelect(it.id)}
-                />
-                <WhoCell item={it} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
-                <div class="due-cell">
-                  <DateButton
-                    value={it.deadline}
-                    label={`Deadline for ${it.name}`}
-                    placeholder="+ date"
-                    format={(d) => <DueLabel iso={d} year={year} />}
-                    onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
-                  />
+        <div class="tl-clip">
+          <div ref={scaleRef} class="tl-head" style={{ width: `${geo.width}px` }}>
+            <div class="months">
+              {scale.months.map((m) => (
+                <div key={m.left} class="month" style={{ left: `${m.left}px`, width: `${m.width}px` }}>
+                  {m.width >= 34 ? m.label : ''}
                 </div>
-                <div class="status">
-                  <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
+              ))}
+            </div>
+            <div class={cx('ticks', scale.byDay ? 'by-day' : 'by-week')}>
+              {scale.ticks.map((t) =>
+                scale.byDay ? (
+                  <div key={t.d} class={cx('day', t.off && 'off', t.d === todayDay && 'is-today')} style={{ left: `${(t.d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
+                    <span class="dow">{t.dow}</span>
+                    <span class="dnum">{t.label}</span>
+                  </div>
+                ) : (
+                  <div key={t.d} class="wk" style={{ left: `${(t.d - geo.start) * geo.ppd}px` }}>
+                    {t.label}
+                  </div>
+                ),
+              )}
+              {!scale.byDay && todayX !== null && todayDay !== null && (
+                <div class="tick-today" style={{ left: `${todayX + geo.ppd / 2}px` }}>
+                  {dayParts(toISO(todayDay)).day}
                 </div>
-                <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
-                  <Icon.trash />
-                </button>
-              </div>
-            );
-          })}
-          <div class="row draft" style={{ top: `${order.length * ROW}px` }}>
-            <span class="handle" aria-hidden="true">
-              <Icon.plus />
-            </span>
-            <input
-              ref={draftRef}
-              class="cell-input"
-              value={draft}
-              placeholder="Add an item…"
-              aria-label="New item: type its name"
-              onInput={(e) => {
-                const v = (e.currentTarget as HTMLInputElement).value;
-                if (!v.trim()) {
-                  setDraft(v);
-                  return;
-                }
-                const id = createItem({ name: v });
-                setDraft('');
-                setFocusReq({ id, mode: 'end' });
-              }}
-            />
-            <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
-              <span class="who-empty">+ who</span>
-            </button>
-            <div class="due-cell">
-              <DateButton
-                value={undefined}
-                label="New item: set a deadline"
-                placeholder="+ date"
-                format={(d) => d}
-                onChange={(date) => {
-                  if (!date) return;
-                  setFocusReq({ id: createItem({ deadline: date }), mode: 'select' });
-                }}
-              />
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* timeline */}
-      <div class="timeline" style={{ width: `${geo.width}px`, minWidth: `${geo.width}px` }}>
-        <div class="tl-head" aria-hidden="true">
-          <div class="months">
-            {scale.months.map((m) => (
-              <div key={m.left} class="month" style={{ left: `${m.left}px`, width: `${m.width}px` }}>
-                {m.width >= 34 ? m.label : ''}
+      <div class="board" ref={boardRef} onScroll={followScroll}>
+        {/* list */}
+        <div class="list" role="list" aria-label="Items in priority order">
+          <div class="rows" style={{ height: `${height}px` }}>
+            {order.map((it, i) => {
+              const r = shown.byId.get(it.id)!;
+              const o = analysis.outlook.get(it.id);
+              const isDragged = drag?.id === it.id;
+              const whoText = describeWork(plan, it.id);
+              return (
+                <div
+                  key={it.id}
+                  role="listitem"
+                  class={cx('row', selected === it.id && 'sel', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
+                  style={{ top: `${topOf(it.id, i)}px` }}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('input, button, select')) return;
+                    onSelect(selected === it.id ? null : it.id);
+                  }}
+                >
+                  <button
+                    class="handle"
+                    data-handle={it.id}
+                    aria-label={`#${i + 1} ${it.name}. Drag to reprioritize, or use the arrow keys.`}
+                    title="Drag to reprioritize (or use ↑/↓)"
+                    onPointerDown={(e) => onDown(e as unknown as PointerEvent, it.id, plan.items.indexOf(it))}
+                    onKeyDown={(e) => onKeyMove(e as unknown as KeyboardEvent, it.id, plan.items.indexOf(it))}
+                  >
+                    <span class="n">{i + 1}</span>
+                    <Icon.grip />
+                  </button>
+                  <input
+                    class="cell-input"
+                    value={it.name}
+                    title={it.name}
+                    aria-label="Item name"
+                    ref={(el) => {
+                      if (el) nameRefs.current.set(it.id, el);
+                    }}
+                    onInput={(e) => {
+                      const name = (e.currentTarget as HTMLInputElement).value;
+                      onCommit({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, name } : x)) }, `name:${it.id}`);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        focusName(i + 1);
+                      }
+                    }}
+                    onFocus={() => onSelect(it.id)}
+                  />
+                  <WhoCell item={it} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  <div class="due-cell">
+                    <DateButton
+                      value={it.deadline}
+                      label={`Deadline for ${it.name}`}
+                      placeholder="+ date"
+                      format={(d) => <DueLabel iso={d} year={year} />}
+                      onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
+                    />
+                  </div>
+                  <div class="status">
+                    <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
+                  </div>
+                  <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
+                    <Icon.trash />
+                  </button>
+                </div>
+              );
+            })}
+            <div class="row draft" style={{ top: `${order.length * ROW}px` }}>
+              <span class="handle" aria-hidden="true">
+                <Icon.plus />
+              </span>
+              <input
+                ref={draftRef}
+                class="cell-input"
+                value={draft}
+                placeholder="Add an item…"
+                aria-label="New item: type its name"
+                onInput={(e) => {
+                  const v = (e.currentTarget as HTMLInputElement).value;
+                  if (!v.trim()) {
+                    setDraft(v);
+                    return;
+                  }
+                  const id = createItem({ name: v });
+                  setDraft('');
+                  setFocusReq({ id, mode: 'end' });
+                }}
+              />
+              <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
+                <span class="who-empty">+ who</span>
+              </button>
+              <div class="due-cell">
+                <DateButton
+                  value={undefined}
+                  label="New item: set a deadline"
+                  placeholder="+ date"
+                  format={(d) => d}
+                  onChange={(date) => {
+                    if (!date) return;
+                    setFocusReq({ id: createItem({ deadline: date }), mode: 'select' });
+                  }}
+                />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* timeline */}
+        <div class="timeline" style={{ width: `${geo.width}px`, minWidth: `${geo.width}px` }}>
+          <div class="grid" style={{ height: `${height}px` }}>
+            {offDays.map((s) => (
+              <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
+            ))}
+            {todayX !== null && (
+              <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />
+            )}
+          </div>
+          <div class="rows" style={{ height: `${height}px` }}>
+            {order.map((it, i) => (
+              <BarRow
+                key={it.id}
+                it={it}
+                top={topOf(it.id, i)}
+                shown={shown}
+                base={analysis.current}
+                planned={analysis.planned}
+                analysis={analysis}
+                lensActive={factor !== 1}
+                x={x}
+                ppd={geo.ppd}
+                laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
+                dragging={!!drag}
+                dim={!!highlight && !highlight.has(it.id)}
+                chain={!!highlight && highlight.has(it.id)}
+                year={year}
+                sel={selected === it.id}
+                onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
+              />
             ))}
           </div>
-          <div class={cx('ticks', scale.byDay ? 'by-day' : 'by-week')}>
-            {scale.ticks.map((t) =>
-              scale.byDay ? (
-                <div key={t.d} class={cx('day', t.off && 'off', t.d === todayDay && 'is-today')} style={{ left: `${(t.d - geo.start) * geo.ppd}px`, width: `${geo.ppd}px` }}>
-                  <span class="dow">{t.dow}</span>
-                  <span class="dnum">{t.label}</span>
-                </div>
-              ) : (
-                <div key={t.d} class="wk" style={{ left: `${(t.d - geo.start) * geo.ppd}px` }}>
-                  {t.label}
-                </div>
-              ),
-            )}
-            {!scale.byDay && todayX !== null && todayDay !== null && (
-              <div class="tick-today" style={{ left: `${todayX + geo.ppd / 2}px` }}>
-                {dayParts(toISO(todayDay)).day}
-              </div>
-            )}
-          </div>
-        </div>
-        <div class="grid" style={{ height: `${height}px` }}>
-          {offDays.map((s) => (
-            <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
-          ))}
-          {todayX !== null && (
-            <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />
-          )}
-        </div>
-        <div class="rows" style={{ height: `${height}px` }}>
-          {order.map((it, i) => (
-            <BarRow
-              key={it.id}
-              it={it}
-              top={topOf(it.id, i)}
-              shown={shown}
-              base={analysis.current}
-              planned={analysis.planned}
-              analysis={analysis}
-              lensActive={factor !== 1}
-              x={x}
-              ppd={geo.ppd}
-              laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
-              dragging={!!drag}
-              dim={!!highlight && !highlight.has(it.id)}
-              chain={!!highlight && highlight.has(it.id)}
-              year={year}
-              sel={selected === it.id}
-              onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
-            />
-          ))}
         </div>
       </div>
 
@@ -506,6 +537,38 @@ function BarRow(props: {
       )}
       {r.status === 'empty' && <span class="empty-bar" style={{ left: '8px', top: `${ROW / 2 - 9}px` }}>add effort to schedule this</span>}
       {r.status === 'blocked' && <span class="empty-bar" style={{ left: '8px', top: `${ROW / 2 - 9}px`, color: 'var(--danger)' }}>⛔ {r.problem}</span>}
+    </div>
+  );
+}
+
+/**
+ * What the marks on the chart mean. Diamonds are the usual Gantt milestone marker; here each one is an item's deadline,
+ * coloured like its delivery date. With a lens on, bars are stretched and a dashed outline keeps the user's own estimate.
+ */
+export function ChartKey({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
+  const l = lensById(lens);
+  return (
+    <div class="chart-key" aria-label="Chart key">
+      <span>
+        <i class="k-diamond" style={{ background: 'var(--ok)' }} />
+        <i class="k-diamond" style={{ background: 'var(--warn)' }} />
+        <i class="k-diamond" style={{ background: 'var(--danger)' }} />
+        deadline: on time, tight, late
+      </span>
+      <span>
+        <i class="k-late" /> past its deadline
+      </span>
+      <span>
+        <i class="k-today" /> today
+      </span>
+      {l.factor !== 1 && (
+        <span class="k-lens">
+          <i class="k-ghost" /> your estimate · bars show {l.label} ({l.short})
+          <button class="link-btn" onClick={onPlanned}>
+            Show as planned
+          </button>
+        </span>
+      )}
     </div>
   );
 }

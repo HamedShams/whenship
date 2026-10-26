@@ -76,7 +76,8 @@ describe('app (web and widget share it)', () => {
     await act(() => button(document.body, 'Save plan').click());
     await act(() => new Promise((r) => setTimeout(r, 0)));
     expect(host.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'client-deliverables.whenship.json', mime: 'application/json' }));
-    await act(() => button(root, 'Copy link').click());
+    await act(() => button(root, 'Export').click());
+    await act(() => (document.querySelector('.menu .menu-link') as HTMLButtonElement).click());
     expect(host.copy).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/example\.test\/#p=/));
   });
 
@@ -443,6 +444,87 @@ describe('v1.3: selection, dragging bars, lenses, colours and title', () => {
     const { VERSION } = await import('../../src/ui/config');
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
     expect(VERSION).toBe(pkg.version);
-    expect(pkg.version).toBe('1.3.0');
+    expect(pkg.version).toBe('1.3.1');
+  });
+});
+
+describe('v1.3.1: dragging cleanly, sticky headers, chart key, copy link and asking Claude', () => {
+  const ptr = (type: string, el: Element, y: number, x = 10) => {
+    const e = new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
+    act(() => void el.dispatchEvent(e));
+    return e;
+  };
+
+  it('pressing a bar never starts a text selection, and a drag leaves no hover handles or focus behind', () => {
+    const { root } = mount();
+    const name = root.querySelectorAll('.row:not(.draft) .cell-input')[1] as HTMLInputElement;
+    name.focus();
+    window.getSelection()?.selectAllChildren(root);
+    const bar = root.querySelectorAll('.bars')[3]!;
+    expect(ptr('pointerdown', bar, 300).defaultPrevented).toBe(true);
+    ptr('pointermove', bar, 300 - 44 * 3);
+    const wrap = root.querySelector('.board-wrap')!;
+    expect(wrap.classList.contains('is-dragging')).toBe(true);
+    const dragged = root.querySelector('.row.dragging')!;
+    expect(dragged.classList.contains('by-bar')).toBe(true); // shows its number, not a grip
+    expect(document.activeElement).not.toBe(name);
+    expect(window.getSelection()?.toString() ?? '').toBe('');
+    ptr('pointerup', bar, 300 - 44 * 3);
+    expect(wrap.classList.contains('is-dragging')).toBe(false);
+    expect(root.querySelector('.row.dragging')).toBeNull();
+  });
+
+  it('the column titles and calendar scale sit outside the scrolling board, so they can stick to the page', () => {
+    const { root } = mount();
+    const head = root.querySelector('.board-wrap > .board-head')!;
+    expect(head.querySelector('.list-head')).not.toBeNull();
+    expect(head.querySelector('.tl-clip > .tl-head .months')).not.toBeNull();
+    expect(root.querySelector('.board .list-head, .board .tl-head')).toBeNull();
+    // the header and the item card both read the toolbar's height
+    expect((root.querySelector('.app') as HTMLElement).style.getPropertyValue('--toolbar-h')).toMatch(/^\d+px$/);
+  });
+
+  it('a chart key explains the diamonds; with a lens on it explains the dashed outlines and offers the way back', async () => {
+    const { root } = mount();
+    expect(text(root, '.chart-key')).toMatch(/deadline: on time, tight, late/);
+    expect(root.querySelectorAll('.chart-key .k-diamond')).toHaveLength(3);
+    expect(root.querySelector('.chart-key .k-lens')).toBeNull();
+    expect(root.querySelectorAll('.plan-ghost')).toHaveLength(0);
+    await act(() => button(root, 'Safe bet').click());
+    expect(text(root, '.chart-key .k-lens')).toMatch(/your estimate · bars show Safe bet \(3\.1×\)/);
+    expect(root.querySelectorAll('.plan-ghost').length).toBeGreaterThan(0);
+    await act(() => button(root, 'Show as planned').click());
+    expect(root.querySelectorAll('.plan-ghost')).toHaveLength(0);
+    expect(root.querySelector('.seg [aria-pressed="true"]')!.textContent).toBe('As planned1×');
+  });
+
+  it('copy link lives in the export menu only, marked with a link icon', async () => {
+    const { root } = mount();
+    expect([...root.querySelectorAll('.topbar > button')].map((b) => b.textContent?.trim())).not.toContain('Copy link');
+    await act(() => button(root, 'Export').click());
+    const link = document.querySelector('.menu .menu-link')!;
+    expect(link.textContent!.trim()).toMatch(/^Copy link/);
+    expect(link.querySelector('svg')).not.toBeNull();
+  });
+
+  it('the person editor is a narrower popover', async () => {
+    const { root } = mount();
+    await act(() => (root.querySelector('[data-lane="sara"]') as HTMLButtonElement).click());
+    expect(document.querySelector('.popover.lane-pop')).not.toBeNull();
+  });
+
+  it('"Ask Claude for better options" appears only where the chat can be asked, and sends the current plan', async () => {
+    const { root } = mount();
+    expect(root.querySelector('.insight.ask')).toBeNull(); // the website has no chat
+    document.body.innerHTML = '';
+    const askClaude = vi.fn(async () => true);
+    const asked = mount({ mode: 'widget', canAskClaude: () => true, askClaude });
+    await act(() => button(asked.root, 'Safe bet').click());
+    const card = asked.root.querySelector('.insight.ask')!;
+    expect(card.textContent).toMatch(/Ask Claude for better options/);
+    await act(() => (card.querySelector('button') as HTMLButtonElement).click());
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(askClaude).toHaveBeenCalledWith(expect.objectContaining({ title: 'Client deliverables' }), 'safe');
+    expect(text(asked.root, '.toast')).toMatch(/answer appears in the chat/);
   });
 });

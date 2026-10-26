@@ -14,7 +14,7 @@ whenship is a deterministic scheduler. It takes people or teams ("lanes"), work 
 | Tool | Use it to |
 |---|---|
 | `show_plan` | Schedule a plan and show the interactive chart. Always the first call. |
-| `what_if` | Compare changes against the current plan (reorder, effort, deadline, people, holidays, working days). |
+| `what_if` | Compare a change against the current plan: a list of simple `changes` (reorder, effort, deadline, people, holidays, working days), or a whole changed copy of the plan as `alternative` for anything else (moving work between people, splitting or cutting items, dependencies, combinations). |
 | `find_options` | Find the changes that meet more deadlines, each with its exact effect. |
 | `export_plan` | Get the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link. |
 
@@ -34,7 +34,7 @@ If no whenship tools are available, say so in one line and offer two ways forwar
    - the items that are late or tight and, in a few words, why (the tool explains who was busy with what);
    - the best one to three options. Call `find_options` when anything is late or tight, and quote its effects;
    - one line on what the user can do in the chart: drag to reprioritise, click to edit, switch the forecast lens.
-6. **Follow-ups**: for "what if we…", call `what_if` with explicit changes and report the difference. When the user wants to keep a change, call `show_plan` with the changed plan.
+6. **Follow-ups**: for "what if we…", call `what_if` and report the difference: with `changes` when the list covers it, otherwise with the whole changed plan as `alternative` (keep the names of items that stay the same). When the user wants to keep a change, call `show_plan` with the changed plan.
 7. **The user can edit the chart directly.** Their latest edits reach you automatically as the current plan (a context update from the chart). Always build on that latest plan, not on an older one from earlier in the conversation.
 
 ## Forecast lenses (explain only when asked or when it matters)

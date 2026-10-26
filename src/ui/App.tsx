@@ -1,12 +1,12 @@
 import type { ComponentChildren } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { analyze, criticalChain, type Analysis } from '../engine/analysis';
 import { applyChanges } from '../engine/changes';
 import { findInsights, type Insight } from '../engine/insights';
 import type { LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
-import { autoZoom, Board, timelineSpan, type Zoom } from './Board';
+import { autoZoom, Board, ChartKey, timelineSpan, type Zoom } from './Board';
 import { Details } from './Details';
 import { buildExport, type ExportFile } from './exporters';
 import { Header, type ExportKind } from './Header';
@@ -30,6 +30,10 @@ export interface Host {
   baseUrl(): string | null;
   /** Called after every change (the widget syncs it into Claude's context). */
   onChange?(plan: NormalizedPlan, lens: LensId, analysis: Analysis): void;
+  /** Whether the chat can be asked from the chart (the widget, in hosts that accept messages). */
+  canAskClaude?(): boolean;
+  /** Ask Claude in the chat for better options than the built-in suggestions; resolve false if it didn't go through. */
+  askClaude?(plan: NormalizedPlan, lens: LensId): Promise<boolean>;
 }
 
 export interface AppProps {
@@ -55,6 +59,21 @@ export function App(props: AppProps) {
   const [dialog, setDialog] = useState<null | { kind: 'import' } | { kind: 'text'; title: string; note: string; text: string }>(null);
   const [toast, setToast] = useState<string | null>(props.notice ?? null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const appRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // The board's header sticks right under the toolbar, and the item card stays clear of it: both read its height.
+  useLayoutEffect(() => {
+    const bar = toolbarRef.current;
+    const root = appRef.current;
+    if (!bar || !root) return;
+    const measure = () => root.style.setProperty('--toolbar-h', `${bar.offsetHeight}px`);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (props.externalPlan) h.reset(props.externalPlan);
@@ -126,6 +145,13 @@ export function App(props: AppProps) {
     else setDialog({ kind: 'text', title: 'Share link', note: 'Copy this link. The whole plan travels inside it (after the #), so nothing is uploaded anywhere.', text: url });
   }, [plan, lens, host]);
 
+  // In Claude, one click from the chart asks for ideas beyond the built-in suggestions (reassigning, splitting, combinations).
+  const canAsk = !!host.askClaude && !!host.canAskClaude?.();
+  const askClaude = async () => {
+    const ok = await host.askClaude!(plan, lens);
+    setToast(ok ? 'Asked Claude: the answer appears in the chat' : "Couldn't post to the chat. Ask Claude there in your own words.");
+  };
+
   const loadPlan = (p: NormalizedPlan, note?: string) => {
     h.commit(p);
     setSelected(null);
@@ -142,8 +168,8 @@ export function App(props: AppProps) {
   const empty = plan.items.length === 0;
 
   return (
-    <div class="app">
-      <div class="toolbar">
+    <div class="app" ref={appRef}>
+      <div class="toolbar" ref={toolbarRef}>
         <Header
           plan={plan}
           lens={lens}
@@ -178,7 +204,9 @@ export function App(props: AppProps) {
               h.commit(applyChanges(plan, s.changes).plan);
               setToast(`Applied: ${s.title}. Undo with ⌘/Ctrl Z`);
             }}
+            onAskClaude={canAsk ? askClaude : undefined}
           />
+          <ChartKey lens={lens} onPlanned={() => setLens('planned')} />
           <Board
             plan={plan}
             analysis={analysis}

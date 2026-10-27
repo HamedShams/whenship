@@ -36,6 +36,8 @@ export interface ValidateOptions {
 
 type Loose = Record<string, unknown>;
 const isObj = (v: unknown): v is Loose => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** Other names people and assistants write for the two lists. Accepted, and said so. */
+const ALIASES: Record<string, 'lanes' | 'items'> = { people: 'lanes', team: 'lanes', members: 'lanes', resources: 'lanes', tasks: 'items', projects: 'items', backlog: 'items', deliverables: 'items' };
 
 export function slugify(text: string): string {
   return text
@@ -130,8 +132,14 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
   const errors: Issue[] = [];
   const warnings: Issue[] = [];
   const features: Features = { ...FEATURES, ...options.features };
-  const raw: Loose = isObj(input) ? input : {};
+  const raw: Loose = isObj(input) ? { ...input } : {};
   if (!isObj(input)) errors.push({ path: '', message: 'a plan must be an object with lanes and items' });
+  for (const [alias, key] of Object.entries(ALIASES)) {
+    if (raw[alias] !== undefined && raw[key] === undefined) {
+      raw[key] = raw[alias];
+      warnings.push({ path: alias, message: `read as \`${key}\`` });
+    }
+  }
 
   // ── basics ──────────────────────────────────────────────────────────────
   const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 120) : DEFAULT_TITLE;
@@ -241,12 +249,15 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
     const id = uniqueId(typeof entry.id === 'string' && entry.id.trim() ? entry.id : name, itemIds, `item-${i + 1}`);
     if (typeof entry.id === 'string' && entry.id.trim() && slugify(entry.id) !== id) warnings.push({ path: `${p}.id`, message: `renamed to "${id}" (ids must be unique)` });
 
-    // work: full form, or shorthand {lane|who|owner, days|effort}
+    // work: full form, shorthand {lane|who|owner, days|effort}, or a map {lane: days}
     let rawWork: unknown[] = Array.isArray(entry.work) ? entry.work : [];
     if (!Array.isArray(entry.work)) {
       const who = entry.lane ?? entry.who ?? entry.owner ?? entry.assignee;
-      const days = entry.days ?? entry.effort ?? entry.estimate;
-      if (who !== undefined || days !== undefined) rawWork = [{ lane: who ?? (lanes[0]?.id ?? 'Me'), days: days ?? 0 }];
+      const days = entry.days ?? entry.effort ?? entry.estimate ?? (isObj(entry.work) ? entry.work : undefined);
+      if (isObj(days)) {
+        rawWork = Object.entries(days).map(([lane, d]) => ({ lane, days: d }));
+        warnings.push({ path: `${p}.work`, message: 'read {lane: days} as who does what' });
+      } else if (who !== undefined || days !== undefined) rawWork = [{ lane: who ?? (lanes[0]?.id ?? 'Me'), days: days ?? 0 }];
     }
     const work: NormalizedWork[] = [];
     rawWork.slice(0, LIMITS.partsPerItem).forEach((w, j) => {
@@ -331,6 +342,8 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
       else if (entry.value !== undefined && entry.value !== null && entry.value !== '') errors.push({ path: `${p}.value`, message: 'must be a number' });
     }
     if (typeof entry.note === 'string' && entry.note.trim()) item.note = entry.note.trim().slice(0, 500);
+    const done = entry.done ?? entry.completed ?? entry.finished;
+    if (done === true || done === 'true' || done === 'yes' || done === 1 || (typeof entry.status === 'string' && /^(done|completed|finished|shipped)$/i.test(entry.status.trim()))) item.done = true;
     const deps = entry.dependsOn ?? entry.after ?? entry.depends;
     if (deps !== undefined) pendingDeps.push({ item, refs: Array.isArray(deps) ? deps : [deps], path: `${p}.dependsOn` });
     items.push(item);
@@ -388,6 +401,7 @@ export function compactPlan(plan: NormalizedPlan): Record<string, unknown> {
     if (it.dependsOn.length) item.dependsOn = it.dependsOn;
     if (it.notBefore) item.notBefore = it.notBefore;
     if (it.note) item.note = it.note;
+    if (it.done) item.done = true;
     return item;
   });
   return out;

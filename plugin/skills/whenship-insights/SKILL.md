@@ -177,6 +177,25 @@ Model human attention as the constrained lane, with the review as a hand-off:
 
 Good answer shape: "Lina's review queue sets the last date, so faster drafting barely helps." Then test the real levers: more review time (`setLane` availability), a second reviewer (`addLane`), or smaller changes (`setEffort` on review).
 
+## When the chart asks you for options
+
+The chart has an "Ask Claude" card. Pressing it posts a message asking for better options than the engine's own list, and the chart's current plan arrives in your context. Answer like this:
+
+1. Think past the engine's menu: move work between people (`setEffort` to 0 on one lane and the days on another), change who waits for whom, trim a part, push a date, add a person, or combine two small moves.
+2. Check every idea with `what_if` (use `alternative` for ideas that need a whole changed plan, such as splitting an item). Keep the ones that meet more deadlines or make the plan sturdier, and say what each one costs elsewhere.
+3. Call `show_plan` with the plan **unchanged** and your best two or three ideas in `suggestions`. Each needs a short imperative title and the `changes` that make it. Ideas that need an `alternative` plan can't be sent as suggestions: describe them in the chat instead, with the `what_if` numbers.
+4. In the chat, one or two lines per option: what it is, what it saves, what it costs. The cards carry the exact effects.
+
+```jsonc
+{
+  "plan": { "title": "…the current plan, exactly as it is…", "lanes": [{ "name": "Sara" }, { "name": "Omar" }], "items": [{ "name": "Research for Helix", "who": "Sara", "days": 5 }, { "name": "Quick fix for Acme", "who": "Sara", "days": 1 }] },
+  "suggestions": [
+    { "title": "Let Omar take the Helix research", "changes": [{ "op": "setEffort", "item": "Research for Helix", "lane": "Sara", "days": 0 }, { "op": "setEffort", "item": "Research for Helix", "lane": "Omar", "days": 5 }] },
+    { "title": "Mark the Acme quick fix done", "changes": [{ "op": "setDone", "item": "Quick fix for Acme", "done": true }] }
+  ]
+}
+```
+
 ## Phrases that work
 
 - "As planned, X lands on <date>. If it runs long the way work usually does, expect <likely date>; <safe-bet date> is a date you can promise."

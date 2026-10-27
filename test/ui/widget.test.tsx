@@ -136,7 +136,7 @@ describe('Claude widget (MCP App)', () => {
     await show(h);
     await openFull(h);
     await act(() => saturday(h.root).click()); // an edit that hasn't been synced yet
-    const ask = h.root.querySelector('.insight.ask')!;
+    const ask = h.root.querySelector('.option.ask')!;
     await act(() => (ask.querySelector('button') as HTMLButtonElement).click());
     await until(() => h.log.messages.length === 1);
     expect(h.log.events).toEqual(['context', 'message']);
@@ -150,7 +150,7 @@ describe('Claude widget (MCP App)', () => {
     const h = await start();
     await show(h);
     await openFull(h);
-    expect(h.root.querySelector('.insight.ask')).toBeNull();
+    expect(h.root.querySelector('.option.ask')).toBeNull();
   });
 
   it('saves files through the host, or hands the plan to the website when the host cannot download', async () => {

@@ -175,6 +175,31 @@ export function findInsights(plan: NormalizedPlan, lens: LensId = 'planned', lim
   return picked;
 }
 
+/**
+ * What one set of changes does to the plan, measured by a real re-plan: the same numbers the built-in suggestions
+ * carry. Used for options an assistant proposes (`show_plan` with `suggestions`).
+ */
+export function assess(plan: NormalizedPlan, changes: Change[], lens: LensId = 'planned', features: Pick<Features, 'itemValue'> = FEATURES): Pick<Insight, 'effect' | 'deltas' | 'newlyMet' | 'newlyMissed'> & { plan: NormalizedPlan; skipped: string[] } {
+  const factor = lensById(lens).factor;
+  const nextLens = LENSES[Math.min(LENSES.findIndex((l) => l.factor === factor) + 1, LENSES.length - 1)] ?? LENSES[0]!;
+  const base = measure(plan, factor, nextLens.factor);
+  const applied = applyChanges(plan, changes);
+  const m = measure(applied.plan, factor, nextLens.factor);
+  const nameOf = new Map(plan.items.map((it) => [it.id, it.name]));
+  const newlyMet = [...m.met].filter((id) => !base.met.has(id));
+  const newlyMissed = [...base.met].filter((id) => !m.met.has(id));
+  const deltas = {
+    met: m.met.size - base.met.size,
+    metAtNextLens: m.metNext - base.metNext,
+    lateDays: base.lateDays - m.lateDays,
+    valueLate: features.itemValue ? base.valueLate - m.valueLate : 0,
+    endDays: base.end - m.end,
+  };
+  let effect = describe(deltas, newlyMet, newlyMissed, nameOf, plan, nextLens.label, features.itemValue);
+  if (!effect) effect = deltas.endDays < 0 ? `all done ${-deltas.endDays} working day${deltas.endDays === -1 ? '' : 's'} later` : 'no deadline or end-date change';
+  return { effect, deltas, newlyMet, newlyMissed, plan: applied.plan, skipped: applied.skipped.map((s) => s.reason) };
+}
+
 function describe(
   d: Insight['deltas'],
   met: string[],

@@ -82,10 +82,12 @@ describe('MCP connector', () => {
     expect(client.getInstructions()).toMatch(/likely 1\.6×, safe bet 3\.1×/);
   });
 
-  it('gives the model instructions to use the engine instead of its own math', () => {
+  it('tells the model what the engine is authoritative for, without telling it how to behave', () => {
     const instructions = client.getInstructions() ?? '';
-    expect(instructions).toMatch(/Do not work out dates/);
-    expect(instructions).toMatch(/Never inflate/);
+    expect(instructions).toMatch(/authoritative answer/);
+    expect(instructions).toMatch(/stays as given/);
+    expect(instructions).toMatch(/suggestions/);
+    expect(instructions).not.toMatch(/\b(do not|never|you must|always)\b/i); // descriptive, as the directory review wants
   });
 
   it('show_plan returns a complete text answer plus the plan for the chart', async () => {
@@ -318,7 +320,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
   it('prints its version and help, and refuses bad options with a clear message', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
     expect(run('--version').stdout.trim()).toBe(pkg.version);
-    expect(run('-h').stdout).toMatch(/^whenship [\d.]+: when will it ship, honestly\?[\s\S]*--stdio/);
+    expect(run('-h').stdout).toMatch(/^whenship [\w.-]+: when will it ship, honestly\?[\s\S]*--stdio/);
     const unknown = run('--nope');
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toMatch(/^Unknown option: --nope/);

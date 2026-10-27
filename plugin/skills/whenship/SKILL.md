@@ -13,8 +13,8 @@ whenship is a deterministic scheduler. It takes people or teams ("lanes"), work 
 
 | Tool | Use it to |
 |---|---|
-| `show_plan` | Schedule a plan and show the interactive chart. Always the first call. |
-| `what_if` | Compare a change against the current plan: a list of simple `changes` (reorder, effort, deadline, people, holidays, working days), or a whole changed copy of the plan as `alternative` for anything else (moving work between people, splitting or cutting items, dependencies, combinations). |
+| `show_plan` | Schedule a plan and show the interactive chart. Always the first call. With `changes`, it applies edits first and compares before and after (one call for "move X up and show me"). With `suggestions`, your own options appear in the chart as cards the user can apply. |
+| `what_if` | Compare a change against the current plan, in text: a list of simple `changes` (reorder, effort, deadline, done, people, holidays, working days), or a whole changed copy of the plan as `alternative` for anything else (moving work between people, splitting or cutting items, dependencies, combinations). |
 | `find_options` | Find the changes that meet more deadlines, each with its exact effect. |
 | `export_plan` | Get the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link. |
 
@@ -34,8 +34,10 @@ If no whenship tools are available, say so in one line and offer two ways forwar
    - the items that are late or tight and, in a few words, why (the tool explains who was busy with what);
    - the best one to three options. Call `find_options` when anything is late or tight, and quote its effects;
    - one line on what the user can do in the chart: drag to reprioritise, click to edit, switch the forecast lens.
-6. **Follow-ups**: for "what if we…", call `what_if` and report the difference: with `changes` when the list covers it, otherwise with the whole changed plan as `alternative` (keep the names of items that stay the same). When the user wants to keep a change, call `show_plan` with the changed plan.
+6. **Follow-ups**: for "what if we…", call `what_if` and report the difference: with `changes` when the list covers it, otherwise with the whole changed plan as `alternative` (keep the names of items that stay the same). When the user wants to keep a change, or asks for it outright ("move X to the top"), call `show_plan` with the current plan and the same `changes`: the chart updates and the answer shows what moved. For an `alternative`, call `show_plan` with the changed plan.
 7. **The user can edit the chart directly.** Their latest edits reach you automatically as the current plan (a context update from the chart). Always build on that latest plan, not on an older one from earlier in the conversation.
+8. **Finished work**: when the user says something is done, pass `done: true` on that item (or the `setDone` change). It then takes no more time, anything waiting for it can start, and its deadline leaves the count. Say what moved as a result.
+9. **When the chart asks you** (the user pressed "Ask Claude" on the chart, and a message asks for better options): work from the current plan in your context, check each idea with `what_if`, then call `show_plan` with the plan **unchanged** and your best two or three ideas in `suggestions` (a short title and the `changes` that make it). They appear in the chart as cards; explain each in a line or two. The `whenship-insights` skill has the details.
 
 ## Forecast lenses (explain only when asked or when it matters)
 
@@ -78,6 +80,7 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
 ```
 
 - `start` is optional (default today).
+- `done: true` on an item marks it finished.
 - `availability` is the percent of someone's working time available for this plan; `size` makes a lane a team.
 - `items` are in priority order. `after` inside `work` is a hand-off (Sara starts when Martin is done); `maxPeople` lets several people of a team work on one item at once; `notBefore` means waiting on something external.
 

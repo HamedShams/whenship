@@ -1,20 +1,21 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { analyze, criticalChain, type Analysis } from '../engine/analysis';
-import { applyChanges } from '../engine/changes';
-import { findInsights, type Insight } from '../engine/insights';
+import { applyChanges, type Change } from '../engine/changes';
+import { assess, findInsights, type Insight } from '../engine/insights';
 import type { LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
+import { DEFAULT_TITLE } from '../engine/validate';
 import { shareUrl } from '../io/format';
 import type { Zoom } from '../io/view';
-import { autoZoom, Board, Legend, timelineSpan } from './Board';
-import { Details } from './Details';
+import { Board, Legend } from './Board';
+import { ItemDetails } from './Details';
 import { buildExport, type ExportFile } from './exporters';
 import { Header, type ExportKind } from './Header';
 import { Setup } from './Setup';
 import { usePlanHistory } from './state';
-import { Summary } from './Summary';
-import { ImportDialog, TextDialog, Welcome } from './Welcome';
+import { Headline, Options, type Option } from './Summary';
+import { EmptyState, IntroStrip, OpenDialog, TextDialog, type OpenTab } from './Welcome';
 import { useDebounced } from './lib';
 
 /** What differs between the website, the offline file and the Claude widget. */
@@ -37,11 +38,17 @@ export interface Host {
   askClaude?(plan: NormalizedPlan, lens: LensId): Promise<boolean>;
 }
 
+/** An option Claude proposed through `show_plan` (`suggestions`). Its effect is re-measured against the current plan. */
+export interface ClaudeOption {
+  title: string;
+  changes: Change[];
+}
+
 export interface AppProps {
   host: Host;
   initialPlan: NormalizedPlan;
   initialLens?: LensId;
-  /** The timeline zoom to start with; unset picks one from the plan's length. */
+  /** The timeline zoom to start with; unset is `fit`. */
   initialZoom?: Zoom | null;
   today: string;
   /** Replace the plan from outside (e.g. Claude sent an update). Changing `externalVersion` triggers it. */
@@ -50,6 +57,13 @@ export interface AppProps {
   headerExtra?: ComponentChildren;
   footer?: ComponentChildren;
   notice?: string | null;
+  /** First visit: the plan is an example, shown with a strip that says so until the first edit (or a dismissal). */
+  intro?: boolean;
+  onIntroDone?: () => void;
+  /** Options Claude proposed; shown next to the engine's suggestions. */
+  claudeOptions?: ClaudeOption[];
+  /** One line under the plan name (where it lives, or whether Claude has the latest edits). */
+  caption?: string;
 }
 
 export function App(props: AppProps) {
@@ -59,13 +73,15 @@ export function App(props: AppProps) {
   const [lens, setLens] = useState<LensId>(props.initialLens ?? 'planned');
   const [selected, setSelected] = useState<string | null>(null);
   const [chainOn, setChainOn] = useState(false);
-  const [dialog, setDialog] = useState<null | { kind: 'import' } | { kind: 'text'; title: string; note: string; text: string }>(null);
+  const [dialog, setDialog] = useState<null | { kind: 'open'; tab: OpenTab } | { kind: 'text'; title: string; note: string; text: string }>(null);
   const [toast, setToast] = useState<string | null>(props.notice ?? null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [intro, setIntro] = useState(!!props.intro);
+  const [previewOpt, setPreviewOpt] = useState<Option | null>(null);
   const appRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  // The board's header sticks right under the toolbar, and the item card stays clear of it: both read its height.
+  // The board's header sticks right under the toolbar, and anchored popovers stay clear of it: both read its height.
   useLayoutEffect(() => {
     const bar = toolbarRef.current;
     const root = appRef.current;
@@ -82,16 +98,41 @@ export function App(props: AppProps) {
     if (props.externalPlan) h.reset(props.externalPlan);
   }, [props.externalVersion]);
 
+  // The first edit ends the intro: the example became the user's plan.
+  const endIntro = useCallback(() => {
+    setIntro((on) => {
+      if (on) props.onIntroDone?.();
+      return false;
+    });
+  }, [props.onIntroDone]);
+  const commit = useCallback(
+    (next: NormalizedPlan, key?: string) => {
+      h.commit(next, key);
+      if (next !== plan) endIntro();
+    },
+    [h.commit, plan, endIntro],
+  );
+
   const analysis = useMemo(() => analyze(plan, lens), [plan, lens]);
-  // timeline zoom: picked from the plan's length until the user chooses one
-  const [zoom, setZoom] = useState<Zoom | null>(props.initialZoom ?? null);
-  const zoomShown: Zoom = useMemo(() => zoom ?? autoZoom(timelineSpan(plan, analysis, today).span), [zoom, plan, analysis, today]);
+  const [zoom, setZoom] = useState<Zoom>(props.initialZoom ?? 'fit');
   const settled = useDebounced(plan, 180);
   const insights: Insight[] = useMemo(() => findInsights(settled, lens), [settled, lens]);
   const pending = settled !== plan;
+  // one rail: the engine's suggestions, then Claude's (measured against the plan as it is now)
+  const options = useMemo<Option[]>(() => {
+    const own: Option[] = insights.map((s) => ({ id: s.id, kind: s.kind, title: s.title, effect: s.effect, changes: s.changes }));
+    const fromClaude: Option[] = (props.claudeOptions ?? []).flatMap((c, i) => {
+      const a = assess(settled, c.changes, lens);
+      if (a.skipped.length) return []; // it no longer applies (the item or person is gone)
+      return [{ id: `claude:${i}:${JSON.stringify(c.changes)}`, kind: 'claude', title: c.title, effect: a.effect, changes: c.changes }];
+    });
+    return [...own, ...fromClaude];
+  }, [insights, props.claudeOptions, settled, lens]);
+  // the option under the pointer, re-planned, drawn as a ghost on the chart
+  const previewPlan = useMemo(() => (previewOpt ? applyChanges(plan, previewOpt.changes).plan : null), [previewOpt, plan]);
 
   useEffect(() => {
-    host.onChange?.(plan, lens, analysis, zoom);
+    host.onChange?.(plan, lens, analysis, zoom === 'fit' ? null : zoom);
   }, [plan, lens, zoom]);
 
   useEffect(() => {
@@ -152,24 +193,28 @@ export function App(props: AppProps) {
 
   // In Claude, one click from the chart asks for ideas beyond the built-in suggestions (reassigning, splitting, combinations).
   const canAsk = !!host.askClaude && !!host.canAskClaude?.();
-  const askClaude = async () => {
+  const askClaude = useCallback(async () => {
     const ok = await host.askClaude!(plan, lens);
-    setToast(ok ? 'Asked Claude: the answer appears in the chat' : "Couldn't post to the chat. Ask Claude there in your own words.");
-  };
+    if (ok) setToast('Asked Claude: its answer appears in the chat, and its options here');
+    return ok;
+  }, [plan, lens, host]);
 
   const loadPlan = (p: NormalizedPlan, note?: string) => {
-    h.commit(p);
+    commit(p);
     setSelected(null);
     if (note) setToast(note);
   };
 
+  // A fresh plan of the user's own: one person and a first item, ready to rename. The calendar is kept.
   const startBlank = () => {
-    const p = applyChanges(plan, [{ op: 'addLane', lane: { id: 'me', name: 'Me' } }]).plan;
-    const withItem = applyChanges({ ...p, items: [{ id: '', name: 'First item', work: [{ lane: p.lanes[0]!.id, days: 3, maxPeople: 1 }], dependsOn: [] }] }, []).plan;
-    h.commit(withItem);
+    const base = applyChanges({ ...plan, title: DEFAULT_TITLE, lanes: [], items: [] }, [{ op: 'addLane', lane: { id: 'me', name: 'Me' } }]).plan;
+    const withItem = applyChanges({ ...base, items: [{ id: '', name: 'First item', work: [{ lane: 'me', days: 3, maxPeople: 1 }], dependsOn: [] }] }, []).plan;
+    commit(withItem);
+    setSelected(null);
     setFocusId(withItem.items[0]!.id);
   };
 
+  const openDialog = (tab: OpenTab) => setDialog({ kind: 'open', tab });
   const empty = plan.items.length === 0;
 
   return (
@@ -179,38 +224,26 @@ export function App(props: AppProps) {
           plan={plan}
           lens={lens}
           onLens={setLens}
-          onTitle={(t) => h.commit({ ...plan, title: t }, 'title')}
+          onTitle={(t) => commit({ ...plan, title: t }, 'title')}
           canUndo={h.canUndo}
           canRedo={h.canRedo}
           onUndo={h.undo}
           onRedo={h.redo}
           onExport={doExport}
           onCopyLink={copyLink}
-          onOpen={() => setDialog({ kind: 'import' })}
+          onOpen={() => openDialog('paste')}
           extra={props.headerExtra}
-          empty={plan.items.length === 0}
-          caption={host.mode === 'widget' ? 'Plan · your edits reach Claude automatically' : 'Plan · saved in this browser'}
+          empty={empty}
+          caption={props.caption ?? (host.mode === 'widget' ? 'Plan · your edits reach Claude automatically' : 'Plan · saved in this browser')}
         />
-        {!empty && <Setup plan={plan} onCommit={h.commit} />}
+        {!empty && <Setup plan={plan} onCommit={commit} />}
       </div>
+      {intro && !empty && <IntroStrip onOpen={openDialog} onBlank={startBlank} onDismiss={endIntro} />}
       {empty ? (
-        <Welcome today={today} onLoad={loadPlan} onBlank={startBlank} />
+        <EmptyState onOpen={openDialog} onBlank={startBlank} />
       ) : (
         <>
-          <Summary
-            analysis={analysis}
-            insights={insights}
-            pending={pending}
-            chainOn={chainOn}
-            zoom={zoomShown}
-            onZoom={setZoom}
-            onChain={() => setChainOn((v) => !v)}
-            onApply={(s) => {
-              h.commit(applyChanges(plan, s.changes).plan);
-              setToast(`Applied: ${s.title}. Undo with ⌘/Ctrl Z`);
-            }}
-            onAskClaude={canAsk ? askClaude : undefined}
-          />
+          <Headline analysis={analysis} chainOn={chainOn} onChain={() => setChainOn((v) => !v)} zoom={zoom} onZoom={setZoom} />
           <Board
             plan={plan}
             analysis={analysis}
@@ -218,19 +251,29 @@ export function App(props: AppProps) {
             highlight={highlight}
             today={today}
             onSelect={setSelected}
-            onCommit={h.commit}
+            onCommit={commit}
             focusId={focusId}
             onFocused={() => setFocusId(null)}
-            zoom={zoomShown}
+            zoom={zoom}
+            preview={previewPlan}
+            renderDetails={(id) => <ItemDetails plan={plan} analysis={analysis} id={id} onCommit={commit} onClose={() => setSelected(null)} />}
           />
-          {selected && plan.items.some((x) => x.id === selected) && (
-            <Details plan={plan} analysis={analysis} id={selected} onCommit={h.commit} onClose={() => setSelected(null)} />
-          )}
+          <Options
+            options={options}
+            pending={pending}
+            onPreview={setPreviewOpt}
+            onApply={(o) => {
+              setPreviewOpt(null);
+              commit(applyChanges(plan, o.changes).plan);
+              setToast(`Applied: ${o.title}. Undo with ⌘/Ctrl Z`);
+            }}
+            onAskClaude={canAsk ? askClaude : undefined}
+          />
           <Legend lens={lens} onPlanned={() => setLens('planned')} />
         </>
       )}
       {props.footer}
-      {dialog?.kind === 'import' && <ImportDialog today={today} onLoad={loadPlan} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'open' && <OpenDialog today={today} tab={dialog.tab} onLoad={loadPlan} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'text' && <TextDialog title={dialog.title} note={dialog.note} text={dialog.text} onClose={() => setDialog(null)} />}
       {toast && (
         <div class="toast" role="status">

@@ -4,6 +4,7 @@ import { toLensId, type LensId } from '../engine/lens';
 import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { decodeShareLink } from '../io/format';
+import { SAMPLES } from '../io/samples';
 import { toZoom, type Zoom } from '../io/view';
 import { App, type Host } from './App';
 import { boot, FALLBACK_URL, REPO_URL } from './config';
@@ -12,6 +13,8 @@ import { downloadBlob, store } from './lib';
 const KEY = 'whenship:plan:v1';
 const LENS_KEY = 'whenship:lens:v1';
 const ZOOM_KEY = 'whenship:zoom:v1';
+/** Set once the first visit's example has been edited or dismissed: the intro strip never comes back. */
+const INTRO_KEY = 'whenship:intro:v1';
 
 /** The standalone app: local-first (browser storage + files + share links), no account, no server state. */
 export function bootWeb(root: HTMLElement) {
@@ -20,6 +23,7 @@ export function bootWeb(root: HTMLElement) {
   let lens: LensId | undefined;
   let zoom: Zoom | undefined;
   let notice: string | null = null;
+  let intro = false;
 
   const fromLink = location.hash.length > 3 ? decodeShareLink(location.hash.slice(1)) : null;
   if (fromLink) {
@@ -42,7 +46,13 @@ export function bootWeb(root: HTMLElement) {
       }
     }
   }
-  if (!initial) initial = validatePlan({ items: [] }, { today }).plan;
+  if (!initial) {
+    // The first visit opens on an example plan: the chart itself is the welcome, with a strip that says so.
+    if (!store.get(INTRO_KEY)) {
+      initial = validatePlan(SAMPLES[0]!.build(today), { today }).plan;
+      intro = true;
+    } else initial = validatePlan({ items: [] }, { today }).plan;
+  }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const host: Host = {
@@ -81,6 +91,8 @@ export function bootWeb(root: HTMLElement) {
       {...(zoom ? { initialZoom: zoom } : {})}
       today={today}
       notice={notice}
+      intro={intro}
+      onIntroDone={() => store.set(INTRO_KEY, '1')}
       footer={
         <footer class="footer">
           <span>Your plan is stored only in this browser. Save it as a file or share it with a link.</span>

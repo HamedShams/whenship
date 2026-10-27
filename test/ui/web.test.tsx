@@ -23,7 +23,10 @@ const unmount = () => act(() => render(null, root));
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 const button = (label: string, within: ParentNode = document) => [...within.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label))!;
 const lensOn = () => root.querySelector('.seg [aria-pressed="true"]')?.textContent;
-const zoomOn = () => [...root.querySelectorAll('.seg [aria-pressed="true"]')].map((b) => b.textContent).find((t) => /^(Days|Weeks|Months)$/.test(t ?? ''));
+const zoomOn = () => [...root.querySelectorAll('.seg [aria-pressed="true"]')].map((b) => b.textContent).find((t) => /^(Fit|Days|Weeks|Months)$/.test(t ?? ''));
+const INTRO_KEY = 'whenship:intro:v1';
+/** The example plan is loaded as the user's own: a click on its lens or zoom works right away. */
+const example = () => expect(root.querySelector('.intro')).not.toBeNull();
 const type = (el: HTMLTextAreaElement, value: string) => {
   el.value = value;
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -40,17 +43,44 @@ afterEach(() => {
 });
 
 describe('website', () => {
-  it('starts on the welcome screen, with samples and a paste box', () => {
+  it('the first visit opens on an example plan with an intro strip; the chart itself is the welcome', async () => {
     boot();
-    expect(root.querySelector('.welcome')).not.toBeNull();
-    expect(root.querySelectorAll('.sample')).toHaveLength(SAMPLES.length);
+    expect(root.querySelector('.welcome')).toBeNull();
+    example();
+    expect((root.querySelector('.title-input') as HTMLInputElement).value).toBe('Client deliverables');
+    expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(7);
     expect(root.querySelector('.footer')!.textContent).toMatch(/stored only in this browser/);
     expect(root.querySelector<HTMLAnchorElement>('.footer .credit a')!.href).toBe('https://hamedshams.com/');
+    // "More examples" opens the examples tab of the open dialog
+    await act(() => button('More examples').click());
+    expect(document.querySelectorAll('.dialog .sample')).toHaveLength(SAMPLES.length);
+    await act(() => (document.querySelectorAll('.dialog .sample')[1] as HTMLButtonElement).click());
+    expect((root.querySelector('.title-input') as HTMLInputElement).value).toBe('Q4 roadmap');
+    // loading a plan counts as an edit: the intro is over, now and on later visits
+    expect(root.querySelector('.intro')).toBeNull();
+    expect(localStorage.getItem(INTRO_KEY)).toBe('1');
+    unmount();
+    boot();
+    expect(root.querySelector('.intro')).toBeNull();
+  });
+
+  it('dismissing the intro keeps the example and never shows the strip again; a later empty plan shows a small prompt', async () => {
+    boot();
+    example();
+    await act(() => (root.querySelector('.intro-close') as HTMLButtonElement).click());
+    expect(root.querySelector('.intro')).toBeNull();
+    expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(7);
+    expect(localStorage.getItem(INTRO_KEY)).toBe('1');
+    unmount();
+    localStorage.removeItem(PLAN_KEY);
+    boot();
+    expect(root.querySelector('.empty-state')).not.toBeNull();
+    expect(root.querySelector('.intro')).toBeNull();
   });
 
   it('remembers the plan and the chosen lens, so a refresh looks the same', async () => {
     boot();
-    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
+    example();
     await act(() => button('Likely').click());
     await wait(300);
     expect(JSON.parse(localStorage.getItem(PLAN_KEY)!).title).toBe('Client deliverables');
@@ -64,8 +94,8 @@ describe('website', () => {
 
   it('remembers the timeline zoom too, and a shared link opens with its own view', async () => {
     boot();
-    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
-    expect(zoomOn()).toBe('Days'); // picked from the plan's length
+    example();
+    expect(zoomOn()).toBe('Fit'); // the whole plan in the width at hand
     await act(() => button('Weeks').click());
     await wait(300);
     expect(localStorage.getItem(ZOOM_KEY)).toBe('week');
@@ -85,7 +115,7 @@ describe('website', () => {
     localStorage.setItem(PLAN_KEY, '{not json');
     localStorage.setItem(LENS_KEY, 'optimistic');
     boot();
-    expect(root.querySelector('.welcome')).not.toBeNull();
+    example(); // the unreadable plan is ignored: a first visit
     localStorage.setItem(PLAN_KEY, JSON.stringify(SAMPLES[0]!.build(today)));
     unmount();
     boot();
@@ -105,12 +135,15 @@ describe('website', () => {
 
   it('pasting a list plans it; text without items says what to try', async () => {
     boot();
-    const box = root.querySelector('#paste') as HTMLTextAreaElement;
+    await act(() => button('Paste a list').click());
+    const dialog = document.querySelector('.dialog[aria-label="Open a plan"]')!;
+    const box = dialog.querySelector('textarea') as HTMLTextAreaElement;
     await act(() => type(box, 'Item,Days')); // a header row and nothing under it
-    await act(() => button('Plan it').click());
-    expect(text('.welcome .sub')).toMatch(/Could not find any items/);
+    await act(() => button('Plan it', dialog).click());
+    expect(text('.dialog .sub.err')).toMatch(/No items found/);
     await act(() => type(box, 'Grant draft for Acme, 5d, due 7 Oct\nResearch for Brightside, 6d'));
-    await act(() => button('Plan it').click());
+    await act(() => button('Plan it', dialog).click());
+    expect(document.querySelector('.dialog')).toBeNull();
     expect([...root.querySelectorAll('.list .row:not(.draft) .cell-input')].map((i) => (i as HTMLInputElement).value)).toEqual(['Grant draft for Acme', 'Research for Brightside']);
   });
 
@@ -126,14 +159,14 @@ describe('website', () => {
 
   it('"Open" replaces the plan with pasted text (undoable), and Cancel leaves it alone', async () => {
     boot();
-    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
+    example();
     await act(() => button('Open').click());
     const dialog = document.querySelector('.dialog[aria-label="Open a plan"]')!;
     await act(() => type(dialog.querySelector('textarea')!, '{"items": []}'));
-    await act(() => button('Open', dialog).click());
-    expect(dialog.querySelector('.sub')!.textContent).toMatch(/No items found/);
+    await act(() => button('Plan it', dialog).click());
+    expect(dialog.querySelector('.sub.err')!.textContent).toMatch(/No items found/);
     await act(() => type(dialog.querySelector('textarea')!, 'Launch page, 3d'));
-    await act(() => button('Open', dialog).click());
+    await act(() => button('Plan it', dialog).click());
     expect(document.querySelector('.dialog')).toBeNull();
     expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(1);
     await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
@@ -151,7 +184,7 @@ describe('website', () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     boot();
-    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
+    example();
     await act(() => button('Export').click());
     await act(() => button('CSV').click());
     await wait(0);
@@ -166,7 +199,7 @@ describe('website', () => {
   it('shows the link to copy by hand when the clipboard is blocked', async () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => Promise.reject(new Error('blocked')) }, configurable: true });
     boot();
-    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
+    example();
     await act(() => button('Export').click());
     await act(() => (document.querySelector('.menu-link') as HTMLButtonElement).click());
     await wait(0);

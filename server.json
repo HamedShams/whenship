@@ -5,12 +5,12 @@
   "description": "When will it ship? A live what-if Gantt for small teams: realistic dates and deadline risk.",
   "websiteUrl": "https://whenship.app",
   "repository": { "url": "https://github.com/HamedShams/whenship", "source": "github" },
-  "version": "1.5.1",
+  "version": "1.6.0-fable.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "whenship",
-      "version": "1.5.1",
+      "version": "1.6.0-fable.0",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "named", "name": "--stdio" }]
     }

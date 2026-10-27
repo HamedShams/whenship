@@ -20,7 +20,7 @@ export interface ExportFile {
 /** `zoom`: the timeline zoom the user picked, so images look like the chart (unset: fitted to a readable width). */
 export async function buildExport(kind: ExportKind, plan: NormalizedPlan, lens: LensId, dark = false, zoom?: Zoom | null): Promise<ExportFile> {
   const base = slugify(plan.title) || 'plan';
-  const image = { dark, ...(zoom ? { dayWidth: ZOOM_PPD[zoom] } : {}) };
+  const image = { dark, ...(zoom && zoom !== 'fit' ? { dayWidth: ZOOM_PPD[zoom] } : {}) };
   switch (kind) {
     case 'yaml':
       return { name: `${base}.whenship.yaml`, mime: 'application/yaml', data: toYaml(plan) };

@@ -9,7 +9,7 @@ import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
 import type { Zoom } from '../io/view';
-import { App, type Host } from './App';
+import { App, type ClaudeOption, type Host } from './App';
 import { boot, FALLBACK_URL, VERSION } from './config';
 import { bytesToBase64, Icon, Logo } from './lib';
 
@@ -30,10 +30,14 @@ interface State {
   displayMode: string;
   canFullscreen: boolean;
   publicUrl: string | null;
+  /** Options Claude proposed in its last show_plan call (`suggestions`). */
+  claudeOptions: ClaudeOption[];
+  /** Whether Claude's context holds the chart as it is now. */
+  sync: 'synced' | 'pending' | 'off';
 }
 
 const today = todayLocal();
-const state: State = { plan: null, partial: null, lens: 'planned', zoom: null, version: 0, superseded: false, displayMode: 'inline', canFullscreen: false, publicUrl: boot.publicUrl ?? null };
+const state: State = { plan: null, partial: null, lens: 'planned', zoom: null, version: 0, superseded: false, displayMode: 'inline', canFullscreen: false, publicUrl: boot.publicUrl ?? null, claudeOptions: [], sync: 'off' };
 let rootEl: HTMLElement;
 let app: McpApp;
 let lastSynced = '';
@@ -69,29 +73,52 @@ function contextFor(plan: NormalizedPlan, lens: LensId): string {
     `\n\nCurrent plan (pass this as \`plan\` to whenship tools for what-ifs):\n\`\`\`json\n${JSON.stringify(compactPlan(plan))}\n\`\`\``
   );
 }
+const canSync = () => !!app?.getHostCapabilities()?.updateModelContext;
+function setSync(s: State['sync']) {
+  if (state.sync === s) return;
+  state.sync = s;
+  draw();
+}
 function pushContext(plan: NormalizedPlan, lens: LensId) {
   clearTimeout(syncTimer);
   lastSynced = JSON.stringify([compactPlan(plan), lens]);
+  if (!canSync()) {
+    setSync('off');
+    return Promise.resolve();
+  }
+  setSync('pending');
   return app
     .updateModelContext({
       content: [{ type: 'text', text: contextFor(plan, lens) }],
       structuredContent: { plan: compactPlan(plan), lens },
     })
-    .catch(() => undefined);
+    .then(() => setSync('synced'))
+    .catch(() => setSync('off'));
 }
 function scheduleSync(plan: NormalizedPlan, lens: LensId) {
   if (state.superseded) return;
   if (JSON.stringify([compactPlan(plan), lens]) === lastSynced) return;
   clearTimeout(syncTimer);
+  if (canSync()) setSync('pending');
   syncTimer = setTimeout(() => void pushContext(plan, lens), 600);
 }
+const CAPTIONS: Record<State['sync'], string> = {
+  synced: 'Plan · Claude has your latest edits ✓',
+  pending: 'Plan · sending your edits to Claude…',
+  off: 'Plan · your edits reach Claude automatically',
+};
 
 // ── ask Claude from the chart ──────────────────────────────────────────────
-/** Posted to the chat as the user's message; the chart's current state goes along as context. */
+/**
+ * Posted to the chat as the user's message; the chart's current state goes along as context. Claude's answer comes
+ * back as cards in the chart: show_plan with `suggestions` puts its options next to the engine's.
+ */
 const ASK_CLAUDE =
-  "Find better options for this plan than the chart's suggestions. Try what they can't: moving work between people, " +
-  'splitting or cutting items, changing dependencies, and combinations. Check each idea with whenship what_if and give ' +
-  'me the best two or three with their exact effects.';
+  "Look at my whenship chart (its current plan is in your context) and find better options than the chart's own " +
+  "suggestions. Try what the engine can't search: moving work between people, splitting or cutting items, changing " +
+  'dependencies or hand-offs, and combinations. Check each idea with what_if. Then call show_plan with the current ' +
+  'plan unchanged and your best two or three ideas in `suggestions` (a short title plus the changes), so they appear in ' +
+  'my chart as options I can apply, and tell me in a few lines what each one does.';
 
 // ── host adapter for the shared App ────────────────────────────────────────
 const host: Host = {
@@ -275,6 +302,8 @@ function draw() {
             today={today}
             externalPlan={plan}
             externalVersion={state.version}
+            claudeOptions={state.claudeOptions}
+            caption={CAPTIONS[state.sync]}
             headerExtra={
               <button class="btn" title="Back to the summary card" onClick={() => void closeFull()}>
                 Done
@@ -340,13 +369,20 @@ export async function bootWidget(root: HTMLElement, transport?: Transport) {
     }
   });
   app.addEventListener('toolresult', (r) => {
-    const sc = r.structuredContent as { plan?: unknown; lens?: LensId; publicUrl?: string; createdAt?: number; seq?: number } | undefined;
+    const sc = r.structuredContent as { plan?: unknown; lens?: LensId; suggestions?: unknown; publicUrl?: string; createdAt?: number; seq?: number } | undefined;
     if (sc?.publicUrl) state.publicUrl = sc.publicUrl;
     if (sc?.lens) state.lens = toLensId(sc.lens) ?? state.lens;
     if (sc?.plan) {
       state.plan = validatePlan(sc.plan, { today }).plan;
       lastSynced = JSON.stringify([compactPlan(state.plan), state.lens]);
+      state.sync = canSync() ? 'synced' : 'off'; // the tool result is what Claude just saw
       state.version++;
+    }
+    if (Array.isArray(sc?.suggestions)) {
+      state.claudeOptions = (sc!.suggestions as { title?: unknown; changes?: unknown }[])
+        .filter((s) => typeof s?.title === 'string' && Array.isArray(s.changes))
+        .map((s) => ({ title: String(s.title).slice(0, 120), changes: s.changes as ClaudeOption['changes'] }))
+        .slice(0, 3);
     }
     if (sc && Number.isFinite(sc.createdAt)) {
       const id = String(app.getHostContext()?.toolInfo?.id ?? Math.random());

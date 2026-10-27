@@ -5,7 +5,7 @@ import { analyze, headline } from '../engine/analysis';
 import { FEATURES } from '../engine/features';
 import { applyChanges, type Change } from '../engine/changes';
 import { formatDay, todayLocal } from '../engine/dates';
-import { findInsights } from '../engine/insights';
+import { assess, findInsights } from '../engine/insights';
 import { METHOD_NOTE, type LensId } from '../engine/lens';
 import { renderReport } from '../engine/report';
 import { compactPlan, validatePlan, type ValidationResult } from '../engine/validate';
@@ -26,19 +26,21 @@ export interface ServerOptions {
   today?: () => string;
 }
 
-/** Shown to the model when it connects. Behavioural guidance lives here and in the skill, not in tool descriptions. */
-export const INSTRUCTIONS = `whenship is a deterministic scheduling engine for small teams: people or teams, work items in priority order, effort in working days, optional deadlines.
+/**
+ * Shown to the model when it connects. It describes what the engine is authoritative for and how the tools fit
+ * together; the plugin skill carries the workflow. (Directory review rejects tool descriptions that tell the model how
+ * to behave, so this stays descriptive.)
+ */
+export const INSTRUCTIONS = `whenship is a deterministic scheduling engine for small teams: people or teams ("lanes"), work items in priority order, effort in working days, optional deadlines. Its results are the authoritative answer to "when will this finish", "will the deadlines hold", "who is overloaded" and "what should move": it accounts for weekends and holidays, part-time people, teams, hand-offs, dependencies, waiting on clients and queues, which mental arithmetic gets wrong. Dates, chances and effects in a conversation come from these tools and are repeated as returned.
 
-For any question about when work will finish, whether deadlines hold, who is overloaded, or what to move, cut or add: put the work into a plan and call whenship. Do not work out dates, capacity or probabilities yourself; report the dates the tools return.
-
-- show_plan: schedules a plan and shows the interactive chart. Start here.
-- what_if: compares a plan with a changed version of it: a list of simple changes (reorder, effort, deadline, people, holidays, working days), or a whole alternative plan for anything else (moving work between people, splitting or cutting items, dependencies, several changes at once).
-- find_options: searches changes that meet more deadlines, with exact effects.
+- show_plan: schedules a plan and shows the interactive chart, with a complete text answer. Start here. Optional \`changes\` apply edits first (so "move X up and show me" is one call), and optional \`suggestions\` are the assistant's own ideas, each measured exactly and shown in the chart as options the user can apply.
+- what_if: compares a plan with a changed version of it, in text: simple \`changes\` (reorder, effort, deadline, done, people, holidays, working days), or a whole \`alternative\` plan for anything else (moving work between people, splitting or cutting items, dependencies, several changes at once).
+- find_options: the engine's own search for changes that meet more deadlines, with exact effects.
 - export_plan: the plan as JSON (the save file), CSV, iCalendar, Markdown or a share link.
 
-The user can edit the chart directly. Their latest edits arrive in your context as the current plan; use that plan (not an older one) for follow-up calls.
+The user edits the chart directly; their latest edits arrive in context as the current plan, which supersedes any earlier version. Items can be marked done (\`done: true\`, or the setDone change): they take no more time and free whatever waited for them.
 
-Effort is the user's own estimate. Never inflate it. Forecast lenses (likely 1.6×, safe bet 3.1×) are a heuristic view, not a change to the plan: ${METHOD_NOTE}`;
+Effort is the user's own estimate and stays as given. Forecast lenses (likely 1.6×, safe bet 3.1×) are a heuristic view of the same plan, not a change to it: ${METHOD_NOTE}`;
 
 // ── input schemas (descriptive, permissive: the engine validates and reports precise problems) ─────────────────
 const isoDate = z.string().describe('Calendar date, YYYY-MM-DD');
@@ -106,8 +108,14 @@ const changeSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('setWorkdays'), days: z.array(weekday) }),
   z.object({ op: z.literal('addHoliday'), from: isoDate, to: isoDate.optional(), label: z.string().optional() }),
   z.object({ op: z.literal('removeItem'), item: z.string() }),
+  z.object({ op: z.literal('setDone'), item: z.string(), done: z.boolean().describe('true: finished, takes no more time; false: back in the plan') }),
   z.object({ op: z.literal('setStart'), date: isoDate }),
 ]);
+
+const suggestionSchema = z.object({
+  title: z.string().max(120).describe('Short imperative, e.g. "Let Omar take the Helix research"'),
+  changes: z.array(changeSchema).min(1).describe('The simple changes that make this option'),
+});
 
 type ExportFormat = 'yaml' | 'json' | 'csv' | 'ics' | 'markdown' | 'link';
 const EXPORT_FORMATS = (['json', 'csv', 'ics', 'markdown', 'link'] as ExportFormat[]).concat(FEATURES.yamlExport ? ['yaml'] : []) as [ExportFormat, ...ExportFormat[]];
@@ -197,29 +205,57 @@ export function createServer(opts: ServerOptions): McpServer {
         '(on time / tight / late, with a rough chance), what sets the end date, and the best options to meet more ' +
         'deadlines. Use for "when will this ship", "can we make these deadlines", prioritising several projects or ' +
         'clients, and capacity planning. Input: people or teams (lanes) and items in priority order with effort in ' +
-        'working days. Returns a text summary plus the chart, which the user can edit directly (drag to reprioritise, ' +
-        'change effort, deadlines, people and working days).',
-      inputSchema: z.object({ plan: planSchema, lens: lensSchema }),
+        'working days. Returns a text summary plus the chart, which the user edits directly. `changes` apply edits ' +
+        'first (the answer compares before and after); `suggestions` are options of your own (title + changes), each ' +
+        'measured exactly and shown in the chart for the user to apply.',
+      inputSchema: z.object({
+        plan: planSchema,
+        changes: z.array(changeSchema).optional().describe('Edits to apply first, in order (same format as what_if)'),
+        suggestions: z.array(suggestionSchema).max(3).optional().describe('Up to three options you propose, after checking them with what_if'),
+        lens: lensSchema,
+      }),
       annotations: { title: 'Show plan', ...READ_ONLY },
       _meta: { ui: { resourceUri: UI_URI } },
     },
-    async ({ plan: input, lens }) => {
+    async ({ plan: input, changes, suggestions, lens }) => {
       const v = validatePlan(input, { today: today() });
       const l: LensId = lens ?? 'planned';
-      const report = renderReport(v.plan, { lens: l, method: true });
+      // edits first, so one call both applies a what-if and shows it
+      const applied = changes?.length ? applyChanges(v.plan, toEngineChanges(changes)) : null;
+      const plan = applied?.plan ?? v.plan;
+      const report = renderReport(plan, { lens: l, method: true });
+      const parts: string[] = [];
+      if (applied) {
+        parts.push(`**Applied ${changes!.length} change${changes!.length === 1 ? '' : 's'}.** ${compare(v.plan, plan, l)}`);
+        if (applied.skipped.length) parts.push(`**Skipped:**\n${applied.skipped.map((s) => `- ${s.change.op}: ${s.reason}`).join('\n')}`);
+      }
+      parts.push(report);
+      // the assistant's own options, each measured by the engine and handed to the chart
+      const options = (suggestions ?? []).map((s) => {
+        const a = assess(plan, toEngineChanges(s.changes), l);
+        return { title: s.title, changes: toEngineChanges(s.changes), effect: a.effect, skipped: a.skipped };
+      });
+      const usable = options.filter((o) => !o.skipped.length);
+      if (options.length) {
+        parts.push(`**Your options, as the engine measures them:**\n${options.map((o) => `- ${o.title} → ${o.skipped.length ? `could not be applied (${o.skipped.join('; ')})` : o.effect}.`).join('\n')}`);
+      }
       const notes = issuesText(v);
-      const body = [
-        report,
-        notes,
-        `[Open this plan in the browser](${link(v.plan, l)}) (the whole plan is inside the link; nothing is stored on a server).`,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      if (notes) parts.push(notes);
+      parts.push(`[Open this plan in the browser](${link(plan, l)}) (the whole plan is inside the link; nothing is stored on a server).`);
+      const body = parts.join('\n\n');
       return {
         content: [text(body)],
-        // The chart reads plan/lens/publicUrl/createdAt/seq. `summary` repeats the text for clients that show the model
-        // the structured result instead of the text (Claude Code does), so the dates are never missing there.
-        structuredContent: { summary: body, plan: compactPlan(v.plan), lens: l, publicUrl: opts.publicUrl, createdAt: Date.now(), seq: ++seq },
+        // The chart reads plan/lens/publicUrl/createdAt/seq (and `suggestions`). `summary` repeats the text for clients
+        // that show the model the structured result instead of the text (Claude Code does), so the dates are never missing.
+        structuredContent: {
+          summary: body,
+          plan: compactPlan(plan),
+          lens: l,
+          suggestions: usable.map(({ title, changes: ch, effect }) => ({ title, changes: ch, effect })),
+          publicUrl: opts.publicUrl,
+          createdAt: Date.now(),
+          seq: ++seq,
+        },
       };
     },
   );
@@ -234,7 +270,8 @@ export function createServer(opts: ServerOptions): McpServer {
         "clear a deadline or a can't-start-before date, change a lane's people or availability, add a person or team, " +
         'add a holiday, change working days, remove an item, change the start date), or an `alternative`: a whole ' +
         'changed copy of the plan, for anything else (moving work between people, splitting, cutting or adding items, ' +
-        'dependencies, hand-offs, several changes at once). Returns the comparison and the changed plan.',
+        'dependencies, hand-offs, several changes at once). Returns the comparison and the changed plan. To apply a ' +
+        'change and update the chart in one step, call show_plan with the same `changes` instead.',
       inputSchema: z.object({
         plan: planSchema,
         changes: z.array(changeSchema).min(1).optional().describe('Simple changes, applied in order'),
@@ -260,7 +297,7 @@ export function createServer(opts: ServerOptions): McpServer {
       if (notes) parts.push(notes);
       const altNotes = alt ? issuesText(alt) : '';
       if (altNotes) parts.push(`**In the alternative plan:**\n\n${altNotes}`);
-      parts.push(`Changed plan (pass it to show_plan to update the chart):\n\`\`\`json\n${JSON.stringify(compactPlan(r.plan))}\n\`\`\``);
+      parts.push(`To keep this, call show_plan with the same \`changes\` (or with this changed plan):\n\`\`\`json\n${JSON.stringify(compactPlan(r.plan))}\n\`\`\``);
       return { content: [text(parts.join('\n\n'))] };
     },
   );

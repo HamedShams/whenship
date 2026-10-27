@@ -1,12 +1,13 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
-import { applyChanges, moveItem } from '../engine/changes';
-import { dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
+import { applyChanges, moveItem, type Change } from '../engine/changes';
+import { addDays, dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
 import { badgeLabel, chanceLabel } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
-import { ZOOM_PPD, type Zoom } from '../io/view';
+import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
 import type { NormalizedPlan } from '../engine/types';
 import { useAnchor } from './Popover';
 import { Avatar, WhoEditor } from './WhoEditor';
@@ -15,6 +16,8 @@ import { cx, DateButton, Icon } from './lib';
 export const ROW = 44;
 /** Room for a note drawn in place of a bar ("add effort to schedule this"). */
 const NOTE_W = 170;
+/** Height of an item's open details when it can't be measured (tests, old browsers). */
+const DETAILS_FALLBACK = 260;
 const BADGE_VAR: Record<Badge, string> = { safe: 'var(--ok)', likely: 'var(--ok)', tight: 'var(--warn)', late: 'var(--danger)', unknown: 'var(--fg3)' };
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -28,10 +31,13 @@ interface Props {
   onCommit: (plan: NormalizedPlan, mergeKey?: string) => void;
   focusId: string | null;
   onFocused: () => void;
-  /** How much of the calendar each day gets (see `autoZoom`). */
+  /** How much of the calendar each day gets: a fixed scale, or `fit` (the whole plan in the width at hand). */
   zoom: Zoom;
+  /** A plan to show as a ghost over the current one: an option being previewed. */
+  preview?: NormalizedPlan | null;
+  /** Renders the selected item's details, in place under its row. */
+  renderDetails?: ((id: string) => ComponentChildren) | undefined;
 }
-
 
 /** The calendar days the chart covers: plan start → the last finish or deadline, plus a few days. */
 export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: string, extra?: Schedule | null) {
@@ -50,9 +56,15 @@ export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: st
   return { start, end, span: end - start + 1 };
 }
 
-/** Days for short plans, weeks for a few months, months beyond that. */
-export function autoZoom(span: number): Zoom {
+/** The fixed scale a plan of this length reads best at (used by `fit` while the chart's width is unknown). */
+export function autoZoom(span: number): Exclude<Zoom, 'fit'> {
   return span <= 75 ? 'day' : span <= 260 ? 'week' : 'month';
+}
+
+/** Pixels per day: `fit` sizes days to the width at hand (a fixed scale by plan length until it's measured). */
+export function pixelsPerDay(zoom: Zoom, span: number, width: number): number {
+  if (zoom !== 'fit') return ZOOM_PPD[zoom];
+  return width > 0 ? fitPpd(span, width) : ZOOM_PPD[autoZoom(span)];
 }
 
 interface Drag {
@@ -62,6 +74,23 @@ interface Drag {
   startY: number;
   /** Started from the bar in the timeline (not the row's handle). */
   byBar?: boolean;
+}
+/** Dragging a bar's right edge changes the item's effort for that lane. */
+interface Resize {
+  id: string;
+  lane: string;
+  startX: number;
+  days0: number;
+  /** Person-days one working day of this lane is worth for this item (people at once × availability). */
+  perDay: number;
+  days: number;
+}
+/** Dragging a deadline diamond moves the deadline. */
+interface DeadlineDrag {
+  id: string;
+  startX: number;
+  date0: string;
+  date: string;
 }
 
 /**
@@ -75,9 +104,13 @@ function startDragging(wrap: HTMLElement | null) {
   wrap?.focus({ preventScroll: true });
 }
 
-export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom }: Props) {
+const snapHalf = (n: number) => Math.round(n * 2) / 2;
+
+export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom, preview: previewPlan, renderDetails }: Props) {
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [resize, setResize] = useState<Resize | null>(null);
+  const [dlDrag, setDlDrag] = useState<DeadlineDrag | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const who = useAnchor<string>();
   const [draft, setDraft] = useState('');
@@ -87,8 +120,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const wrapRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
+  const clipRef = useRef<HTMLDivElement>(null);
   // The latest drag and pointer offset, for handlers that run between renders.
   const dragRef = useRef<Drag | null>(null);
+  const resizeRef = useRef<Resize | null>(null);
+  const dlRef = useRef<DeadlineDrag | null>(null);
   const dyRef = useRef(0);
   const followScroll = () => {
     if (boardRef.current && scaleRef.current) scaleRef.current.style.transform = `translateX(${-boardRef.current.scrollLeft}px)`;
@@ -100,9 +136,34 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (b && Math.abs(e.deltaX) > Math.abs(e.deltaY)) b.scrollLeft += e.deltaX;
   };
 
-  // live preview while dragging: same engine, new order
-  const preview = useMemo(() => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : null), [plan, drag?.id, drag?.over, drag?.from, factor]);
+  // the width the timeline has, so `fit` can size days to it
+  const [clipW, setClipW] = useState(0);
+  useLayoutEffect(() => {
+    const el = clipRef.current;
+    if (!el) return;
+    const measure = () => setClipW(el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // live edits that re-plan before they're committed: a drag's new order, a bar's new effort, a moved deadline
+  const liveChanges = useMemo<Change[] | null>(() => {
+    if (resize) return [{ op: 'setEffort', item: resize.id, lane: resize.lane, days: resize.days }];
+    if (dlDrag) return [{ op: 'setDeadline', item: dlDrag.id, date: dlDrag.date }];
+    return null;
+  }, [resize?.id, resize?.lane, resize?.days, dlDrag?.id, dlDrag?.date]);
+  const livePlan = useMemo(() => (liveChanges ? applyChanges(plan, liveChanges).plan : null), [plan, liveChanges]);
+  const preview = useMemo(
+    () => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : livePlan ? schedule(livePlan, { factor }) : null),
+    [plan, drag?.id, drag?.over, drag?.from, livePlan, factor],
+  );
+  // an option being previewed: its schedule is drawn as a ghost over the real bars (rows stay put)
+  const ghost = useMemo(() => (previewPlan && !preview ? schedule(previewPlan, { factor }) : null), [previewPlan, preview, factor]);
   const shown: Schedule = preview ?? analysis.current;
+  const shownPlan = livePlan ?? plan;
   const order = useMemo(() => (drag ? moveItem(plan, drag.id, drag.over).items : plan.items), [plan, drag?.id, drag?.over]);
   // Rows are absolutely positioned, so they stay in the plan's DOM order and only their `top` follows the preview order:
   // moving DOM nodes mid-drag could drop the pointer capture and strand the drag.
@@ -110,10 +171,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
 
   // timeline geometry (calendar days, so dates line up with real weeks)
   const geo = useMemo(() => {
-    const { start, end, span } = timelineSpan(plan, analysis, today, preview);
-    const ppd = ZOOM_PPD[zoom];
+    const { start, end, span } = timelineSpan(plan, analysis, today, preview ?? ghost);
+    const ppd = pixelsPerDay(zoom, span, clipW);
     return { start, end, span, ppd, width: span * ppd };
-  }, [plan, analysis, preview, today, zoom]);
+  }, [plan, analysis, preview, ghost, today, zoom, clipW]);
   const x = (iso: string) => (parseISO(iso)! - geo.start) * geo.ppd;
 
   const offDays = useMemo(() => {
@@ -154,7 +215,6 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     }
     return { months, ticks, byDay };
   }, [geo, plan.start, plan.calendar.workdays, today]);
-
 
   // keyboard focus for a freshly added item
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
@@ -202,13 +262,34 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   }, [openWhoFor, order]);
 
   const laneOf = (id: string) => plan.lanes.find((l) => l.id === id);
-  const commitChange = (changes: Parameters<typeof applyChanges>[1], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
+  const commitChange = (changes: Change[], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
+
+  // ── the selected item's details, open in place under its row ──
+  const detailsFor = renderDetails && selected && slot.has(selected) ? selected : null;
+  const detailsIndex = detailsFor ? slot.get(detailsFor)! : -1;
+  const [detailsH, setDetailsH] = useState(0);
+  const detailsRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = detailsRef.current;
+    if (!el || !detailsFor) {
+      setDetailsH(0);
+      return;
+    }
+    const measure = () => setDetailsH(el.offsetHeight || DETAILS_FALLBACK);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [detailsFor]);
+  const detailsGap = detailsFor ? detailsH : 0;
 
   // ── drag handlers ──
   // The dragged row and its bars follow the pointer directly (no re-render per move); the board re-renders only when
   // the row crosses into another slot, which also re-plans the live preview.
   const dragged = (id: string) => wrapRef.current?.querySelectorAll<HTMLElement>(`[data-item="${CSS.escape(id)}"]`) ?? [];
   const slotOf = (d: Drag, dy: number) => Math.max(0, Math.min(plan.items.length - 1, Math.round(d.from + dy / ROW)));
+  const rowTop = (i: number) => i * ROW + (detailsIndex >= 0 && i > detailsIndex ? detailsGap : 0);
   // Capturing the pointer keeps moves coming when it leaves the window; the drag works without it (see below).
   const capture = (e: PointerEvent) => {
     try {
@@ -222,7 +303,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     hover(null);
     dragRef.current = d;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    for (const el of dragged(d.id)) el.style.top = `${rowTop(d.from) + dy}px`;
     setDrag(d);
   };
   const onDown = (e: PointerEvent, id: string, index: number) => {
@@ -239,7 +320,55 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     pressed.current = { id, index, x: e.clientX, y: e.clientY };
     capture(e);
   };
+  // A bar's right edge: dragging it sideways changes the effort of that part, half a day at a time.
+  const onEdgeDown = (e: PointerEvent, id: string, lane: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const it = plan.items.find((x) => x.id === id);
+    const part = it?.work.find((w) => w.lane === lane);
+    const l = laneOf(lane);
+    if (!it || !part || !l) return;
+    startDragging(wrapRef.current);
+    capture(e);
+    const perDay = Math.max(0.1, (Math.min(part.maxPeople, Math.max(l.size, 0.1)) * l.availability) / 100);
+    const r: Resize = { id, lane, startX: e.clientX, days0: part.days, perDay, days: part.days };
+    resizeRef.current = r;
+    setResize(r);
+  };
+  // The deadline diamond: drag it to another day.
+  const onDiamondDown = (e: PointerEvent, id: string, date: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    startDragging(wrapRef.current);
+    capture(e);
+    const d: DeadlineDrag = { id, startX: e.clientX, date0: date, date };
+    dlRef.current = d;
+    setDlDrag(d);
+  };
   const onMove = (e: PointerEvent) => {
+    const rs = resizeRef.current;
+    if (rs) {
+      // a day of sideways movement is a day of the calendar; working days are what effort is counted in
+      const calDays = (e.clientX - rs.startX) / geo.ppd;
+      const workDays = calDays * (plan.calendar.workdays.length / 7);
+      const days = Math.max(0.5, snapHalf(rs.days0 + workDays * rs.perDay));
+      if (days !== rs.days) {
+        resizeRef.current = { ...rs, days };
+        setResize(resizeRef.current);
+      }
+      return;
+    }
+    const dd = dlRef.current;
+    if (dd) {
+      const date = addDays(dd.date0, Math.round((e.clientX - dd.startX) / geo.ppd));
+      if (date !== dd.date) {
+        dlRef.current = { ...dd, date };
+        setDlDrag(dlRef.current);
+      }
+      return;
+    }
     const p = pressed.current;
     if (p && !dragRef.current) {
       if (Math.abs(e.clientY - p.y) > 4) {
@@ -254,7 +383,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (!d) return;
     const dy = e.clientY - d.startY;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    for (const el of dragged(d.id)) el.style.top = `${rowTop(d.from) + dy}px`;
     const over = slotOf(d, dy);
     if (over !== d.over) {
       dragRef.current = { ...d, over };
@@ -262,6 +391,21 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     }
   };
   const onUp = (e?: PointerEvent) => {
+    const rs = resizeRef.current;
+    if (rs) {
+      resizeRef.current = null;
+      setResize(null);
+      if (rs.days !== rs.days0) commitChange([{ op: 'setEffort', item: rs.id, lane: rs.lane, days: rs.days }]);
+      return;
+    }
+    const dd = dlRef.current;
+    if (dd) {
+      dlRef.current = null;
+      setDlDrag(null);
+      if (dd.date !== dd.date0) commitChange([{ op: 'setDeadline', item: dd.id, date: dd.date }]);
+      else onSelect(selected === dd.id ? null : dd.id);
+      return;
+    }
     const p = pressed.current;
     if (p) {
       pressed.current = null;
@@ -272,15 +416,19 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     const d = dragRef.current;
     if (!d) return;
     dragRef.current = null;
-    for (const el of dragged(d.id)) el.style.top = `${d.over * ROW}px`; // drop into the slot
+    for (const el of dragged(d.id)) el.style.top = `${rowTop(d.over)}px`; // drop into the slot
     if (d.over !== d.from) onCommit(moveItem(plan, d.id, d.over));
     setDrag(null);
   };
   const onCancel = () => {
     pressed.current = null;
+    resizeRef.current = null;
+    dlRef.current = null;
+    setResize(null);
+    setDlDrag(null);
     const d = dragRef.current;
     dragRef.current = null;
-    if (d) for (const el of dragged(d.id)) el.style.top = `${d.from * ROW}px`;
+    if (d) for (const el of dragged(d.id)) el.style.top = `${rowTop(d.from)}px`;
     setDrag(null);
   };
   // Moves and releases are followed on the whole window, so a drag always ends, even if the pointer is let go outside
@@ -318,7 +466,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-handle="${id}"]`)?.focus());
   };
 
-  const topOf = (id: string, i: number) => (drag && drag.id === id ? drag.from * ROW + dyRef.current : i * ROW);
+  const topOf = (id: string, i: number) => (drag && drag.id === id ? rowTop(drag.from) + dyRef.current : rowTop(i));
   const year = dayParts(plan.start).year;
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
@@ -336,13 +484,13 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     else draftRef.current?.focus();
   };
 
-  const height = (order.length + 1) * ROW; // + the empty row for a new item
+  const height = (order.length + 1) * ROW + detailsGap; // + the empty row for a new item
 
   return (
     <div
       ref={wrapRef}
       tabIndex={-1}
-      class={cx('board-wrap', drag && 'is-dragging')}
+      class={cx('board-wrap', drag && 'is-dragging', resize && 'is-resizing', dlDrag && 'is-resizing', ghost && 'has-ghost')}
       onPointerLeave={() => hover(null)}
       onDragStart={(e) => e.preventDefault()} // no native drag of selected text or images (Safari)
     >
@@ -353,11 +501,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>#</span>
           <span>Item</span>
           <span>Who</span>
-          <span>Deadline</span>
-          <span>Expected delivery</span>
+          <span>Due</span>
+          <span>Finish</span>
           <span />
         </div>
-        <div class="tl-clip">
+        <div class="tl-clip" ref={clipRef}>
           <div ref={scaleRef} class="tl-head" style={{ width: `${geo.width}px` }}>
             <div class="months">
               {scale.months.map((m) => (
@@ -397,13 +545,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
               const r = shown.byId.get(it.id)!;
               const o = analysis.outlook.get(it.id);
               const isDragged = drag?.id === it.id;
-              const whoText = describeWork(plan, it.id);
+              const shownIt = shownPlan.items.find((x) => x.id === it.id) ?? it;
+              const whoText = describeWork(shownPlan, it.id);
               return (
                 <div
                   key={it.id}
                   role="listitem"
                   data-item={it.id}
-                  class={cx('row', selected === it.id && 'sel', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
+                  class={cx('row', selected === it.id && 'sel', it.done && 'done', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
                   style={{ top: `${topOf(it.id, i)}px` }}
                   onPointerEnter={() => hover(it.id)}
                   onClick={(e) => {
@@ -442,10 +591,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     }}
                     onFocus={() => onSelect(it.id)}
                   />
-                  <WhoCell item={it} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
                   <div class="due-cell">
                     <DateButton
-                      value={it.deadline}
+                      value={shownIt.deadline}
                       label={`Deadline for ${it.name}`}
                       placeholder="+ date"
                       format={(d) => <DueLabel iso={d} year={year} />}
@@ -453,7 +602,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     />
                   </div>
                   <div class="status">
-                    <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
+                    <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={shownIt.deadline} year={year} />
                   </div>
                   <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
                     <Icon.trash />
@@ -461,7 +610,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 </div>
               );
             })}
-            <div class="row draft" style={{ top: `${order.length * ROW}px` }}>
+            {detailsFor && (
+              <div class="row-details-slot" ref={detailsRef} style={{ top: `${(detailsIndex + 1) * ROW}px` }}>
+                {renderDetails!(detailsFor)}
+              </div>
+            )}
+            <div class="row draft" style={{ top: `${rowTop(order.length)}px` }}>
               <span class="handle" aria-hidden="true">
                 <Icon.plus />
               </span>
@@ -507,17 +661,17 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             {offDays.map((s) => (
               <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
             ))}
-            {todayX !== null && (
-              <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />
-            )}
+            {todayX !== null && <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />}
+            {detailsFor && <div class="details-gap" style={{ top: `${(detailsIndex + 1) * ROW}px`, height: `${detailsGap}px` }} />}
           </div>
           <div class="rows" style={{ height: `${height}px` }}>
             {plan.items.map((it) => (
               <BarRow
                 key={it.id}
-                it={it}
+                it={shownPlan.items.find((x) => x.id === it.id) ?? it}
                 top={topOf(it.id, slot.get(it.id)!)}
                 shown={shown}
+                ghost={ghost}
                 base={analysis.current}
                 planned={analysis.planned}
                 analysis={analysis}
@@ -528,11 +682,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
                 dragging={!!drag}
                 isDragged={drag?.id === it.id}
+                resizing={resize?.id === it.id ? resize : null}
                 dim={!!highlight && !highlight.has(it.id)}
                 chain={!!highlight && highlight.has(it.id)}
                 year={year}
                 sel={selected === it.id}
                 onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
+                onEdgeDown={(e, lane) => onEdgeDown(e, it.id, lane)}
+                onDiamondDown={(e, date) => onDiamondDown(e, it.id, date)}
                 onHover={() => hover(it.id)}
               />
             ))}
@@ -562,6 +719,7 @@ function BarRow(props: {
   it: NormalizedPlan['items'][number];
   top: number;
   shown: Schedule;
+  ghost: Schedule | null;
   base: Schedule;
   planned: Schedule;
   analysis: Analysis;
@@ -573,11 +731,14 @@ function BarRow(props: {
   laneColor: (id: string) => string;
   dragging: boolean;
   isDragged: boolean;
+  resizing: Resize | null;
   dim: boolean;
   chain: boolean;
   year: number;
   sel: boolean;
   onPointerDown: (e: PointerEvent) => void;
+  onEdgeDown: (e: PointerEvent, lane: string) => void;
+  onDiamondDown: (e: PointerEvent, date: string) => void;
   onHover: () => void;
 }) {
   const { it, shown, x, ppd } = props;
@@ -589,7 +750,8 @@ function BarRow(props: {
   const h = n > 1 ? Math.max(6, Math.floor(inner / n) - 1) : inner;
   const plannedR = props.planned.byId.get(it.id);
   const baseR = props.base.byId.get(it.id);
-  const delta = props.dragging && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
+  const live = props.dragging || !!props.resizing || props.shown !== props.base;
+  const delta = live && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
   const endX = r.endDate ? x(r.endDate) + ppd : 0;
   // keep the finish-date label clear of a deadline diamond that sits just after the bar
   const diamondX = it.deadline ? x(it.deadline) + ppd / 2 : null;
@@ -601,10 +763,15 @@ function BarRow(props: {
   for (const mark of [diamondX, props.todayLine].filter((m): m is number => m !== null).sort((a, b) => a - b)) {
     if (mark > noteX - 10 && mark < noteX + NOTE_W) noteX = mark + 12;
   }
+  // the previewed option, drawn over the real bars
+  const g = props.ghost?.byId.get(it.id);
+  const gParts = g?.parts.filter((p) => p.start !== undefined && p.end !== undefined) ?? [];
+  const gDelta = g && r.end !== undefined && g.end !== undefined ? g.end - r.end : null;
+  const gEndX = g?.endDate ? x(g.endDate) + ppd : null;
   return (
     <div
       data-item={it.id}
-      class={cx('bars', props.dim && 'dim', props.sel && 'sel', props.isDragged && 'dragging')}
+      class={cx('bars', props.dim && 'dim', props.sel && 'sel', props.isDragged && 'dragging', it.done && 'done')}
       style={{ top: `${props.top}px` }}
       onPointerDown={(e) => props.onPointerDown(e as unknown as PointerEvent)}
       onPointerEnter={props.onHover}
@@ -626,19 +793,38 @@ function BarRow(props: {
         const left = x(s) + 1;
         const width = Math.max(4, x(e) - x(s) + ppd - 2);
         const lateFrom = late ? Math.max(0, dueEnd - left) : width;
+        const rs = props.resizing && props.resizing.lane === p.lane ? props.resizing : null;
         return (
           <div
             key={p.lane}
-            class={cx('bar', props.chain && 'chain')}
-            title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}`}
+            class={cx('bar', props.chain && 'chain', rs && 'resizing')}
+            title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}. Drag the right edge to change the effort.`}
             style={{ left: `${left}px`, width: `${width}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
           >
             {lateFrom < width && <span class="bar-late" style={{ left: `${lateFrom}px` }} />}
+            {rs && <span class="bar-days">{fmtDays(rs.days)}</span>}
+            <span class="bar-edge" onPointerDown={(ev) => props.onEdgeDown(ev as unknown as PointerEvent, p.lane)} title="Drag to change the effort" />
           </div>
         );
       })}
+      {gParts.map((p, k) => {
+        const s = props.ghost!.calendar.dateAt(p.start!);
+        const e = props.ghost!.calendar.dateAt(p.end!);
+        return (
+          <div
+            key={`g-${p.lane}`}
+            class="bar ghost"
+            style={{ left: `${x(s) + 1}px`, width: `${Math.max(4, x(e) - x(s) + ppd - 2)}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, borderColor: props.laneColor(p.lane) }}
+          />
+        );
+      })}
       {it.deadline && (
-        <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }} />
+        <div
+          class="deadline"
+          title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}. Drag to move it.`}
+          style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }}
+          onPointerDown={(ev) => props.onDiamondDown(ev as unknown as PointerEvent, it.deadline!)}
+        />
       )}
       {r.endDate && (
         <span class={cx('end-label', late && 'late')} style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
@@ -648,6 +834,16 @@ function BarRow(props: {
       {delta !== 0 && r.endDate && (
         <span class={cx('delta', delta < 0 ? 'up' : 'down')} style={{ left: `${labelX + 48}px`, top: `${ROW / 2 - 8}px` }}>
           {delta > 0 ? `+${delta}d` : `${delta}d`}
+        </span>
+      )}
+      {gDelta !== null && gDelta !== 0 && gEndX !== null && (
+        <span class={cx('delta', 'ghost-delta', gDelta < 0 ? 'up' : 'down')} style={{ left: `${gEndX + 8}px`, top: `${ROW / 2 - 8}px` }}>
+          {gDelta > 0 ? `+${gDelta}d` : `${gDelta}d`}
+        </span>
+      )}
+      {r.status === 'done' && (
+        <span class="empty-bar done-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px` }}>
+          <Icon.check /> done
         </span>
       )}
       {r.status === 'empty' && <span class="empty-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px` }}>add effort to schedule this</span>}
@@ -677,6 +873,9 @@ export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => voi
       <span>
         <i class="k-today" /> today
       </span>
+      <span>
+        <i class="k-ghost" /> an option, previewed
+      </span>
       {l.factor !== 1 && (
         <span class="k-lens">
           <i class="k-baseline" /> your estimate · bars show {l.label} ({l.short})
@@ -685,7 +884,7 @@ export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => voi
           </button>
         </span>
       )}
-      <span class="legend-tips">Drag ⠿ or a bar to reprioritize · click any value to edit · click a row to see why it lands when it does</span>
+      <span class="legend-tips">Drag ⠿ or a bar up or down to reprioritize · drag a bar's right edge to change its effort · drag a diamond to move a deadline · click a row to see why it lands when it does</span>
     </div>
   );
 }
@@ -705,11 +904,12 @@ export function Delivery(p: {
   deadline?: string | undefined;
   year: number;
 }) {
+  if (p.status === 'done') return <span class="pill done" title="Finished: it takes no more time">done</span>;
   if (p.status === 'blocked') return <span class="pill blocked" title={p.problem}>blocked</span>;
   if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
   if (!p.endDate) return <span class="done-date">—</span>;
   const date = <DueLabel iso={p.endDate} year={p.year} />;
-  if (!p.badge) return <span class="done-date" title={`Expected delivery ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
+  if (!p.badge) return <span class="done-date" title={`Finishes ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
   const lens = lensById(p.lens);
   const tip =
     p.badge === 'late' && p.base && p.base !== 'late'
@@ -724,12 +924,11 @@ export function Delivery(p: {
   const due = p.deadline ? ` · deadline ${formatDay(p.deadline, p.year)}` : '';
   const pct = p.chance !== undefined ? ` · ${chanceLabel(p.chance)} chance as planned` : '';
   return (
-    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Expected delivery ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
+    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Finishes ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
       {date}
     </span>
   );
 }
-
 
 /** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */
 function DueLabel({ iso, year }: { iso: string; year: number }) {

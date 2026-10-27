@@ -1,6 +1,6 @@
 {
   "name": "whenship",
-  "version": "1.5.1",
+  "version": "1.6.0-fable.0",
   "description": "When will it ship, honestly? A tiny planner for small teams: live what-if Gantt, deadline risk and realistic dates. Works in the browser, offline, and inside Claude as an MCP App.",
   "license": "BSD-3-Clause",
   "mcpName": "io.github.HamedShams/whenship",

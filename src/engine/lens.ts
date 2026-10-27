@@ -101,7 +101,7 @@ const SWEEP = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.45, 1.6, 1.8, 2
  */
 export function deadlineOutlook(plan: NormalizedPlan, base?: Schedule): Map<string, Outlook> {
   const out = new Map<string, Outlook>();
-  const dated = plan.items.filter((it) => it.deadline);
+  const dated = plan.items.filter((it) => it.deadline && !it.done);
   if (!dated.length) return out;
   const runs = SWEEP.map((f) => (f === 1 && base && base.factor === 1 ? base : schedule(plan, { factor: f })));
   for (const it of dated) {

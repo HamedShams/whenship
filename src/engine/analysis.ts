@@ -69,6 +69,7 @@ export function explain(s: Schedule, id: string): string[] {
   const r = s.byId.get(id);
   if (!r) return [];
   if (r.status === 'blocked') return [r.problem ?? "can't be scheduled"];
+  if (r.status === 'done') return ['done: it takes no more time, and anything waiting for it can start'];
   if (r.status === 'empty') return ['no effort entered yet'];
   const lines: string[] = [];
   const year = parseISO(s.plan.start) !== null ? new Date(parseISO(s.plan.start)! * 86_400_000).getUTCFullYear() : undefined;

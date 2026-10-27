@@ -22,7 +22,7 @@ export interface PartResult {
   blockedBy: Record<string, number>;
 }
 
-export type ItemStatus = 'scheduled' | 'empty' | 'blocked';
+export type ItemStatus = 'scheduled' | 'empty' | 'blocked' | 'done';
 
 export interface Driver {
   kind: 'capacity' | 'dependency' | 'handoff' | 'notBefore' | 'start';
@@ -107,6 +107,10 @@ export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): S
   // ── things that can never be scheduled ──────────────────────────────────
   for (let i = 0; i < n; i++) {
     const r = res[i]!;
+    if (items[i]!.done) {
+      r.status = 'done'; // finished work takes no time, and whatever waited for it is free to start
+      continue;
+    }
     if (r.parts.every((p) => p.days <= EPS)) {
       r.status = 'empty';
       continue;
@@ -174,7 +178,7 @@ export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): S
       let depsReady = true;
       for (const dep of items[i]!.dependsOn) {
         const di = indexById.get(dep)!;
-        if (res[di]!.status === 'empty') continue;
+        if (res[di]!.status === 'empty' || res[di]!.status === 'done') continue;
         const de = itemEnd[di];
         if (de === undefined || de >= d) {
           depsReady = false;

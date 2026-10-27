@@ -98,6 +98,8 @@ export const Icon = {
   chain: () => <I><path d="M4 12h4" /><path d="M16 12h4" /><rect x="8" y="9" width="8" height="6" rx="2" /></I>,
   open: () => <I><path d="M4 20h16" /><path d="M12 4v11" /><path d="m7 9 5-5 5 5" /></I>,
   pencil: () => <I><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></I>,
+  check: () => <I><path d="m5 12 5 5L20 7" /></I>,
+  paste: () => <I><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" /><path d="M9 13h6" /><path d="M9 17h4" /></I>,
 };
 
 export const Logo = ({ size = 22 }: { size?: number }) => (

@@ -814,7 +814,7 @@ function BarRow(props: {
           <div
             key={`g-${p.lane}`}
             class="bar ghost"
-            style={{ left: `${x(s) + 1}px`, width: `${Math.max(4, x(e) - x(s) + ppd - 2)}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, borderColor: props.laneColor(p.lane) }}
+            style={{ left: `${x(s) + 1}px`, width: `${Math.max(4, x(e) - x(s) + ppd - 2)}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, borderColor: props.laneColor(p.lane), background: `color-mix(in srgb, ${props.laneColor(p.lane)} 22%, transparent)` }}
           />
         );
       })}

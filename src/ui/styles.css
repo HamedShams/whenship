@@ -421,8 +421,9 @@ button:disabled { cursor: default; }
 .option.ask:hover { border-color: var(--border2); box-shadow: none; }
 .option.ask .opt-kind { color: var(--accent); }
 /* a previewed option: ghost bars (outlined, in the lane's colour) over the dimmed real ones */
-.has-ghost .bar:not(.ghost) { opacity: .32; }
-.bar.ghost { background: transparent !important; border: 2px dashed; box-shadow: none; opacity: 1; pointer-events: none; }
+.has-ghost .bar:not(.ghost) { opacity: .28; }
+.has-ghost .end-label { opacity: .5; }
+.bar.ghost { border: 2px dashed; box-shadow: none; opacity: 1; pointer-events: none; z-index: 2; }
 .delta.ghost-delta { opacity: .9; }
 .k-ghost { width: 18px; height: 9px; border: 2px dashed var(--fg3); border-radius: 3px; box-sizing: border-box; }
 /* bar edges: drag to change the effort; the diamond: drag to move the deadline */

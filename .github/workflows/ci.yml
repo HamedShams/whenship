@@ -31,7 +31,7 @@ jobs:
           sleep 2
           curl -fsS http://127.0.0.1:4545/healthz
           curl -fsS http://127.0.0.1:4545/ | grep -q '"mode":"web"'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: |
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 20
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist

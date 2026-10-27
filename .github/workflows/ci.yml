@@ -18,8 +18,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # zod, the MCP SDK and the rest are bundled into the CLI, so every advisory can reach users
+      - run: npm audit --audit-level=high
       - run: npm run build
       - run: npm run build:mcpb
+      # type check, all tests with a coverage floor, and the scheduler tests in three time zones
       - run: npm run check
       - name: CLI smoke test
         run: |
@@ -28,3 +31,33 @@ jobs:
           sleep 2
           curl -fsS http://127.0.0.1:4545/healthz
           curl -fsS http://127.0.0.1:4545/ | grep -q '"mode":"web"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/cli.js
+            dist/app.html
+          retention-days: 3
+
+  # The published CLI promises Node 20 (npx and Claude Desktop's built-in Node): run the built bundle there.
+  node-20:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: CLI on Node 20 (web and MCP over HTTP and stdio)
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js --port 4545 --no-open &
+          sleep 2
+          curl -fsS http://127.0.0.1:4545/healthz
+          curl -fsS -X POST http://127.0.0.1:4545/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | grep -q '"whenship"'
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            | timeout 10 node dist/cli.js --stdio | grep -q '"whenship"'

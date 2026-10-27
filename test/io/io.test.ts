@@ -119,6 +119,26 @@ describe('exports', () => {
     expect(ics).toMatch(/DTSTART;VALUE=DATE:\d{8}/);
   });
 
+  it('ICS folds long lines without splitting characters, and escapes what the format reserves', () => {
+    const long = plan({
+      title: 'Plan; with, commas',
+      start: '2026-10-05',
+      lanes: ['Sara'],
+      items: [{ name: 'Überarbeitung des Förderantrags für die Stiftung Nordlicht; Teil 2, mit Anhängen\\Belegen', who: 'Sara', days: 3, deadline: '2026-10-06' }],
+    });
+    const ics = toIcs(long, 'planned', '20261005T080000Z');
+    const lines = ics.split('\r\n');
+    for (const line of lines) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+    expect(lines.some((l) => l.startsWith(' '))).toBe(true); // folded
+    const unfolded = ics.replace(/\r\n /g, '');
+    expect(unfolded).toContain('SUMMARY:Überarbeitung des Förderantrags für die Stiftung Nordlicht\\; Teil 2\\, mit Anhängen\\\\Belegen\r\n');
+    expect(unfolded).toContain('X-WR-CALNAME:Plan\\; with\\, commas');
+    expect(unfolded).toContain('DTSTAMP:20261005T080000Z');
+    expect(unfolded).not.toMatch(/\(As planned/); // no lens suffix on your own dates
+    expect(unfolded).toMatch(/DESCRIPTION:Sara 3d · deadline 2026-10-06 · LATE/); // 3 days from Mon 5 Oct end on Wed 7 Oct
+    expect(unfolded).toContain('SUMMARY:◆ Deadline: Überarbeitung');
+  });
+
   it('XLSX is a valid package with Plan, Gantt and Settings sheets', () => {
     const files = unzipSync(toXlsx(sample, 'likely'));
     expect(Object.keys(files).sort()).toEqual(

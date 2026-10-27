@@ -28,8 +28,8 @@ function fold(line: string): string {
 }
 
 /**
- * One all-day event per item (start → finish under the chosen lens) plus one per deadline, so P85 dates can live in
- * any calendar app.
+ * One all-day event per item (start → finish under the chosen lens) plus one per deadline, so the dates of any lens can
+ * live in a calendar app.
  */
 export function toIcs(plan: NormalizedPlan, lens: LensId = 'planned', stamp = '20260101T000000Z'): string {
   const l = lensById(lens);

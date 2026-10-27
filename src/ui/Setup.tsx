@@ -98,7 +98,7 @@ function Holidays({ anchor, plan, year, onClose, onCommit }: { anchor: HTMLEleme
     setLabel('');
   };
   return (
-    <Popover anchor={anchor} onClose={onClose} label="Holidays">
+    <Popover anchor={anchor} onClose={onClose} label="Holidays" className="holiday-pop">
       <h4>Holidays (off for everyone)</h4>
       {plan.calendar.holidays.length === 0 && <p class="note">None yet. Public holidays, company off-sites, closures…</p>}
       {plan.calendar.holidays.map((h, i) => (
@@ -177,7 +177,7 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
           style={{ '--p': String(lane.availability / 100) }}
           onInput={(e) => set({ availability: Number((e.currentTarget as HTMLInputElement).value) }, `avail:${lane.id}`)}
         />
-        <span class="sub" style={{ fontSize: '11.5px' }}>The rest goes to meetings, support and other work.</span>
+        <span class="sub one-line">The rest goes to meetings, support, etc.</span>
       </label>
       <div class="field">
         Colour

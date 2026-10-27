@@ -1,0 +1,33 @@
+# Pushing a version tag (v1.4.0) publishes a GitHub Release with the Claude Desktop extension attached, so the README's
+# "latest release" link always has a whenship.mcpb that matches the code. The tag's message becomes the release notes.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'HamedShams/whenship'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm run build
+      - run: npm run build:mcpb
+      - run: npm run check
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" dist/whenship.mcpb --title "whenship ${GITHUB_REF_NAME#v}" --notes-from-tag --verify-tag

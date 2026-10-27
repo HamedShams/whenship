@@ -38,6 +38,12 @@ export const METHOD_NOTE =
   "al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte " +
   'Carlo mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.';
 
+/** The same method in two sentences, for the chart's lens guide (the README and the connector carry the long form). */
+export const METHOD_SHORT =
+  "A blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with " +
+  "Flyvbjerg et al.'s 2022 power-law findings on IT project overruns. A practical rule of thumb, not an industry " +
+  'standard; your own track record beats it.';
+
 export function lensById(id: string | undefined): Lens {
   return LENSES.find((l) => l.id === toLensId(id)) ?? LENSES[0]!;
 }
@@ -123,6 +129,3 @@ export function deadlineOutlook(plan: NormalizedPlan, base?: Schedule): Map<stri
   return out;
 }
 
-export function lensSchedule(plan: NormalizedPlan, lens: LensId): Schedule {
-  return schedule(plan, { factor: lensById(lens).factor });
-}

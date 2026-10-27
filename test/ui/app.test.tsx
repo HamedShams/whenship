@@ -54,7 +54,7 @@ describe('app (web and widget share it)', () => {
     const { root, changes } = mount();
     await act(() => button(root, 'Likely').click());
     expect(text(root, '.headline')).toMatch(/Likely 1\.6×: /);
-    expect(root.querySelectorAll('.plan-ghost').length).toBeGreaterThan(0);
+    expect(root.querySelectorAll('.baseline').length).toBeGreaterThan(0); // the user's own estimate stays visible
     expect(JSON.stringify(changes.at(-1))).toBe(JSON.stringify(changes[0]));
   });
 
@@ -372,7 +372,7 @@ describe('timeline zoom and header scale', () => {
   });
 });
 
-describe('v1.3: selection, dragging bars, lenses, colours and title', () => {
+describe('selection, dragging bars, lenses, colours and title', () => {
   const ptr = (type: string, el: Element, y: number, x = 10) =>
     act(() => void el.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 })));
 
@@ -406,13 +406,24 @@ describe('v1.3: selection, dragging bars, lenses, colours and title', () => {
     expect(root.querySelectorAll('.bars.sel')).toHaveLength(0); // a drag isn't a click
   });
 
-  it('three lenses with their multipliers, and a compact guide', async () => {
+  it('three lenses with their multipliers, and a guide that is one table and one short note, nothing folded away', async () => {
     const { root } = mount();
     expect([...root.querySelectorAll('.seg:not(.small) button')].map((b) => b.textContent)).toEqual(['As planned1×', 'Likely1.6×', 'Safe bet3.1×']);
+    await act(() => button(root, 'Likely').click());
     await act(() => (root.querySelector('[aria-label="How the forecast lenses work"]') as HTMLButtonElement).click());
     const pop = document.querySelector('.lens-pop')!;
-    expect(pop.querySelectorAll('.lens-row')).toHaveLength(3);
+    const rows = [...pop.querySelectorAll('.lens-table tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent));
+    expect(rows).toEqual([
+      ['As planned', '1×', 'exactly what you entered'],
+      ['Likely', '1.6×', 'about half of projects are done by here'],
+      ['Safe bet', '3.1×', 'about 9 in 10 are done by here: a date to promise'],
+    ]);
+    expect(pop.querySelector('tr.on')!.textContent).toMatch(/^Likely/); // the lens in use
     expect(pop.querySelectorAll('.badge-key .pill')).toHaveLength(4);
+    expect(pop.querySelector('details')).toBeNull();
+    const method = pop.querySelector('.note.method')!.textContent!;
+    expect(method).toMatch(/Todd Little's 2006 .* Flyvbjerg et al\.'s 2022 .* track record beats it\. The "~x% chance" assumes/);
+    expect(method.length).toBeLessThan(420); // about two-thirds of the old folded-away text
     expect(pop.textContent).not.toMatch(/2\.7|3\.9|Worst/);
   });
 
@@ -440,15 +451,15 @@ describe('v1.3: selection, dragging bars, lenses, colours and title', () => {
     expect((root.querySelector('.doc-title input') as HTMLInputElement).value).toBe('Untitled WhenShip'); // …and it comes back if left empty
   });
 
-  it('the app version matches package.json', async () => {
+  it('the app and the plugin carry the version in package.json', async () => {
     const { VERSION } = await import('../../src/ui/config');
-    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
-    expect(VERSION).toBe(pkg.version);
-    expect(pkg.version).toBe('1.3.1');
+    const version = (f: string) => (JSON.parse(readFileSync(f, 'utf8')) as { version: string }).version;
+    expect(VERSION).toBe(version('package.json'));
+    expect(version('plugin/.claude-plugin/plugin.json')).toBe(version('package.json'));
   });
 });
 
-describe('v1.3.1: dragging cleanly, sticky headers, chart key, copy link and asking Claude', () => {
+describe('clean drags, sticky headers, chart key, copy link and asking Claude', () => {
   const ptr = (type: string, el: Element, y: number, x = 10) => {
     const e = new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
     act(() => void el.dispatchEvent(e));
@@ -484,17 +495,18 @@ describe('v1.3.1: dragging cleanly, sticky headers, chart key, copy link and ask
     expect((root.querySelector('.app') as HTMLElement).style.getPropertyValue('--toolbar-h')).toMatch(/^\d+px$/);
   });
 
-  it('a chart key explains the diamonds; with a lens on it explains the dashed outlines and offers the way back', async () => {
+  it('a chart key explains the diamonds; with a lens on it explains the baseline and offers the way back', async () => {
     const { root } = mount();
     expect(text(root, '.chart-key')).toMatch(/deadline: on time, tight, late/);
     expect(root.querySelectorAll('.chart-key .k-diamond')).toHaveLength(3);
     expect(root.querySelector('.chart-key .k-lens')).toBeNull();
-    expect(root.querySelectorAll('.plan-ghost')).toHaveLength(0);
+    expect(root.querySelectorAll('.baseline')).toHaveLength(0);
     await act(() => button(root, 'Safe bet').click());
-    expect(text(root, '.chart-key .k-lens')).toMatch(/your estimate · bars show Safe bet \(3\.1×\)/);
-    expect(root.querySelectorAll('.plan-ghost').length).toBeGreaterThan(0);
+    expect(text(root, '.chart-key .k-lens')).toMatch(/bars show Safe bet \(3\.1×\) · +your estimate \(as planned\)/);
+    expect(root.querySelector('.chart-key .k-lens .k-baseline')).not.toBeNull();
+    expect(root.querySelectorAll('.baseline').length).toBeGreaterThan(0);
     await act(() => button(root, 'Show as planned').click());
-    expect(root.querySelectorAll('.plan-ghost')).toHaveLength(0);
+    expect(root.querySelectorAll('.baseline')).toHaveLength(0);
     expect(root.querySelector('.seg [aria-pressed="true"]')!.textContent).toBe('As planned1×');
   });
 
@@ -507,10 +519,18 @@ describe('v1.3.1: dragging cleanly, sticky headers, chart key, copy link and ask
     expect(link.querySelector('svg')).not.toBeNull();
   });
 
-  it('the person editor is a narrower popover', async () => {
+  it('popovers are only as wide as they need: the person editor keeps its note on one line', async () => {
     const { root } = mount();
     await act(() => (root.querySelector('[data-lane="sara"]') as HTMLButtonElement).click());
-    expect(document.querySelector('.popover.lane-pop')).not.toBeNull();
+    const note = document.querySelector('.popover.lane-pop .one-line')!;
+    expect(note.textContent).toBe('The rest goes to meetings, support, etc.');
+    await act(() => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    await act(() => button(root, '+ holidays').click());
+    expect(document.querySelector('.popover.holiday-pop')).not.toBeNull();
+    await act(() => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    // the who editor widens only when an item has both a team and a hand-off (two extra columns)
+    await act(() => (root.querySelector('.row:nth-child(2) .who-cell') as HTMLButtonElement).click());
+    expect(document.querySelector('.popover.who-pop')!.classList.contains('wide')).toBe(false);
   });
 
   it('"Ask Claude for better options" appears only where the chat can be asked, and sends the current plan', async () => {
@@ -526,5 +546,254 @@ describe('v1.3.1: dragging cleanly, sticky headers, chart key, copy link and ask
     await act(() => new Promise((r) => setTimeout(r, 0)));
     expect(askClaude).toHaveBeenCalledWith(expect.objectContaining({ title: 'Client deliverables' }), 'safe');
     expect(text(asked.root, '.toast')).toMatch(/answer appears in the chat/);
+  });
+});
+
+describe('dragging feels like one piece', () => {
+  const ptr = (type: string, el: EventTarget, y: number, x = 10) => {
+    const e = new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
+    act(() => void el.dispatchEvent(e));
+    return e;
+  };
+  const names = (root: Element) => [...root.querySelectorAll('.row:not(.draft) .cell-input')].map((i) => (i as HTMLInputElement).value);
+  const shown = (root: Element) =>
+    [...root.querySelectorAll('.list .row[data-item]')].sort((a, b) => parseFloat((a as HTMLElement).style.top) - parseFloat((b as HTMLElement).style.top)).map((r) => r.getAttribute('data-item'));
+
+  it('the row and its bars follow the pointer together on every move, and the rows keep their DOM order until the drop', () => {
+    const { root } = mount();
+    const order = names(root);
+    const row = root.querySelector('.list .row[data-item="revise-lumen-proposal"]') as HTMLElement;
+    const bars = root.querySelector('.bars[data-item="revise-lumen-proposal"]') as HTMLElement;
+    ptr('pointerdown', row.querySelector('.handle')!, 200);
+    for (const dy of [7, 19, 33, 61, 70]) {
+      ptr('pointermove', row, 200 - dy);
+      expect(row.style.top).toBe(`${3 * 44 - dy}px`);
+      expect(bars.style.top).toBe(row.style.top);
+    }
+    expect(row.classList.contains('dragging') && bars.classList.contains('dragging')).toBe(true);
+    expect(names(root)).toEqual(order); // DOM untouched mid-drag
+    expect(shown(root).indexOf('revise-lumen-proposal')).toBe(1); // but the others already make room
+    ptr('pointerup', row, 130);
+    expect(row.style.top).toBe('44px');
+    expect(names(root)[1]).toBe('Revise Lumen proposal');
+  });
+
+  it('a drag let go outside the board still ends (and Escape-like cancels put the row back)', () => {
+    const { root } = mount();
+    const first = names(root)[0];
+    const bar = root.querySelectorAll('.bars')[0]!;
+    ptr('pointerdown', bar, 100);
+    ptr('pointermove', document.body, 100 + 44 * 3);
+    ptr('pointerup', document.body, 100 + 44 * 3);
+    expect(root.querySelector('.board-wrap')!.classList.contains('is-dragging')).toBe(false);
+    expect(names(root)[3]).toBe(first);
+    // a cancelled drag (the browser takes the pointer away) changes nothing
+    const now = names(root);
+    ptr('pointerdown', root.querySelectorAll('.bars')[2]!, 100);
+    ptr('pointermove', document.body, 100 + 44 * 2);
+    act(() => void window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
+    expect(root.querySelector('.row.dragging')).toBeNull();
+    expect(names(root)).toEqual(now);
+  });
+
+  it('hovering a bar lights up its row and shows the drag grip; hovering a row lights up its bars', () => {
+    const { root } = mount();
+    const bars = root.querySelector('.bars[data-item="appeal-for-kestrel"]')!;
+    const row = root.querySelector('.row[data-item="appeal-for-kestrel"]')!;
+    act(() => void bars.dispatchEvent(new PointerEvent('pointerenter')));
+    expect(row.hasAttribute('data-hover') && bars.hasAttribute('data-hover')).toBe(true);
+    const other = root.querySelector('.row[data-item="quick-fix-for-acme"]')!;
+    act(() => void other.dispatchEvent(new PointerEvent('pointerenter')));
+    expect(row.hasAttribute('data-hover')).toBe(false);
+    expect(root.querySelector('.bars[data-item="quick-fix-for-acme"]')!.hasAttribute('data-hover')).toBe(true);
+    act(() => void root.querySelector('.board-wrap')!.dispatchEvent(new PointerEvent('pointerleave')));
+    expect(root.querySelectorAll('[data-hover]')).toHaveLength(0);
+  });
+
+  it('a drop moves focus to the board, so ⌘/Ctrl Z right after it undoes the move', () => {
+    const { root } = mount();
+    const first = names(root)[0];
+    const bar = root.querySelectorAll('.bars')[0]!;
+    ptr('pointerdown', bar, 100);
+    ptr('pointermove', bar, 100 + 44);
+    ptr('pointerup', bar, 100 + 44);
+    expect(document.activeElement).toBe(root.querySelector('.board-wrap'));
+    act(() => void document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true })));
+    expect(names(root)[0]).toBe(first);
+  });
+});
+
+describe('undo and redo', () => {
+  const key = (init: KeyboardEventInit, target: EventTarget = window) => act(() => void target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init })));
+  const saturday = (root: Element) => root.querySelector('.daychip[title^="Saturday"]') as HTMLButtonElement;
+
+  it('buttons and shortcuts (⌘Z, ⇧⌘Z, Ctrl Y) step through the history; disabled when there is nothing to do', async () => {
+    const { root } = mount();
+    const undo = root.querySelector('[aria-label="Undo"]') as HTMLButtonElement;
+    const redo = root.querySelector('[aria-label="Redo"]') as HTMLButtonElement;
+    expect(undo.disabled && redo.disabled).toBe(true);
+    await act(() => saturday(root).click());
+    expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
+    await key({ key: 'z', metaKey: true });
+    expect(saturday(root).getAttribute('aria-pressed')).toBe('false');
+    await key({ key: 'Z', metaKey: true, shiftKey: true });
+    expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
+    await key({ key: 'z', ctrlKey: true });
+    await key({ key: 'y', ctrlKey: true });
+    expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
+    await act(() => undo.click());
+    expect(undo.disabled).toBe(true);
+    await act(() => redo.click());
+    expect(redo.disabled).toBe(true);
+  });
+
+  it('typing is one undo step, and shortcuts inside a text field are left to the field', async () => {
+    const { root } = mount();
+    const name = root.querySelector('.row:not(.draft) .cell-input') as HTMLInputElement;
+    const before = name.value;
+    for (const v of ['Q', 'Qu', 'Qui']) {
+      name.value = v;
+      await act(() => void name.dispatchEvent(new Event('input', { bubbles: true })));
+    }
+    await key({ key: 'z', metaKey: true }, name); // the field's own undo, not the plan's
+    expect((root.querySelector('.row:not(.draft) .cell-input') as HTMLInputElement).value).toBe('Qui');
+    await act(() => (root.querySelector('[aria-label="Undo"]') as HTMLButtonElement).click());
+    expect((root.querySelector('.row:not(.draft) .cell-input') as HTMLInputElement).value).toBe(before);
+  });
+});
+
+describe('the setup bar', () => {
+  const field = (label: string) => [...document.querySelectorAll('.popover .field')].find((f) => f.textContent?.startsWith(label))!;
+  const set = (el: HTMLInputElement | HTMLSelectElement, value: string, type = 'input') => {
+    el.value = value;
+    return act(() => void el.dispatchEvent(new Event(type, { bubbles: true })));
+  };
+
+  it('adds and removes holidays for everyone, and they move the dates', async () => {
+    const { root } = mount();
+    const end = () => text(root, '.headline');
+    const before = end();
+    await act(() => button(root, '+ holidays').click());
+    const add = button(document.querySelector('.popover')!, 'Add');
+    expect(add.disabled).toBe(true);
+    await set(field('From').querySelector('input')!, '2026-10-06');
+    await set(field('To').querySelector('input')!, '2026-10-08');
+    await set(field('Label').querySelector('input')!, 'Retreat');
+    await act(() => button(document.querySelector('.popover')!, 'Add').click());
+    expect(document.querySelector('.popover')!.textContent).toMatch(/6 Oct – 8 Oct · Retreat/);
+    expect(button(root, '1 holiday')).toBeDefined();
+    expect(end()).not.toBe(before);
+    await act(() => (document.querySelector('[aria-label="Remove holiday"]') as HTMLButtonElement).click());
+    expect(document.querySelector('.popover')!.textContent).toMatch(/None yet/);
+    expect(end()).toBe(before);
+  });
+
+  it('the last working day cannot be switched off', async () => {
+    const { root } = mount();
+    const chips = () => [...root.querySelectorAll('.daychip')] as HTMLButtonElement[];
+    for (const c of chips()) if (c.getAttribute('aria-pressed') === 'true' && c.title.startsWith('Monday') === false) await act(() => c.click());
+    expect(chips().filter((c) => c.getAttribute('aria-pressed') === 'true').map((c) => c.textContent)).toEqual(['Mo']);
+    await act(() => chips()[0]!.click());
+    expect(chips()[0]!.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('the person editor renames, makes a team, sets availability and colour, and removes a person from their items', async () => {
+    const { root } = mount();
+    await act(() => (root.querySelector('[data-lane="omar"]') as HTMLButtonElement).click());
+    await set(field('Name').querySelector('input')!, 'Omar K');
+    expect(root.querySelector('[data-lane="omar"]')!.textContent).toMatch(/Omar K/);
+    await set(field('Kind').querySelector('select')!, 'team', 'change');
+    await set(field('People').querySelector('input')!, '3');
+    expect(root.querySelector('[data-lane="omar"]')!.textContent).toMatch(/×3/);
+    await set(field('Time for this plan').querySelector('input')!, '80');
+    expect(field('Time for this plan').textContent).toMatch(/^Time for this plan: 80%/);
+    await act(() => (document.querySelector('[aria-label="Colour #7950f2"]') as HTMLButtonElement).click());
+    expect((root.querySelector('[data-lane="omar"] .dot') as HTMLElement).style.background).toMatch(/#7950f2|rgb\(121, 80, 242\)/);
+    await set(field('Kind').querySelector('select')!, 'person', 'change');
+    expect(root.querySelector('[data-lane="omar"]')!.textContent).not.toMatch(/×/);
+    const usedBy = button(document.querySelector('.popover')!, 'Remove');
+    expect(usedBy.textContent).toMatch(/used by 2/);
+    await act(() => usedBy.click());
+    expect(root.querySelector('[data-lane="omar"]')).toBeNull();
+    expect(document.querySelector('.popover')).toBeNull();
+    expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
+    expect(root.querySelector('.who-cell[title*="Omar"]')).toBeNull(); // gone from every item it was on
+  });
+});
+
+describe('export files', () => {
+  it('builds every export with a file name from the plan title', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/ui/lib', async (orig) => ({ ...(await orig<typeof import('../../src/ui/lib')>()), svgToPng: async () => new Uint8Array([137, 80, 78, 71]) }));
+    const { buildExport } = await import('../../src/ui/exporters');
+    const plan = sample();
+    const files = await Promise.all((['json', 'yaml', 'xlsx', 'csv', 'ics', 'svg', 'png', 'md'] as const).map((k) => buildExport(k, plan, 'likely', true)));
+    expect(files.map((f) => [f.name, f.mime])).toEqual([
+      ['client-deliverables.whenship.json', 'application/json'],
+      ['client-deliverables.whenship.yaml', 'application/yaml'],
+      ['client-deliverables.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      ['client-deliverables.csv', 'text/csv'],
+      ['client-deliverables.ics', 'text/calendar'],
+      ['client-deliverables.svg', 'image/svg+xml'],
+      ['client-deliverables.png', 'image/png'],
+      ['client-deliverables.md', 'text/markdown'],
+    ]);
+    expect(JSON.parse(files[0]!.data as string).title).toBe('Client deliverables');
+    expect(files[4]!.data).toMatch(/\(Likely 1\.6×\)/);
+    expect(files[7]!.data).toMatch(/<summary>Plan file<\/summary>[\s\S]*"title": "Client deliverables"/);
+    vi.doUnmock('../../src/ui/lib');
+  });
+
+  it('a failed export says so instead of failing silently', async () => {
+    const { root } = mount({ save: vi.fn(async () => Promise.reject(new Error('disk full'))) });
+    await act(() => button(root, 'Export').click());
+    await act(() => button(document as unknown as Element, 'CSV').click());
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(text(root, '.toast')).toBe('Export failed: disk full');
+  });
+
+  it('where downloads are impossible, text files are shown to copy', async () => {
+    const { root } = mount({ save: vi.fn(async () => false as const) });
+    await act(() => button(root, 'Export').click());
+    await act(() => button(document as unknown as Element, 'CSV').click());
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    const dialog = document.querySelector('.dialog[aria-label="client-deliverables.csv"]')!;
+    expect((dialog.querySelector('textarea') as HTMLTextAreaElement).value).toMatch(/^Priority,Item/);
+  });
+});
+
+describe('the who editor with teams and hand-offs', () => {
+  const squads = () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const changes: { items: { name: string; work: { lane: string; days: number; maxPeople: number; after?: string }[] }[] }[] = [];
+    const host: Host = { mode: 'web', save: vi.fn(async () => 'saved' as const), copy: vi.fn(async () => true), baseUrl: () => null, onChange: (p) => changes.push(p as never) };
+    act(() => render(<App host={host} initialPlan={validatePlan(SAMPLES[1]!.build(today), { today }).plan} today={today} />, root));
+    return { root, last: () => changes.at(-1)!.items.find((i) => i.name === 'Subscriptions MVP')! };
+  };
+  const set = (el: HTMLInputElement | HTMLSelectElement, value: string, type = 'input') => {
+    el.value = value;
+    return act(() => void el.dispatchEvent(new Event(type, { bubbles: true })));
+  };
+
+  it('widens for a team and a hand-off, and edits days, people at once, the hand-off and who is on it', async () => {
+    const { root, last } = squads();
+    const row = [...root.querySelectorAll('.list .row')].find((r) => (r.querySelector('.cell-input') as HTMLInputElement | null)?.value === 'Subscriptions MVP')!;
+    await act(() => (row.querySelector('.who-cell') as HTMLButtonElement).click());
+    const pop = document.querySelector('.popover.who-pop')!;
+    expect(pop.classList.contains('wide')).toBe(true);
+    expect([...pop.querySelectorAll('.who-head .col-h')].map((c) => c.textContent)).toEqual(['Days', 'At once', 'Starts']);
+    await set(pop.querySelector('[aria-label="Back-end: working days"]') as HTMLInputElement, '12');
+    await set(pop.querySelector('[aria-label="Back-end: people at once"]') as HTMLInputElement, '3');
+    expect(last().work.find((w) => w.lane === 'back-end')).toMatchObject({ days: 12, maxPeople: 3 });
+    await set(pop.querySelector('[aria-label="Front-end: starts"]') as HTMLSelectElement, '', 'change');
+    expect(last().work.find((w) => w.lane === 'front-end')!.after).toBeUndefined();
+    await set(pop.querySelector('[aria-label="Add a person or team to this item"]') as HTMLSelectElement, 'data', 'change');
+    expect(last().work.map((w) => w.lane)).toEqual(['back-end', 'front-end', 'data']);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Data: working days'); // ready to type the days
+    await act(() => (pop.querySelector('[aria-label="Remove Back-end from this item"]') as HTMLButtonElement).click());
+    expect(last().work.map((w) => w.lane)).toEqual(['front-end', 'data']);
+    await act(() => button(pop as HTMLElement, 'Done').click());
+    expect(document.querySelector('.who-pop')).toBeNull();
   });
 });

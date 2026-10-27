@@ -45,7 +45,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
   const cols = `minmax(0, 1fr) 58px${anyTeam ? ' 52px' : ''}${multi ? ' 116px' : ''} 26px`;
 
   return (
-    <Popover anchor={anchor} onClose={onClose} label={`Who works on ${it.name}`} className="who-pop">
+    <Popover anchor={anchor} onClose={onClose} label={`Who works on ${it.name}`} className={anyTeam && multi ? 'who-pop wide' : 'who-pop'}>
       <div ref={boxRef}>
         <h4>Who works on "{it.name}"</h4>
         {it.work.length === 0 && <p class="note">{plan.lanes.length ? 'Nobody yet. Add a person or team below.' : 'Add a person or team in the bar above first.'}</p>}

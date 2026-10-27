@@ -6,7 +6,7 @@ import { FEATURES } from '../engine/features';
 import { applyChanges, type Change } from '../engine/changes';
 import { formatDay, todayLocal } from '../engine/dates';
 import { findInsights } from '../engine/insights';
-import { LENSES, METHOD_NOTE, type LensId } from '../engine/lens';
+import { METHOD_NOTE, type LensId } from '../engine/lens';
 import { renderReport } from '../engine/report';
 import { compactPlan, validatePlan, type ValidationResult } from '../engine/validate';
 import type { Issue, NormalizedPlan } from '../engine/types';
@@ -151,7 +151,7 @@ export function compare(before: NormalizedPlan, after: NormalizedPlan, lens: Len
     if (ra && delta === 0 && ra.late === rb.late) continue;
     changed++;
     const dl = rb.deadline ? `${formatDay(rb.deadline, year)} ${rb.late ? '🔴 late' : '🟢 met'}${ra && ra.late !== rb.late ? (rb.late ? ' (was met)' : ' (was late)') : ''}` : '—';
-    const d = !ra ? 'new' : delta === undefined ? '—' : delta === 0 ? 'same' : `${delta > 0 ? '+' : ''}${delta} working days`;
+    const d = !ra ? 'new' : delta === undefined ? '—' : delta === 0 ? 'same' : `${delta > 0 ? '+' : '-'}${Math.abs(delta)} working day${Math.abs(delta) === 1 ? '' : 's'}`;
     lines.push(`| ${rb.name.replace(/\|/g, '/')} | ${fa ? formatDay(fa, year) : '—'} | ${fb ? formatDay(fb, year) : '—'} | ${d} | ${dl} |`);
   }
   for (const ra of a.current.items) if (!b.current.byId.has(ra.id)) lines.push(`| ${ra.name.replace(/\|/g, '/')} | ${ra.endDate ? formatDay(ra.endDate, year) : '—'} | removed | | |`), changed++;
@@ -217,7 +217,9 @@ export function createServer(opts: ServerOptions): McpServer {
         .join('\n\n');
       return {
         content: [text(body)],
-        structuredContent: { plan: compactPlan(v.plan), lens: l, publicUrl: opts.publicUrl, createdAt: Date.now(), seq: ++seq },
+        // The chart reads plan/lens/publicUrl/createdAt/seq. `summary` repeats the text for clients that show the model
+        // the structured result instead of the text (Claude Code does), so the dates are never missing there.
+        structuredContent: { summary: body, plan: compactPlan(v.plan), lens: l, publicUrl: opts.publicUrl, createdAt: Date.now(), seq: ++seq },
       };
     },
   );
@@ -345,4 +347,3 @@ export function createServer(opts: ServerOptions): McpServer {
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
 
-export const LENS_IDS = LENSES.map((l) => l.id);

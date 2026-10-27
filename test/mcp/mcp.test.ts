@@ -1,4 +1,6 @@
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { strFromU8, unzipSync } from 'fflate';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -98,6 +100,9 @@ describe('MCP connector', () => {
     expect(sc.lens).toBe('planned');
     expect((sc.plan as { items: unknown[] }).items).toHaveLength(4);
     expect(typeof sc.createdAt).toBe('number');
+    // clients that hand the model the structured result instead of the text (Claude Code) still get the dates
+    expect(Object.keys(sc)[0]).toBe('summary');
+    expect(sc.summary).toBe(text);
     // the link in the answer opens the same plan
     const url = /\((http[^)]+#p=[^)]+)\)/.exec(text)![1]!;
     expect(url.startsWith(`${base}/#p=`)).toBe(true);
@@ -241,9 +246,42 @@ describe('compare()', () => {
     expect(text).toContain('| Quick fix |');
     expect(text).toMatch(/\+\d+ working days/);
   });
+
+  it('says "1 working day", not "1 working days"', () => {
+    const before = plan(PLAN);
+    const after = applyChanges(before, [{ op: 'setEffort', item: 'Appeal A', lane: 'Sara', days: 3 }]).plan;
+    const text = compare(before, after);
+    expect(text).toMatch(/\| -1 working day \|/);
+    expect(text).not.toMatch(/\b1 working days/);
+  });
 });
 
-describe.skipIf(!existsSync('dist/cli.js'))('npx whenship --stdio (built CLI)', () => {
+describe.skipIf(!existsSync('dist/whenship.mcpb'))('Claude Desktop extension (dist/whenship.mcpb)', () => {
+  it('packs the current version, the server and a tool list that matches the connector', async () => {
+    const files = unzipSync(readFileSync('dist/whenship.mcpb'));
+    expect(Object.keys(files).sort()).toEqual(['LICENSE', 'icon.png', 'manifest.json', 'server/app.html', 'server/whenship.mjs']);
+    const manifest = JSON.parse(strFromU8(files['manifest.json']!)) as { version: string; tools: { name: string; description: string }[] };
+    expect(manifest.version).toBe((JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }).version);
+    const { tools } = await client.listTools();
+    expect(manifest.tools.map((t) => t.name).sort()).toEqual(tools.map((t) => t.name).sort());
+    expect(manifest.tools.find((t) => t.name === 'what_if')!.description).toMatch(/alternative plan/);
+  });
+});
+
+describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
+  const run = (...args: string[]) => spawnSync(process.execPath, ['dist/cli.js', ...args], { encoding: 'utf8', timeout: 10_000 });
+
+  it('prints its version and help, and refuses bad options with a clear message', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+    expect(run('--version').stdout.trim()).toBe(pkg.version);
+    expect(run('-h').stdout).toMatch(/^whenship [\d.]+: when will it ship, honestly\?[\s\S]*--stdio/);
+    const unknown = run('--nope');
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toMatch(/^Unknown option: --nope/);
+    expect(run('--port', 'many').stderr).toMatch(/--port must be a number/);
+    expect(run('--public-url=example.com').stderr).toMatch(/--public-url must start with http/);
+  });
+
   it('serves the same tools over stdio', async () => {
     const c = new Client({ name: 'test', version: '1.0.0' });
     await c.connect(new StdioClientTransport({ command: process.execPath, args: ['dist/cli.js', '--stdio'] }));

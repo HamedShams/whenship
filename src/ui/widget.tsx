@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { App as McpApp, applyDocumentTheme, applyHostFonts, applyHostStyleVariables, type McpUiHostContext } from '@modelcontextprotocol/ext-apps';
+import type { Transport } from '@modelcontextprotocol/client';
 import { analyze, badgeLabel, headline, type Analysis } from '../engine/analysis';
 import { dayParts, formatDay, parseISO, todayLocal } from '../engine/dates';
 import { lensById, toLensId, type LensId } from '../engine/lens';
@@ -34,6 +35,8 @@ let rootEl: HTMLElement;
 let app: McpApp;
 let lastSynced = '';
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
+/** The full chart was opened at least once: it then stays mounted (hidden behind the card), so undo survives "Done". */
+let opened = false;
 
 // ── single live chart (supersession) ───────────────────────────────────────
 let key: { createdAt: number; seq: number; id: string } | null = null;
@@ -220,6 +223,18 @@ async function openFull() {
   draw();
 }
 
+async function closeFull() {
+  if (state.displayMode === 'fullscreen') {
+    try {
+      const res = await app.requestDisplayMode({ mode: 'inline' });
+      state.displayMode = res.mode;
+    } catch {
+      state.displayMode = 'inline';
+    }
+  } else state.displayMode = 'inline';
+  draw();
+}
+
 function draw() {
   applyInsets();
   if (state.superseded) {
@@ -241,40 +256,31 @@ function draw() {
     );
     return;
   }
-  if (state.displayMode === 'fullscreen' || state.displayMode === 'inline-full') {
-    render(
-      <App
-        host={host}
-        initialPlan={plan}
-        initialLens={state.lens}
-        today={today}
-        externalPlan={plan}
-        externalVersion={state.version}
-        headerExtra={
-          <button
-            class="btn"
-            title="Back to the summary card"
-            onClick={async () => {
-              if (state.displayMode === 'fullscreen') {
-                try {
-                  const res = await app.requestDisplayMode({ mode: 'inline' });
-                  state.displayMode = res.mode;
-                } catch {
-                  state.displayMode = 'inline';
-                }
-              } else state.displayMode = 'inline';
-              draw();
-            }}
-          >
-            Done
-          </button>
-        }
-      />,
-      rootEl,
-    );
-    return;
-  }
-  render(<Card plan={plan} lens={state.lens} />, rootEl);
+  const full = state.displayMode === 'fullscreen' || state.displayMode === 'inline-full';
+  if (full) opened = true;
+  render(
+    <>
+      {!full && <Card plan={plan} lens={state.lens} />}
+      {opened && (
+        <div hidden={!full}>
+          <App
+            host={host}
+            initialPlan={plan}
+            initialLens={state.lens}
+            today={today}
+            externalPlan={plan}
+            externalVersion={state.version}
+            headerExtra={
+              <button class="btn" title="Back to the summary card" onClick={() => void closeFull()}>
+                Done
+              </button>
+            }
+          />
+        </div>
+      )}
+    </>,
+    rootEl,
+  );
 }
 
 /**
@@ -299,7 +305,8 @@ function applyHost(ctx: McpUiHostContext | undefined) {
   if (ctx.availableDisplayModes) state.canFullscreen = ctx.availableDisplayModes.includes('fullscreen');
 }
 
-export async function bootWidget(root: HTMLElement) {
+/** Starts the widget. `transport` defaults to the host frame (postMessage); tests pass an in-memory one. */
+export async function bootWidget(root: HTMLElement, transport?: Transport) {
   rootEl = root;
   document.body.classList.add('widget');
   app = new McpApp({ name: 'whenship', version: VERSION }, { availableDisplayModes: ['inline', 'fullscreen'] });
@@ -349,7 +356,7 @@ export async function bootWidget(root: HTMLElement) {
   });
 
   draw();
-  await app.connect();
+  await app.connect(transport);
   applyHost(app.getHostContext());
   app.setupSizeChangedNotifications();
   draw();

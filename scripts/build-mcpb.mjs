@@ -29,7 +29,7 @@ const manifest = {
   },
   tools: [
     { name: 'show_plan', description: 'Schedule a plan and show the interactive chart: finish dates, deadline risk and options.' },
-    { name: 'what_if', description: 'Compare a plan before and after changes (reorder, effort, deadlines, people, holidays, working days).' },
+    { name: 'what_if', description: 'Compare a plan with a changed version of it: simple changes, or a whole alternative plan (moving work, splitting or cutting items, combinations).' },
     { name: 'find_options', description: 'Find changes that meet more deadlines, each re-planned exactly.' },
     { name: 'export_plan', description: 'The plan as JSON, CSV, iCalendar, Markdown or a share link.' },
   ],

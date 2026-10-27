@@ -1,21 +1,21 @@
 import type { ComponentChildren } from 'preact';
 import { FEATURES } from '../engine/features';
-import { LENSES, METHOD_NOTE, type LensId } from '../engine/lens';
+import { LENSES, METHOD_SHORT, type LensId } from '../engine/lens';
+import type { NormalizedPlan } from '../engine/types';
 import { DEFAULT_TITLE } from '../engine/validate';
+import { Popover, useAnchor } from './Popover';
+import { Icon, Logo } from './lib';
 
 const LENS_HINT: Record<LensId, string> = {
   planned: 'exactly what you entered',
   likely: 'about half of projects are done by here',
   safe: 'about 9 in 10 are done by here: a date to promise',
 };
-import type { NormalizedPlan } from '../engine/types';
-import { Popover, useAnchor } from './Popover';
-import { Icon, Logo } from './lib';
 
 export type ExportKind = 'yaml' | 'json' | 'xlsx' | 'csv' | 'ics' | 'png' | 'svg' | 'md';
 
 const ALL_EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
-  { kind: 'json', label: 'Save plan', hint: '.json: reopen it here or in Claude' },
+  { kind: 'json', label: 'Save plan', hint: '.json: reopen here or in Claude' },
   { kind: 'yaml', label: 'Save plan as YAML', hint: '.yaml' },
   { kind: 'xlsx', label: 'Excel', hint: '.xlsx with a Gantt sheet' },
   { kind: 'png', label: 'Image', hint: '.png of the chart' },
@@ -132,7 +132,7 @@ export function Header(p: Props) {
               <span>
                 <Icon.link /> Copy link
               </span>
-              <small>the plan travels inside the URL</small>
+              <small>the plan is inside the URL</small>
             </button>
           </div>
         </Popover>
@@ -143,15 +143,24 @@ export function Header(p: Props) {
           <p class="note">
             <b>Your numbers never change.</b> The lenses re-plan as if every task takes longer, the way work usually does.
           </p>
-          <div class="lens-list">
-            {LENSES.map((l) => (
-              <div key={l.id} class="lens-row">
-                <span class="lens-x">{l.short}</span>
-                <b>{l.label}</b>
-                <span class="sub">{LENS_HINT[l.id]}</span>
-              </div>
-            ))}
-          </div>
+          <table class="lens-table">
+            <thead>
+              <tr>
+                <th>Lens</th>
+                <th>Effort</th>
+                <th>What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              {LENSES.map((l) => (
+                <tr key={l.id} class={p.lens === l.id ? 'on' : undefined} aria-current={p.lens === l.id ? 'true' : undefined}>
+                  <th scope="row">{l.label}</th>
+                  <td class="lens-x">{l.short}</td>
+                  <td>{LENS_HINT[l.id]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <div class="badge-key" aria-label="What the badges mean">
             <span>
               <span class="pill safe">safe</span> even at 3.1×
@@ -167,10 +176,9 @@ export function Header(p: Props) {
             </span>
           </div>
           <p class="note">Badges say how much slip a deadline survives. With Likely or Safe bet on, any deadline those dates miss shows as late.</p>
-          <details>
-            <summary class="note">Where the numbers come from</summary>
-            <p class="note">{METHOD_NOTE} The "~x% chance" assumes the whole plan runs long or short together.</p>
-          </details>
+          <p class="note method">
+            <b>Where the numbers come from.</b> {METHOD_SHORT} The "~x% chance" assumes the whole plan runs long or short together.
+          </p>
         </Popover>
       )}
     </header>

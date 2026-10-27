@@ -10,6 +10,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noUnusedLocals": true,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
     "isolatedModules": true,

@@ -6,7 +6,7 @@ import { badgeLabel, chanceLabel } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
-import type { NormalizedPlan, NormalizedWork } from '../engine/types';
+import type { NormalizedPlan } from '../engine/types';
 import { useAnchor } from './Popover';
 import { Avatar, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
@@ -59,17 +59,20 @@ interface Drag {
   id: string;
   from: number;
   over: number;
-  dy: number;
   startY: number;
   /** Started from the bar in the timeline (not the row's handle). */
   byBar?: boolean;
 }
 
-/** Dragging must never select text or leave focus behind in another row. */
-function startDragging() {
+/**
+ * Dragging must never select text or leave focus behind in another row. Focus moves to the board itself, so ⌘/Ctrl Z
+ * right after a drop reaches the app (inside Claude, a press that doesn't focus the chart leaves the keys with the chat).
+ */
+function startDragging(wrap: HTMLElement | null) {
   window.getSelection?.()?.removeAllRanges();
   const active = document.activeElement;
   if (active instanceof HTMLElement && active.closest('.board')) active.blur();
+  wrap?.focus({ preventScroll: true });
 }
 
 export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom }: Props) {
@@ -81,8 +84,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const draftRef = useRef<HTMLInputElement>(null);
   const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
   const [openWhoFor, setOpenWhoFor] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
+  // The latest drag and pointer offset, for handlers that run between renders.
+  const dragRef = useRef<Drag | null>(null);
+  const dyRef = useRef(0);
   const followScroll = () => {
     if (boardRef.current && scaleRef.current) scaleRef.current.style.transform = `translateX(${-boardRef.current.scrollLeft}px)`;
   };
@@ -97,6 +104,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const preview = useMemo(() => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : null), [plan, drag?.id, drag?.over, drag?.from, factor]);
   const shown: Schedule = preview ?? analysis.current;
   const order = useMemo(() => (drag ? moveItem(plan, drag.id, drag.over).items : plan.items), [plan, drag?.id, drag?.over]);
+  // Rows are absolutely positioned, so they stay in the plan's DOM order and only their `top` follows the preview order:
+  // moving DOM nodes mid-drag could drop the pointer capture and strand the drag.
+  const slot = useMemo(() => new Map(order.map((it, i) => [it.id, i])), [order]);
 
   // timeline geometry (calendar days, so dates line up with real weeks)
   const geo = useMemo(() => {
@@ -180,12 +190,31 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const commitChange = (changes: Parameters<typeof applyChanges>[1], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
 
   // ── drag handlers ──
+  // The dragged row and its bars follow the pointer directly (no re-render per move); the board re-renders only when
+  // the row crosses into another slot, which also re-plans the live preview.
+  const dragged = (id: string) => wrapRef.current?.querySelectorAll<HTMLElement>(`[data-item="${CSS.escape(id)}"]`) ?? [];
+  const slotOf = (d: Drag, dy: number) => Math.max(0, Math.min(plan.items.length - 1, Math.round(d.from + dy / ROW)));
+  // Capturing the pointer keeps moves coming when it leaves the window; the drag works without it (see below).
+  const capture = (e: PointerEvent) => {
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* not an active pointer (e.g. a synthetic event) */
+    }
+  };
+  const begin = (d: Drag, dy: number) => {
+    startDragging(wrapRef.current);
+    hover(null);
+    dragRef.current = d;
+    dyRef.current = dy;
+    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    setDrag(d);
+  };
   const onDown = (e: PointerEvent, id: string, index: number) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    startDragging();
-    setDrag({ id, from: index, over: index, dy: 0, startY: e.clientY });
+    capture(e);
+    begin({ id, from: index, over: index, startY: e.clientY }, 0);
   };
   // Bars: a press that moves up or down drags the item (like its handle); a press without moving selects it.
   const pressed = useRef<{ id: string; index: number; x: number; y: number } | null>(null);
@@ -193,23 +222,29 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (e.button !== 0) return;
     e.preventDefault(); // no text selection across the rows it passes
     pressed.current = { id, index, x: e.clientX, y: e.clientY };
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    capture(e);
   };
   const onMove = (e: PointerEvent) => {
     const p = pressed.current;
-    if (p && !drag) {
+    if (p && !dragRef.current) {
       if (Math.abs(e.clientY - p.y) > 4) {
         pressed.current = null;
+        const d: Drag = { id: p.id, from: p.index, over: p.index, startY: p.y, byBar: true };
         const dy = e.clientY - p.y;
-        startDragging();
-        setDrag({ id: p.id, from: p.index, over: Math.max(0, Math.min(plan.items.length - 1, Math.round(p.index + dy / ROW))), dy, startY: p.y, byBar: true });
+        begin({ ...d, over: slotOf(d, dy) }, dy);
       }
       return;
     }
-    if (!drag) return;
-    const dy = e.clientY - drag.startY;
-    const over = Math.max(0, Math.min(plan.items.length - 1, Math.round(drag.from + dy / ROW)));
-    if (over !== drag.over || dy !== drag.dy) setDrag({ ...drag, over, dy });
+    const d = dragRef.current;
+    if (!d) return;
+    const dy = e.clientY - d.startY;
+    dyRef.current = dy;
+    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    const over = slotOf(d, dy);
+    if (over !== d.over) {
+      dragRef.current = { ...d, over };
+      setDrag(dragRef.current);
+    }
   };
   const onUp = (e?: PointerEvent) => {
     const p = pressed.current;
@@ -219,13 +254,46 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       if (still) onSelect(selected === p.id ? null : p.id);
       return;
     }
-    if (!drag) return;
-    if (drag.over !== drag.from) onCommit(moveItem(plan, drag.id, drag.over));
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    for (const el of dragged(d.id)) el.style.top = `${d.over * ROW}px`; // drop into the slot
+    if (d.over !== d.from) onCommit(moveItem(plan, d.id, d.over));
     setDrag(null);
   };
   const onCancel = () => {
     pressed.current = null;
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (d) for (const el of dragged(d.id)) el.style.top = `${d.from * ROW}px`;
     setDrag(null);
+  };
+  // Moves and releases are followed on the whole window, so a drag always ends, even if the pointer is let go outside
+  // the board or the browser drops the capture.
+  const handlers = useRef({ onMove, onUp, onCancel });
+  handlers.current = { onMove, onUp, onCancel };
+  useEffect(() => {
+    const move = (e: PointerEvent) => handlers.current.onMove(e);
+    const up = (e: PointerEvent) => handlers.current.onUp(e);
+    const cancel = () => handlers.current.onCancel();
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', cancel);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', cancel);
+    };
+  }, []);
+  // An item's row and its bars are one piece: hovering either lights up both (and shows the row's drag grip).
+  const hovered = useRef<string | null>(null);
+  const hover = (id: string | null) => {
+    if (hovered.current === id) return;
+    if (hovered.current) for (const el of dragged(hovered.current)) el.removeAttribute('data-hover');
+    hovered.current = id;
+    if (id && !dragRef.current) for (const el of dragged(id)) el.setAttribute('data-hover', '');
   };
   const onKeyMove = (e: KeyboardEvent, id: string, index: number) => {
     const to = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : null;
@@ -235,7 +303,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-handle="${id}"]`)?.focus());
   };
 
-  const topOf = (id: string, i: number) => (drag && drag.id === id ? drag.from * ROW + drag.dy : i * ROW);
+  const topOf = (id: string, i: number) => (drag && drag.id === id ? drag.from * ROW + dyRef.current : i * ROW);
   const year = dayParts(plan.start).year;
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
@@ -256,7 +324,13 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const height = (order.length + 1) * ROW; // + the empty row for a new item
 
   return (
-    <div class={cx('board-wrap', drag && 'is-dragging')} onPointerMove={(e) => onMove(e as unknown as PointerEvent)} onPointerUp={(e) => onUp(e as unknown as PointerEvent)} onPointerCancel={onCancel}>
+    <div
+      ref={wrapRef}
+      tabIndex={-1}
+      class={cx('board-wrap', drag && 'is-dragging')}
+      onPointerLeave={() => hover(null)}
+      onDragStart={(e) => e.preventDefault()} // no native drag of selected text or images (Safari)
+    >
       {/* Column titles and the calendar scale: outside the scrolling board so they can stick under the toolbar while the
           page scrolls; the scale follows the board's horizontal scroll. */}
       <div class="board-head" aria-hidden="true" onWheel={scrollFromHead}>
@@ -303,7 +377,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         {/* list */}
         <div class="list" role="list" aria-label="Items in priority order">
           <div class="rows" style={{ height: `${height}px` }}>
-            {order.map((it, i) => {
+            {plan.items.map((it) => {
+              const i = slot.get(it.id)!;
               const r = shown.byId.get(it.id)!;
               const o = analysis.outlook.get(it.id);
               const isDragged = drag?.id === it.id;
@@ -312,8 +387,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 <div
                   key={it.id}
                   role="listitem"
+                  data-item={it.id}
                   class={cx('row', selected === it.id && 'sel', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
                   style={{ top: `${topOf(it.id, i)}px` }}
+                  onPointerEnter={() => hover(it.id)}
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest('input, button, select')) return;
                     onSelect(selected === it.id ? null : it.id);
@@ -420,11 +497,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             )}
           </div>
           <div class="rows" style={{ height: `${height}px` }}>
-            {order.map((it, i) => (
+            {plan.items.map((it) => (
               <BarRow
                 key={it.id}
                 it={it}
-                top={topOf(it.id, i)}
+                top={topOf(it.id, slot.get(it.id)!)}
                 shown={shown}
                 base={analysis.current}
                 planned={analysis.planned}
@@ -434,11 +511,13 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 ppd={geo.ppd}
                 laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
                 dragging={!!drag}
+                isDragged={drag?.id === it.id}
                 dim={!!highlight && !highlight.has(it.id)}
                 chain={!!highlight && highlight.has(it.id)}
                 year={year}
                 sel={selected === it.id}
                 onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
+                onHover={() => hover(it.id)}
               />
             ))}
           </div>
@@ -475,11 +554,13 @@ function BarRow(props: {
   ppd: number;
   laneColor: (id: string) => string;
   dragging: boolean;
+  isDragged: boolean;
   dim: boolean;
   chain: boolean;
   year: number;
   sel: boolean;
   onPointerDown: (e: PointerEvent) => void;
+  onHover: () => void;
 }) {
   const { it, shown, x, ppd } = props;
   const r = shown.byId.get(it.id)!;
@@ -498,9 +579,20 @@ function BarRow(props: {
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
   const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
   return (
-    <div class={cx('bars', props.dim && 'dim', props.sel && 'sel')} style={{ top: `${props.top}px` }} onPointerDown={(e) => props.onPointerDown(e as unknown as PointerEvent)}>
+    <div
+      data-item={it.id}
+      class={cx('bars', props.dim && 'dim', props.sel && 'sel', props.isDragged && 'dragging')}
+      style={{ top: `${props.top}px` }}
+      onPointerDown={(e) => props.onPointerDown(e as unknown as PointerEvent)}
+      onPointerEnter={props.onHover}
+    >
+      {/* With a lens on, a thin baseline under the bars keeps the user's own estimate (the usual Gantt "baseline"). */}
       {props.lensActive && plannedR?.startDate && plannedR.endDate && (
-        <div class="plan-ghost" title="Your estimate (as planned)" style={{ left: `${x(plannedR.startDate)}px`, width: `${x(plannedR.endDate) - x(plannedR.startDate) + ppd}px`, top: '5px', height: `${ROW - 10}px` }} />
+        <div
+          class="baseline"
+          title={`Your estimate (as planned): ${formatDay(plannedR.startDate, props.year)} → ${formatDay(plannedR.endDate, props.year)}`}
+          style={{ left: `${x(plannedR.startDate) + 1}px`, width: `${Math.max(4, x(plannedR.endDate) - x(plannedR.startDate) + ppd - 2)}px`, top: `${ROW - 6}px` }}
+        />
       )}
       {late && r.endDate && it.deadline && (
         <div class="late-zone" title="Past the deadline" style={{ left: `${dueEnd}px`, width: `${Math.max(2, endX - dueEnd)}px`, top: '3px', height: `${ROW - 6}px` }} />
@@ -543,7 +635,7 @@ function BarRow(props: {
 
 /**
  * What the marks on the chart mean. Diamonds are the usual Gantt milestone marker; here each one is an item's deadline,
- * coloured like its delivery date. With a lens on, bars are stretched and a dashed outline keeps the user's own estimate.
+ * coloured like its delivery date. With a lens on, bars are stretched and a thin baseline keeps the user's own estimate.
  */
 export function ChartKey({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
   const l = lensById(lens);
@@ -563,7 +655,7 @@ export function ChartKey({ lens, onPlanned }: { lens: LensId; onPlanned: () => v
       </span>
       {l.factor !== 1 && (
         <span class="k-lens">
-          <i class="k-ghost" /> your estimate · bars show {l.label} ({l.short})
+          bars show {l.label} ({l.short}) · <i class="k-baseline" /> your estimate (as planned)
           <button class="link-btn" onClick={onPlanned}>
             Show as planned
           </button>

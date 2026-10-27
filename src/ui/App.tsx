@@ -101,9 +101,11 @@ export function App(props: AppProps) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
       if (t instanceof Element && t.closest('input, textarea, select, [contenteditable]')) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      if (appRef.current?.closest('[hidden]')) return; // the widget is showing its card instead
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && (key === 'z' || (key === 'y' && !e.metaKey))) {
         e.preventDefault();
-        if (e.shiftKey) h.redo();
+        if (e.shiftKey || key === 'y') h.redo();
         else h.undo();
       }
       if (e.key === 'Escape') setSelected(null);

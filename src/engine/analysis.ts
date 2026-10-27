@@ -114,11 +114,6 @@ export function chanceLabel(c: number): string {
   return p >= 95 ? '95%+' : p <= 5 ? 'under 5%' : `~${p}%`;
 }
 
-/** Short badge text for narrow places (the item list). */
-export function badgeShort(b: Badge): string {
-  return { safe: 'safe', likely: 'likely', tight: 'tight', late: 'late', unknown: '—' }[b];
-}
-
 export function formatMoney(value: number, currency?: string): string {
   const sym = currency ?? '';
   const abs = Math.abs(value);

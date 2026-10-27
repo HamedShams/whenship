@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import YAML from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { analyze, explain, findInsights, headline, validatePlan } from '../../src/engine';
+import { analyze, findInsights, headline, validatePlan } from '../../src/engine';
 
 const dir = 'plugin/skills';
 const skills = readdirSync(dir).map((name) => ({ name, text: readFileSync(`${dir}/${name}/SKILL.md`, 'utf8') }));

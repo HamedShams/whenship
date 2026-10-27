@@ -69,7 +69,11 @@ By default you see **your own estimates** (*As planned*). whenship never stretch
 
 The badges use the same scale: *safe* means on time even at 3.1×, *likely* means on time at 1.6×, *tight* means on time only if nothing slips, and *late* means late even as planned. With another lens on, every deadline that lens's dates miss shows as *late*.
 
-The multipliers (P50 1.6×, P90 3.1×) come from a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. The "~x% chance" on each deadline is a smooth (lognormal) curve through those two points. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
+**Where the numbers come from.** People underestimate, so the lenses show the plan when work runs long the way it usually does. The multipliers (P50 1.6×: about half of projects are done by then; P90 3.1×: about 9 in 10) come from a blended outside-view heuristic: Todd Little's 2006 lognormal model of software estimation error, combined with Flyvbjerg et al.'s 2022 power-law findings on IT project overruns, sanity-checked by simple/geometric averaging and a 50/50 Monte Carlo mixture. They are practical, generic rules of thumb, not a formal industry standard. Your own track record beats them.
+
+**The "~x% chance"** on each deadline reads the same scale: a smooth (lognormal) curve through those two points (P80 ≈ 2.5×, P95 ≈ 3.7×; about 1 plan in 5 finishes as estimated). It assumes the whole plan runs long or short together, so it is a rough guide for one deadline, not a combined probability for several.
+
+The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence version of this; this section is the full one.
 
 ## Reading the chart
 
@@ -79,7 +83,7 @@ The multipliers (P50 1.6×, P90 3.1×) come from a blended outside-view heuristi
 | ◆ Diamond | The item's deadline (the usual Gantt milestone mark). Green: on time. Amber: tight. Red: late. |
 | Hatched stripes | The part of the work that runs past the deadline. |
 | Vertical line | Today. |
-| Dashed outline | Only with *Likely* or *Safe bet* on: your own estimate, while the bar shows the stretched dates. |
+| Thin grey line under a bar | Only with *Likely* or *Safe bet* on: your own estimate (the *As planned* dates), while the bar shows the stretched ones. Gantt tools call this the baseline. |
 
 A key above the chart repeats this, and hovering any mark gives its dates.
 
@@ -161,7 +165,7 @@ npm install
 npm run dev
 ```
 
-`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`). `npm run check` runs the type check, all unit, regression and connector tests, and the scheduler tests in three time zones.
+`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`); `npm run build:mcpb` packs the Claude Desktop extension. `npm run check` runs the type check, all unit, regression, UI, widget and connector tests with a coverage floor, and the scheduler tests in three time zones. CI also audits dependencies and runs the built CLI on Node 20. Pushing a version tag (`v1.4.0`) publishes a GitHub Release with the extension attached.
 
 The code is small on purpose: `src/engine` (scheduler, forecast lens, insights; no dependencies), `src/io` (plan files, tables, links, Excel, calendar, SVG), `src/ui` (Preact app shared by the website and the Claude widget), `src/mcp` (connector and web server) and `src/cli`.
 

@@ -86,12 +86,16 @@ export function Header(p: Props) {
           <span style={{ width: '6px' }} />
         </>
       )}
-      <button class="icon-btn" aria-label="Undo" title="Undo (Ctrl/⌘ Z)" disabled={!p.canUndo} onClick={p.onUndo}>
-        <Icon.undo />
-      </button>
-      <button class="icon-btn" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)" disabled={!p.canRedo} onClick={p.onRedo}>
-        <Icon.redo />
-      </button>
+      {FEATURES.undoButtons && (
+        <>
+          <button class="icon-btn" aria-label="Undo" title="Undo (Ctrl/⌘ Z)" disabled={!p.canUndo} onClick={p.onUndo}>
+            <Icon.undo />
+          </button>
+          <button class="icon-btn" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)" disabled={!p.canRedo} onClick={p.onRedo}>
+            <Icon.redo />
+          </button>
+        </>
+      )}
       {p.onOpen && (
         <button class="btn" onClick={p.onOpen} title="Open a plan file or paste a list / table">
           <Icon.open /> Open

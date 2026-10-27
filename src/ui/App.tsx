@@ -6,7 +6,8 @@ import { findInsights, type Insight } from '../engine/insights';
 import type { LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
-import { autoZoom, Board, ChartKey, timelineSpan, type Zoom } from './Board';
+import type { Zoom } from '../io/view';
+import { autoZoom, Board, Legend, timelineSpan } from './Board';
 import { Details } from './Details';
 import { buildExport, type ExportFile } from './exporters';
 import { Header, type ExportKind } from './Header';
@@ -28,8 +29,8 @@ export interface Host {
   copy(text: string): Promise<boolean>;
   /** Base URL for share links (null when there's no web address, e.g. a local file). */
   baseUrl(): string | null;
-  /** Called after every change (the widget syncs it into Claude's context). */
-  onChange?(plan: NormalizedPlan, lens: LensId, analysis: Analysis): void;
+  /** Called after every change of the plan or the view (the widget syncs the plan into Claude's context). */
+  onChange?(plan: NormalizedPlan, lens: LensId, analysis: Analysis, zoom: Zoom | null): void;
   /** Whether the chat can be asked from the chart (the widget, in hosts that accept messages). */
   canAskClaude?(): boolean;
   /** Ask Claude in the chat for better options than the built-in suggestions; resolve false if it didn't go through. */
@@ -40,6 +41,8 @@ export interface AppProps {
   host: Host;
   initialPlan: NormalizedPlan;
   initialLens?: LensId;
+  /** The timeline zoom to start with; unset picks one from the plan's length. */
+  initialZoom?: Zoom | null;
   today: string;
   /** Replace the plan from outside (e.g. Claude sent an update). Changing `externalVersion` triggers it. */
   externalPlan?: NormalizedPlan | null;
@@ -81,15 +84,15 @@ export function App(props: AppProps) {
 
   const analysis = useMemo(() => analyze(plan, lens), [plan, lens]);
   // timeline zoom: picked from the plan's length until the user chooses one
-  const [zoom, setZoom] = useState<Zoom | null>(null);
+  const [zoom, setZoom] = useState<Zoom | null>(props.initialZoom ?? null);
   const zoomShown: Zoom = useMemo(() => zoom ?? autoZoom(timelineSpan(plan, analysis, today).span), [zoom, plan, analysis, today]);
   const settled = useDebounced(plan, 180);
   const insights: Insight[] = useMemo(() => findInsights(settled, lens), [settled, lens]);
   const pending = settled !== plan;
 
   useEffect(() => {
-    host.onChange?.(plan, lens, analysis);
-  }, [plan, lens]);
+    host.onChange?.(plan, lens, analysis, zoom);
+  }, [plan, lens, zoom]);
 
   useEffect(() => {
     if (!toast) return;
@@ -126,7 +129,7 @@ export function App(props: AppProps) {
     async (kind: ExportKind) => {
       try {
         const dark = document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
-        const file = await buildExport(kind, plan, lens, !!dark);
+        const file = await buildExport(kind, plan, lens, !!dark, zoom);
         const ok = await host.save(file);
         if (ok === 'saved') setToast(`Saved ${file.name}`);
         else if (ok === 'opened') setToast('Opened this plan in whenship in your browser: export it from there');
@@ -136,16 +139,16 @@ export function App(props: AppProps) {
         setToast(`Export failed: ${(err as Error).message}`);
       }
     },
-    [plan, lens, host],
+    [plan, lens, zoom, host],
   );
 
   const copyLink = useCallback(async () => {
     const base = host.baseUrl();
-    const url = shareUrl(base ?? 'https://whenship.app/', plan, lens);
+    const url = shareUrl(base ?? 'https://whenship.app/', plan, lens, zoom);
     const ok = await host.copy(url);
     if (ok) setToast('Link copied: the whole plan is inside it, nothing was uploaded');
     else setDialog({ kind: 'text', title: 'Share link', note: 'Copy this link. The whole plan travels inside it (after the #), so nothing is uploaded anywhere.', text: url });
-  }, [plan, lens, host]);
+  }, [plan, lens, zoom, host]);
 
   // In Claude, one click from the chart asks for ideas beyond the built-in suggestions (reassigning, splitting, combinations).
   const canAsk = !!host.askClaude && !!host.canAskClaude?.();
@@ -208,7 +211,6 @@ export function App(props: AppProps) {
             }}
             onAskClaude={canAsk ? askClaude : undefined}
           />
-          <ChartKey lens={lens} onPlanned={() => setLens('planned')} />
           <Board
             plan={plan}
             analysis={analysis}
@@ -224,7 +226,7 @@ export function App(props: AppProps) {
           {selected && plan.items.some((x) => x.id === selected) && (
             <Details plan={plan} analysis={analysis} id={selected} onCommit={h.commit} onClose={() => setSelected(null)} />
           )}
-          <p class="hint">Drag ⠿ to reprioritize · click any value to edit · click a row to see why it lands when it does.</p>
+          <Legend lens={lens} onPlanned={() => setLens('planned')} />
         </>
       )}
       {props.footer}

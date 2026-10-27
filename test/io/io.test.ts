@@ -49,6 +49,33 @@ describe('save files and links', () => {
     expect(encodeShareFragment(sample).length).toBeLessThan(1200);
   });
 
+  it('share links also carry the timeline zoom; links without it, or from older versions, still open', () => {
+    const url = shareUrl('https://example.org/', sample, 'likely', 'week');
+    expect(url).toMatch(/&l=likely&z=week$/);
+    expect(decodeShareLink(url)).toMatchObject({ lens: 'likely', zoom: 'week' });
+    expect(decodeShareLink(shareUrl('https://example.org/', sample, 'planned', 'month'))).toMatchObject({ zoom: 'month' });
+    const plain = decodeShareLink(shareUrl('https://example.org/', sample))!;
+    expect(plain.lens).toBeUndefined();
+    expect(plain.zoom).toBeUndefined();
+    const fragment = encodeShareFragment(sample);
+    expect(decodeShareLink(`#${fragment}&z=week&l=safe`)).toMatchObject({ lens: 'safe', zoom: 'week' }); // any order
+    expect(decodeShareLink(`#${fragment}&l=worst&z=year`)).toMatchObject({ lens: 'safe' }); // old lens names, unknown zoom ignored
+    expect(decodeShareLink(`#${fragment}&z=year`)!.zoom).toBeUndefined();
+  });
+
+  it('images can be drawn at the chart’s zoom instead of fitted', () => {
+    const width = (svg: string) => Number(/width="(\d+)"/.exec(svg)![1]);
+    const fitted = toSvg(sample);
+    const days = toSvg(sample, 'planned', { dayWidth: 26 });
+    const months = toSvg(sample, 'planned', { dayWidth: 4 });
+    expect(width(days)).toBeGreaterThan(width(months));
+    expect(width(fitted)).toBeLessThanOrEqual(300 + 1100 + 24 + 26);
+    // zoomed out, weekends aren't shaded (holidays still are), as in the app
+    const shaded = (svg: string) => (svg.match(/height="\d+" fill="#f5f6f8"/g) ?? []).length;
+    expect(shaded(months)).toBeLessThan(shaded(days));
+    expect(shaded(months)).toBeGreaterThan(0);
+  });
+
   it('opens a Markdown export with a fenced YAML block', () => {
     const md = `# My plan\n\nSome notes\n\n\`\`\`yaml\n${toYaml(sample)}\`\`\`\n`;
     const back = parsePlanText(md, '2026-10-05');

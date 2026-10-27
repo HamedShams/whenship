@@ -4,6 +4,7 @@ import { compactPlan, validatePlan, type ValidationResult } from '../engine/vali
 import { toLensId, type LensId } from '../engine/lens';
 import type { NormalizedPlan } from '../engine/types';
 import { parseTable } from './table';
+import { toZoom, type Zoom } from './view';
 
 export const FILE_HEADER =
   '# whenship plan: open it at whenship (web), drop it into Claude, or edit it by hand.\n' +
@@ -47,25 +48,30 @@ export function parsePlanText(text: string, today: string): ParsedText {
 }
 
 // ── share links ───────────────────────────────────────────────────────────
-/** `#p=<compressed plan>[&l=<lens>]`, appended to the app URL. The fragment never reaches a server. */
-export function encodeShareFragment(plan: NormalizedPlan, lens?: LensId): string {
+/**
+ * `#p=<compressed plan>[&l=<lens>][&z=<zoom>]`, appended to the app URL. The fragment never reaches a server. The lens
+ * and zoom are left out when they're the defaults (As planned; zoom picked from the plan's length).
+ */
+export function encodeShareFragment(plan: NormalizedPlan, lens?: LensId, zoom?: Zoom | null): string {
   const data = compressToEncodedURIComponent(JSON.stringify(compactPlan(plan)));
-  return `p=${data}${lens && lens !== 'planned' ? `&l=${lens}` : ''}`;
+  return `p=${data}${lens && lens !== 'planned' ? `&l=${lens}` : ''}${zoom ? `&z=${zoom}` : ''}`;
 }
 
-export function shareUrl(base: string, plan: NormalizedPlan, lens?: LensId): string {
-  return `${base.replace(/[#?].*$/, '')}#${encodeShareFragment(plan, lens)}`;
+export function shareUrl(base: string, plan: NormalizedPlan, lens?: LensId, zoom?: Zoom | null): string {
+  return `${base.replace(/[#?].*$/, '')}#${encodeShareFragment(plan, lens, zoom)}`;
 }
 
-export function decodeShareLink(text: string): { plan: unknown; lens?: LensId } | null {
-  const m = /(?:^|[#&])p=([A-Za-z0-9+\-_$]+)(?:&l=([a-z]+))?/.exec(text.trim());
+export function decodeShareLink(text: string): { plan: unknown; lens?: LensId; zoom?: Zoom } | null {
+  const m = /(?:^|[#&])p=([A-Za-z0-9+\-_$]+)((?:&[a-z]=[a-z]+)*)/.exec(text.trim());
   if (!m) return null;
   try {
     const json = decompressFromEncodedURIComponent(m[1]!);
     if (!json) return null;
     const plan: unknown = JSON.parse(json);
-    const lens = toLensId(m[2]);
-    return lens ? { plan, lens } : { plan };
+    const params = new Map([...m[2]!.matchAll(/&([a-z])=([a-z]+)/g)].map((p) => [p[1]!, p[2]!]));
+    const lens = toLensId(params.get('l'));
+    const zoom = toZoom(params.get('z'));
+    return { plan, ...(lens ? { lens } : {}), ...(zoom ? { zoom } : {}) };
   } catch {
     return null;
   }

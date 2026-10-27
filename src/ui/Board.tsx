@@ -6,6 +6,7 @@ import { badgeLabel, chanceLabel } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
+import { ZOOM_PPD, type Zoom } from '../io/view';
 import type { NormalizedPlan } from '../engine/types';
 import { useAnchor } from './Popover';
 import { Avatar, WhoEditor } from './WhoEditor';
@@ -29,9 +30,6 @@ interface Props {
   zoom: Zoom;
 }
 
-export type Zoom = 'day' | 'week' | 'month';
-/** Pixels per calendar day for each zoom level. */
-export const ZOOM_PPD: Record<Zoom, number> = { day: 26, week: 10, month: 4 };
 
 /** The calendar days the chart covers: plan start → the last finish or deadline, plus a few days. */
 export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: string, extra?: Schedule | null) {
@@ -634,13 +632,14 @@ function BarRow(props: {
 }
 
 /**
- * What the marks on the chart mean. Diamonds are the usual Gantt milestone marker; here each one is an item's deadline,
- * coloured like its delivery date. With a lens on, bars are stretched and a thin baseline keeps the user's own estimate.
+ * One quiet block under the chart, out of the way: what the marks mean, then how to work with the chart. Diamonds are the
+ * usual Gantt milestone marker; here each one is an item's deadline, coloured like its delivery date. With a lens on,
+ * bars are stretched and a thin baseline keeps the user's own estimate.
  */
-export function ChartKey({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
+export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
   const l = lensById(lens);
   return (
-    <div class="chart-key" aria-label="Chart key">
+    <div class="legend" aria-label="Chart key and tips">
       <span>
         <i class="k-diamond" style={{ background: 'var(--ok)' }} />
         <i class="k-diamond" style={{ background: 'var(--warn)' }} />
@@ -655,12 +654,13 @@ export function ChartKey({ lens, onPlanned }: { lens: LensId; onPlanned: () => v
       </span>
       {l.factor !== 1 && (
         <span class="k-lens">
-          bars show {l.label} ({l.short}) · <i class="k-baseline" /> your estimate (as planned)
+          <i class="k-baseline" /> your estimate · bars show {l.label} ({l.short})
           <button class="link-btn" onClick={onPlanned}>
             Show as planned
           </button>
         </span>
       )}
+      <span class="legend-tips">Drag ⠿ or a bar to reprioritize · click any value to edit · click a row to see why it lands when it does</span>
     </div>
   );
 }

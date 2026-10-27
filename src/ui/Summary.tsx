@@ -1,6 +1,6 @@
 import { badgeLabel, headline, type Analysis } from '../engine/analysis';
 import type { Insight } from '../engine/insights';
-import type { Zoom } from './Board';
+import type { Zoom } from '../io/view';
 import { cx, Icon } from './lib';
 
 const ZOOMS: [Zoom, string][] = [

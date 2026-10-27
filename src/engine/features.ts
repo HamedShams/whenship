@@ -12,10 +12,13 @@ export interface Features {
    * a ranking tie-break. While off, values are dropped at validation, so they can't influence anything.
    */
   itemValue: boolean;
+  /** Undo and redo buttons in the top bar. While off, ⌘/Ctrl Z and ⇧⌘Z (Ctrl Y) still undo and redo. */
+  undoButtons: boolean;
 }
 
 export const FEATURES: Readonly<Features> = {
   personDaysOff: false,
   yamlExport: false,
   itemValue: false,
+  undoButtons: false,
 };

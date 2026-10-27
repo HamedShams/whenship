@@ -5,7 +5,7 @@ import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App, type Host } from '../../src/ui/App';
 import { autoZoom } from '../../src/ui/Board';
-import { validatePlan } from '../../src/engine';
+import { FEATURES, validatePlan, type Features } from '../../src/engine';
 import { SAMPLES } from '../../src/io/samples';
 
 const today = '2026-10-05';
@@ -66,7 +66,7 @@ describe('app (web and widget share it)', () => {
     await act(() => (root.querySelector('.insight button') as HTMLButtonElement).click());
     expect(text(root, '.headline')).toMatch(/^2 deadlines late|^4 tight|^\d+ tight|^1 of 6/);
     expect(changes.length).toBe(2);
-    await act(() => (root.querySelector('[aria-label="Undo"]') as HTMLButtonElement).click());
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
     expect(JSON.stringify(changes.at(-1))).toBe(JSON.stringify(changes[0]));
   });
 
@@ -495,15 +495,18 @@ describe('clean drags, sticky headers, chart key, copy link and asking Claude', 
     expect((root.querySelector('.app') as HTMLElement).style.getPropertyValue('--toolbar-h')).toMatch(/^\d+px$/);
   });
 
-  it('a chart key explains the diamonds; with a lens on it explains the baseline and offers the way back', async () => {
+  it('one quiet legend under the chart: the marks, then the tips; with a lens on, the baseline and the way back', async () => {
     const { root } = mount();
-    expect(text(root, '.chart-key')).toMatch(/deadline: on time, tight, late/);
-    expect(root.querySelectorAll('.chart-key .k-diamond')).toHaveLength(3);
-    expect(root.querySelector('.chart-key .k-lens')).toBeNull();
+    const legend = root.querySelector('.board-wrap + .legend')!; // right below the chart, nothing above it
+    expect(root.querySelector('.legend')).toBe(legend);
+    expect(legend.textContent).toMatch(/deadline: on time, tight, late/);
+    expect(legend.querySelector('.legend-tips')!.textContent).toBe('Drag ⠿ or a bar to reprioritize · click any value to edit · click a row to see why it lands when it does');
+    expect(legend.querySelectorAll('.k-diamond')).toHaveLength(3);
+    expect(legend.querySelector('.k-lens')).toBeNull();
     expect(root.querySelectorAll('.baseline')).toHaveLength(0);
     await act(() => button(root, 'Safe bet').click());
-    expect(text(root, '.chart-key .k-lens')).toMatch(/bars show Safe bet \(3\.1×\) · +your estimate \(as planned\)/);
-    expect(root.querySelector('.chart-key .k-lens .k-baseline')).not.toBeNull();
+    expect(text(root, '.legend .k-lens')).toMatch(/your estimate · bars show Safe bet \(3\.1×\)/);
+    expect(root.querySelector('.legend .k-lens .k-baseline')).not.toBeNull();
     expect(root.querySelectorAll('.baseline').length).toBeGreaterThan(0);
     await act(() => button(root, 'Show as planned').click());
     expect(root.querySelectorAll('.baseline')).toHaveLength(0);
@@ -627,11 +630,10 @@ describe('undo and redo', () => {
   const key = (init: KeyboardEventInit, target: EventTarget = window) => act(() => void target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init })));
   const saturday = (root: Element) => root.querySelector('.daychip[title^="Saturday"]') as HTMLButtonElement;
 
-  it('buttons and shortcuts (⌘Z, ⇧⌘Z, Ctrl Y) step through the history; disabled when there is nothing to do', async () => {
+  it('shortcuts (⌘Z, ⇧⌘Z, Ctrl Y) step through the history; the buttons are switched off for a cleaner top bar', async () => {
     const { root } = mount();
-    const undo = root.querySelector('[aria-label="Undo"]') as HTMLButtonElement;
-    const redo = root.querySelector('[aria-label="Redo"]') as HTMLButtonElement;
-    expect(undo.disabled && redo.disabled).toBe(true);
+    expect(FEATURES.undoButtons).toBe(false);
+    expect(root.querySelector('[aria-label="Undo"], [aria-label="Redo"]')).toBeNull();
     await act(() => saturday(root).click());
     expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
     await key({ key: 'z', metaKey: true });
@@ -641,10 +643,26 @@ describe('undo and redo', () => {
     await key({ key: 'z', ctrlKey: true });
     await key({ key: 'y', ctrlKey: true });
     expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
-    await act(() => undo.click());
-    expect(undo.disabled).toBe(true);
-    await act(() => redo.click());
-    expect(redo.disabled).toBe(true);
+  });
+
+  it('with the switch on, the buttons work and look disabled when there is nothing to do', async () => {
+    const flags = FEATURES as Features;
+    flags.undoButtons = true;
+    try {
+      const { root } = mount();
+      const undo = root.querySelector('[aria-label="Undo"]') as HTMLButtonElement;
+      const redo = root.querySelector('[aria-label="Redo"]') as HTMLButtonElement;
+      expect(undo.disabled && redo.disabled).toBe(true);
+      await act(() => saturday(root).click());
+      await act(() => undo.click());
+      expect(saturday(root).getAttribute('aria-pressed')).toBe('false');
+      expect(undo.disabled).toBe(true);
+      await act(() => redo.click());
+      expect(saturday(root).getAttribute('aria-pressed')).toBe('true');
+      expect(redo.disabled).toBe(true);
+    } finally {
+      flags.undoButtons = false;
+    }
   });
 
   it('typing is one undo step, and shortcuts inside a text field are left to the field', async () => {
@@ -657,7 +675,7 @@ describe('undo and redo', () => {
     }
     await key({ key: 'z', metaKey: true }, name); // the field's own undo, not the plan's
     expect((root.querySelector('.row:not(.draft) .cell-input') as HTMLInputElement).value).toBe('Qui');
-    await act(() => (root.querySelector('[aria-label="Undo"]') as HTMLButtonElement).click());
+    await key({ key: 'z', metaKey: true }); // the plan's undo, from outside the field
     expect((root.querySelector('.row:not(.draft) .cell-input') as HTMLInputElement).value).toBe(before);
   });
 });
@@ -795,5 +813,45 @@ describe('the who editor with teams and hand-offs', () => {
     expect(last().work.map((w) => w.lane)).toEqual(['front-end', 'data']);
     await act(() => button(pop as HTMLElement, 'Done').click());
     expect(document.querySelector('.who-pop')).toBeNull();
+  });
+});
+
+describe('the view travels: zoom in links and images, and what opens last is on top', () => {
+  it('the zoom you pick goes into copied links and image exports; untouched, it is left to each', async () => {
+    const save = vi.fn(async (_file: { data: string | Uint8Array }) => 'saved' as const);
+    const copy = vi.fn(async (_text: string) => true);
+    const { root } = mount({ save, copy });
+    const exportAs = async (label: string) => {
+      await act(() => button(root, 'Export').click());
+      await act(() => button(document as unknown as Element, label).click());
+      await act(() => new Promise((r) => setTimeout(r, 0)));
+    };
+    await exportAs('Copy link');
+    expect(copy.mock.calls[0]![0]).not.toMatch(/&z=/);
+    await exportAs('Vector image');
+    const fitted = save.mock.calls[0]![0].data as string;
+    await act(() => button(root, 'Months').click());
+    await exportAs('Copy link');
+    expect(copy.mock.calls[1]![0]).toMatch(/&z=month$/);
+    await exportAs('Vector image');
+    const months = save.mock.calls[1]![0].data as string;
+    const width = (svg: string) => Number(/width="(\d+)"/.exec(svg)![1]);
+    expect(width(months)).toBeLessThan(width(fitted)); // 4 px a day instead of fitted to ~1100 px
+  });
+
+  it('opens on the zoom it is given', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const host: Host = { mode: 'web', save: vi.fn(), copy: vi.fn(), baseUrl: () => null };
+    act(() => render(<App host={host} initialPlan={sample()} initialZoom="week" today={today} />, root));
+    expect(root.querySelector('.seg.small [aria-pressed="true"], .seg [aria-pressed="true"]:not([aria-label])')?.textContent).toBe('Weeks');
+  });
+
+  it('popovers from the top bar rise above the open item card (the stylesheet keeps that order)', () => {
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    const z = (selector: string) => Number(new RegExp(`(?:^|\\n)${selector.replace(/[.()]/g, '\\$&')} \\{[^}]*z-index: (\\d+)`).exec(css)![1]);
+    expect(z('.toolbar:has(.popover)')).toBeGreaterThan(z('.details'));
+    expect(z('.details')).toBeGreaterThan(z('.toolbar'));
+    expect(z('.popover')).toBeGreaterThan(z('.details')); // popovers outside the toolbar (the who editor)
   });
 });

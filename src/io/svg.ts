@@ -11,7 +11,8 @@ const BADGE_COLOR: Record<string, string> = { safe: '#2b8a3e', likely: '#2b8a3e'
  * A self-contained SVG of the plan (title, headline, list and timeline). Used for the image export and for PNG
  * conversion in the browser. Pure string output: works in Node and in the widget.
  */
-export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { dark?: boolean } = {}): string {
+/** `dayWidth` draws the chart at a fixed scale (the zoom on screen); without it the chart is fitted to ~1100 px. */
+export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { dark?: boolean; dayWidth?: number } = {}): string {
   const a = analyze(plan, lens);
   const l = lensById(lens);
   const c = opts.dark
@@ -23,7 +24,7 @@ export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { da
   for (const it of plan.items) if (it.deadline) last = Math.max(last, parseISO(it.deadline)!);
   last += 2;
   const nDays = last - start + 1;
-  const dayW = Math.max(4, Math.min(26, Math.floor(1100 / nDays)));
+  const dayW = opts.dayWidth ?? Math.max(4, Math.min(26, Math.floor(1100 / nDays)));
   const leftW = 300;
   const rowH = 30;
   const top = 96;
@@ -31,8 +32,9 @@ export function toSvg(plan: NormalizedPlan, lens: LensId = 'planned', opts: { da
   const height = top + plan.items.length * rowH + 40;
   const year = dayParts(plan.start).year;
   const x = (day: number) => leftW + (day - start) * dayW;
+  // zoomed out, weekend stripes are just noise: shade holidays only (as in the app)
   const isWork = (d: number) =>
-    plan.calendar.workdays.includes((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[weekdayIndex(d)]!) &&
+    (dayW < 8 || plan.calendar.workdays.includes((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[weekdayIndex(d)]!)) &&
     !plan.calendar.holidays.some((h) => toISO(d) >= h.from && toISO(d) <= h.to);
 
   const out: string[] = [];

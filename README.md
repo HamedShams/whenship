@@ -5,7 +5,7 @@
 ![A whenship plan: two people, seven client deliverables, one deadline late and four tight](docs/example.svg)
 
 - **Real dates, not guesses.** A day-by-day scheduler handles priorities, part-time people, teams, hand-offs, dependencies, waiting on clients, weekends and holidays.
-- **Live what-if.** Drag an item (by its handle or its bar) to reprioritise and watch every date move before you drop. Change effort, people or working days and the whole plan updates instantly.
+- **Live what-if.** Drag an item (by its handle or its bar) to reprioritise and watch every date move before you drop. Change effort, people or working days and the whole plan updates instantly; ⌘/Ctrl Z undoes, ⇧⌘Z (Ctrl Y) redoes.
 - **Honest risk.** Every deadline gets a badge (safe, likely, tight, late) and a rough chance, from a forecast scale that never touches your own numbers.
 - **Options, not just warnings.** whenship searches reorders, deferrals, more time and extra people, and shows exactly which deadlines each one saves.
 - **No sign-up, nothing stored.** Your plan lives in your browser, your files, or a link that carries the whole plan.
@@ -19,7 +19,7 @@
 | **Claude** | Add the connector (below) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
 | **Your own server** | One small Node service, no database, no Docker. See [Self-host](#self-host). |
 
-Bring your plan in any shape: paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or a saved plan file. Export it as a plan file (JSON), Excel with a Gantt sheet, PNG or SVG, a calendar (`.ics`), CSV, Markdown or JSON, or copy a link with the whole plan inside it.
+Bring your plan in any shape: paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or a saved plan file. Export it as a plan file (JSON), Excel with a Gantt sheet, PNG or SVG (at the chart's zoom), a calendar (`.ics`), CSV or Markdown, or copy a link with the whole plan inside it. Links keep the view too: the forecast lens and the Days/Weeks/Months zoom, which the website also remembers between visits.
 
 ## Use it in Claude
 
@@ -85,7 +85,7 @@ The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence versi
 | Vertical line | Today. |
 | Thin grey line under a bar | Only with *Likely* or *Safe bet* on: your own estimate (the *As planned* dates), while the bar shows the stretched ones. Gantt tools call this the baseline. |
 
-A key above the chart repeats this, and hovering any mark gives its dates.
+A small key under the chart repeats this, next to the tips for working with it, and hovering any mark gives its dates.
 
 ## How the dates and suggestions work
 

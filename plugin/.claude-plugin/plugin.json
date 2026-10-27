@@ -1,6 +1,6 @@
 {
   "name": "whenship",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "When will it ship, honestly? Skills that make Claude plan small-team work with the whenship engine: real finish dates, deadline risk, what-ifs and options, instead of guessed dates. Pair it with the whenship connector for the interactive chart.",
   "author": {
     "name": "Hamed Shams",

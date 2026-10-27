@@ -10,6 +10,7 @@ import { bootWeb } from '../../src/ui/web';
 
 const PLAN_KEY = 'whenship:plan:v1';
 const LENS_KEY = 'whenship:lens:v1';
+const ZOOM_KEY = 'whenship:zoom:v1';
 const today = todayLocal();
 
 let root: HTMLElement;
@@ -22,6 +23,7 @@ const unmount = () => act(() => render(null, root));
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 const button = (label: string, within: ParentNode = document) => [...within.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label))!;
 const lensOn = () => root.querySelector('.seg [aria-pressed="true"]')?.textContent;
+const zoomOn = () => [...root.querySelectorAll('.seg [aria-pressed="true"]')].map((b) => b.textContent).find((t) => /^(Days|Weeks|Months)$/.test(t ?? ''));
 const type = (el: HTMLTextAreaElement, value: string) => {
   el.value = value;
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -56,7 +58,26 @@ describe('website', () => {
     boot();
     expect((root.querySelector('.title-input') as HTMLInputElement).value).toBe('Client deliverables');
     expect(lensOn()).toBe('Likely1.6×');
-    expect(text('.chart-key .k-lens')).toMatch(/bars show Likely/);
+    expect(text('.legend .k-lens')).toMatch(/bars show Likely/);
+  });
+
+  it('remembers the timeline zoom too, and a shared link opens with its own view', async () => {
+    boot();
+    await act(() => (root.querySelector('.sample') as HTMLButtonElement).click());
+    expect(zoomOn()).toBe('Days'); // picked from the plan's length
+    await act(() => button('Weeks').click());
+    await wait(300);
+    expect(localStorage.getItem(ZOOM_KEY)).toBe('week');
+    unmount();
+    boot();
+    expect(zoomOn()).toBe('Weeks');
+    unmount();
+    const plan = validatePlan(SAMPLES[0]!.build(today), { today }).plan;
+    const link = new URL(shareUrl('http://localhost:3000/', plan, 'likely', 'month'));
+    history.replaceState(null, '', link.pathname + link.hash);
+    boot();
+    expect(zoomOn()).toBe('Months');
+    expect(lensOn()).toBe('Likely1.6×');
   });
 
   it('ignores a saved lens it does not know, and a saved plan it cannot read', () => {
@@ -114,7 +135,7 @@ describe('website', () => {
     await act(() => button('Open', dialog).click());
     expect(document.querySelector('.dialog')).toBeNull();
     expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(1);
-    await act(() => (root.querySelector('[aria-label="Undo"]') as HTMLButtonElement).click());
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
     expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(7);
     await act(() => button('Open').click());
     await act(() => button('Cancel', document.querySelector('.dialog')!).click());

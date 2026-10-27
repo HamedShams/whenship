@@ -8,6 +8,7 @@ import { renderReport } from '../engine/report';
 import { compactPlan, validatePlan } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { shareUrl } from '../io/format';
+import type { Zoom } from '../io/view';
 import { App, type Host } from './App';
 import { boot, FALLBACK_URL, VERSION } from './config';
 import { bytesToBase64, Icon, Logo } from './lib';
@@ -22,6 +23,8 @@ interface State {
   plan: NormalizedPlan | null;
   partial: NormalizedPlan | null;
   lens: LensId;
+  /** The timeline zoom picked in the chart (null: from the plan's length); "Open in browser" keeps it. */
+  zoom: Zoom | null;
   version: number;
   superseded: boolean;
   displayMode: string;
@@ -30,7 +33,7 @@ interface State {
 }
 
 const today = todayLocal();
-const state: State = { plan: null, partial: null, lens: 'planned', version: 0, superseded: false, displayMode: 'inline', canFullscreen: false, publicUrl: boot.publicUrl ?? null };
+const state: State = { plan: null, partial: null, lens: 'planned', zoom: null, version: 0, superseded: false, displayMode: 'inline', canFullscreen: false, publicUrl: boot.publicUrl ?? null };
 let rootEl: HTMLElement;
 let app: McpApp;
 let lastSynced = '';
@@ -108,7 +111,7 @@ const host: Host = {
     }
     if (state.plan) {
       try {
-        await app.openLink({ url: shareUrl(base(), state.plan, state.lens) });
+        await app.openLink({ url: shareUrl(base(), state.plan, state.lens, state.zoom) });
         return 'opened';
       } catch {
         /* fall through */
@@ -125,9 +128,10 @@ const host: Host = {
     }
   },
   baseUrl: () => base(),
-  onChange(plan, lens) {
+  onChange(plan, lens, _analysis, zoom) {
     state.plan = plan;
     state.lens = lens;
+    state.zoom = zoom;
     scheduleSync(plan, lens);
   },
   canAskClaude: () => !state.superseded && !!app?.getHostCapabilities()?.message,
@@ -199,7 +203,7 @@ function Card({ plan, lens }: { plan: NormalizedPlan; lens: LensId }) {
         <button class="btn primary" onClick={() => void openFull()}>
           <Icon.expand /> Open interactive chart
         </button>
-        <button class="btn" onClick={() => void app.openLink({ url: shareUrl(base(), plan, lens) })}>
+        <button class="btn" onClick={() => void app.openLink({ url: shareUrl(base(), plan, lens, state.zoom) })}>
           <Icon.external /> Open in browser
         </button>
         {lensById(lens).factor !== 1 && <span class="sub">Dates: {lensById(lens).label} ({lensById(lens).short})</span>}
@@ -267,6 +271,7 @@ function draw() {
             host={host}
             initialPlan={plan}
             initialLens={state.lens}
+            initialZoom={state.zoom}
             today={today}
             externalPlan={plan}
             externalVersion={state.version}

@@ -6,6 +6,7 @@ import { toJson, toYaml } from '../io/format';
 import { toIcs } from '../io/ics';
 import { toSvg } from '../io/svg';
 import { toCsv } from '../io/table';
+import { ZOOM_PPD, type Zoom } from '../io/view';
 import { toXlsx } from '../io/xlsx';
 import type { ExportKind } from './Header';
 import { svgToPng } from './lib';
@@ -16,8 +17,10 @@ export interface ExportFile {
   data: string | Uint8Array;
 }
 
-export async function buildExport(kind: ExportKind, plan: NormalizedPlan, lens: LensId, dark = false): Promise<ExportFile> {
+/** `zoom`: the timeline zoom the user picked, so images look like the chart (unset: fitted to a readable width). */
+export async function buildExport(kind: ExportKind, plan: NormalizedPlan, lens: LensId, dark = false, zoom?: Zoom | null): Promise<ExportFile> {
   const base = slugify(plan.title) || 'plan';
+  const image = { dark, ...(zoom ? { dayWidth: ZOOM_PPD[zoom] } : {}) };
   switch (kind) {
     case 'yaml':
       return { name: `${base}.whenship.yaml`, mime: 'application/yaml', data: toYaml(plan) };
@@ -30,9 +33,9 @@ export async function buildExport(kind: ExportKind, plan: NormalizedPlan, lens: 
     case 'ics':
       return { name: `${base}.ics`, mime: 'text/calendar', data: toIcs(plan, lens, new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')) };
     case 'svg':
-      return { name: `${base}.svg`, mime: 'image/svg+xml', data: toSvg(plan, lens, { dark }) };
+      return { name: `${base}.svg`, mime: 'image/svg+xml', data: toSvg(plan, lens, image) };
     case 'png':
-      return { name: `${base}.png`, mime: 'image/png', data: await svgToPng(toSvg(plan, lens, { dark })) };
+      return { name: `${base}.png`, mime: 'image/png', data: await svgToPng(toSvg(plan, lens, image)) };
     case 'md':
       return { name: `${base}.md`, mime: 'text/markdown', data: `${renderReport(plan, { lens, method: true })}\n\n<details><summary>Plan file</summary>\n\n\`\`\`json\n${toJson(plan)}\`\`\`\n\n</details>\n` };
   }

@@ -188,7 +188,7 @@ describe('Claude widget (MCP App)', () => {
     await openFull(h);
     const sat = saturday(h.root);
     expect(sat.getAttribute('aria-pressed')).toBe('true');
-    await act(() => (h.root.querySelector('[aria-label="Undo"]') as HTMLButtonElement).click());
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
     expect(saturday(h.root).getAttribute('aria-pressed')).toBe('false');
   });
 
@@ -198,12 +198,19 @@ describe('Claude widget (MCP App)', () => {
     expect(h.root.querySelector('.card')!.textContent).toMatch(/Dates: Safe bet \(3\.1×\)/);
   });
 
-  it('"Open in browser" opens the plan on the website, inside the link', async () => {
+  it('"Open in browser" opens the plan on the website, inside the link, with the zoom picked in the chart', async () => {
     const h = await start();
     await show(h);
     await act(() => button(h.root, 'Open in browser')!.click());
     await until(() => h.log.links.length === 1);
-    expect(h.log.links[0]).toMatch(/^https:\/\/whenship\.example\/#p=/);
+    expect(h.log.links[0]).toMatch(/^https:\/\/whenship\.example\/#p=[^&]+$/);
+    await openFull(h);
+    await act(() => button(h.root, 'Weeks')!.click());
+    await act(() => button(h.root, 'Done')!.click());
+    await until(() => h.root.querySelector('.card'));
+    await act(() => button(h.root, 'Open in browser')!.click());
+    await until(() => h.log.links.length === 2);
+    expect(h.log.links[1]).toMatch(/&z=week$/);
   });
 
   it.runIf(typeof BroadcastChannel !== 'undefined')('a newer chart in the conversation collapses the older one, which stops syncing', async () => {

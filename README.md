@@ -172,8 +172,8 @@ The code is small on purpose: `src/engine` (scheduler, forecast lens, insights; 
 
 ## Background
 
-whenship grew out of [gantt_resource_planner](https://github.com/HamedShams/gantt_resource_planner), a capacity planner I built for two product squads, rewritten from scratch for small teams of every kind.
+whenship is made by [Hamed Shams](https://hamedshams.com). It grew out of [gantt_resource_planner](https://github.com/HamedShams/gantt_resource_planner), a capacity planner I built for two product squads, rewritten from scratch for small teams of every kind.
 
 ## License
 
-[MIT](LICENSE)
+[BSD 3-Clause](LICENSE), © Seyed Hamed Shams. Use it, change it, host it and build on it, including commercially. Copies keep the copyright notice and the license text, and the author's name may not be used to promote a changed version. Running your own copy of whenship is welcome; if you publish a changed version, please give it its own name so people can tell it apart from the original at [whenship.app](https://whenship.app).

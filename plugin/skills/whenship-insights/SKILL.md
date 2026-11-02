@@ -131,27 +131,27 @@ Good answer shape: the two dates, then "the cheapest fix is order: do billing be
 
 Good answer shape: "Warn nobody yet if everything is *likely* or *safe*; warn the client whose item is *tight* or *late*, and give them the safe-bet date." If content might arrive late, run `what_if` with `setNotBefore` to show what a one-week delay costs.
 
-### 5. A team with a Saturday-to-Wednesday week and closure days
+### 5. A team with a Sunday-to-Thursday week and closure days
 
-> "We're in Tehran: we work Saturday to Wednesday. There may be two closure days next week (heat). Reza does back-end, Neda front-end at 60%. Payment gateway: Reza 6 days then Neda 3, due 29 Oct. App redesign: Neda 8 days, due 10 Nov."
+> "We're in Riyadh: we work Sunday to Thursday. The office may close for two days next week (we're moving). Faisal does back-end, Noura front-end at 60%. Payment gateway: Faisal 6 days then Noura 3, due 29 Oct. App redesign: Noura 8 days, due 10 Nov."
 
 ```json
 {
   "title": "Release plan",
-  "start": "2026-10-03",
-  "calendar": { "workdays": ["sat", "sun", "mon", "tue", "wed"], "holidays": [{ "from": "2026-10-12", "to": "2026-10-13", "label": "Closure (heat)" }] },
+  "start": "2026-10-04",
+  "calendar": { "workdays": ["sun", "mon", "tue", "wed", "thu"], "holidays": [{ "from": "2026-10-12", "to": "2026-10-13", "label": "Office move" }] },
   "lanes": [
-    { "name": "Reza" },
-    { "name": "Neda", "availability": 60 }
+    { "name": "Faisal" },
+    { "name": "Noura", "availability": 60 }
   ],
   "items": [
-    { "name": "Payment gateway", "work": [{ "lane": "Reza", "days": 6 }, { "lane": "Neda", "days": 3, "after": "Reza" }], "deadline": "2026-10-29" },
-    { "name": "App redesign", "who": "Neda", "days": 8, "deadline": "2026-11-10" }
+    { "name": "Payment gateway", "work": [{ "lane": "Faisal", "days": 6 }, { "lane": "Noura", "days": 3, "after": "Faisal" }], "deadline": "2026-10-29" },
+    { "name": "App redesign", "who": "Noura", "days": 8, "deadline": "2026-11-10" }
   ]
 }
 ```
 
-Good answer shape: confirm the working week you used ("Saturday to Wednesday, 12–13 Oct closed"). Then run the plan with and without the closure days (`what_if` with `addHoliday`) and say what two lost days cost.
+Good answer shape: confirm the working week you used ("Sunday to Thursday, 12–13 Oct closed"). Then run the plan with and without the closure days (`what_if` with `addHoliday`) and say what two lost days cost.
 
 ### 6. A team that leans on AI agents
 

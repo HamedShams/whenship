@@ -351,6 +351,8 @@ button:disabled { cursor: default; }
 .badge-key .pill { margin-right: 4px; }
 .footer { color: var(--fg3); font-size: 12px; padding: 14px 20px; display: flex; gap: 14px; flex-wrap: wrap; border-top: 1px solid var(--border); }
 .footer a { color: inherit; }
+.footer .credit a { text-decoration: none; transition: color .15s; }
+.footer .credit a:hover, .footer .credit a:focus-visible { color: #ef233c; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── empty state ───────────────────────────────────────── */
 .welcome { max-width: 880px; margin: 0 auto; padding: 40px 20px 32px; display: flex; flex-direction: column; gap: 22px; }

@@ -45,6 +45,7 @@ describe('website', () => {
     expect(root.querySelector('.welcome')).not.toBeNull();
     expect(root.querySelectorAll('.sample')).toHaveLength(SAMPLES.length);
     expect(root.querySelector('.footer')!.textContent).toMatch(/stored only in this browser/);
+    expect(root.querySelector<HTMLAnchorElement>('.footer .credit a')!.href).toBe('https://hamedshams.com/');
   });
 
   it('remembers the plan and the chosen lens, so a refresh looks the same', async () => {

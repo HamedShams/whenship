@@ -86,11 +86,17 @@ export function bootWeb(root: HTMLElement) {
           <span>Your plan is stored only in this browser. Save it as a file or share it with a link.</span>
           <span class="spacer" />
           <a href={REPO_URL} target="_blank" rel="noopener">
-            Open source (MIT)
+            Open source
           </a>
           <a href={`${REPO_URL}#use-it-in-claude`} target="_blank" rel="noopener">
             Use it in Claude
           </a>
+          <span class="credit">
+            Made by{' '}
+            <a href="https://hamedshams.com" target="_blank" rel="noopener author">
+              Hamed Shams
+            </a>
+          </span>
         </footer>
       }
     />,

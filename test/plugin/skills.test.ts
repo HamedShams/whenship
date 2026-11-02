@@ -40,8 +40,8 @@ describe('plugin skills', () => {
     for (const p of planBlocks(skills.map((x) => x.text).join('\n'))) expect(JSON.stringify(p)).not.toMatch(/"value"|"currency"/);
 
     expect(plans[3]!.calendar.holidays).toHaveLength(1);
-    expect(plans[4]!.calendar.workdays).toEqual(['mon', 'tue', 'wed', 'sat', 'sun']);
-    expect(plans[4]!.start).toBe('2026-10-03'); // a Saturday: a working day for that team
+    expect(plans[4]!.calendar.workdays).toEqual(['mon', 'tue', 'wed', 'thu', 'sun']);
+    expect(plans[4]!.start).toBe('2026-10-04'); // a Sunday: a working day for that team
 
     const agents = analyze(plans[5]!);
     const review = agents.planned.items.flatMap((r) => r.parts).filter((p) => p.lane === 'lina-review');

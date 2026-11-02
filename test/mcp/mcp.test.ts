@@ -228,6 +228,41 @@ describe('web server', () => {
     expect((await fetch(`${base}/nope`)).status).toBe(404);
     expect((await fetch(`${base}/`, { method: 'POST' })).status).toBe(405);
   });
+  it('shows a browser at /mcp how to add the connector; MCP clients still get the protocol', async () => {
+    const page = await fetch(`${base}/mcp`, { headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain(`<code>${base}/mcp</code>`);
+    expect(html).toMatch(/Add custom connector/);
+    expect(html).toContain('content="noindex"');
+    expect((await fetch(`${base}/mcp`, { headers: { accept: 'text/event-stream' } })).status).toBe(405);
+  });
+  it('gives the website its own address in link-preview tags, a sitemap and robots rules; the widget gets none', async () => {
+    const html = await (await fetch(`${base}/`)).text();
+    expect(html).toContain(`<link rel="canonical" href="${base}/">`);
+    expect(html).toContain(`<meta property="og:image" content="${base}/og.png">`);
+    expect(await (await fetch(`${base}/robots.txt`)).text()).toContain(`Sitemap: ${base}/sitemap.xml`);
+    expect(await (await fetch(`${base}/sitemap.xml`)).text()).toContain(`<loc>${base}/privacy</loc>`);
+    expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no image
+    const res = await client.readResource({ uri: UI_URI });
+    expect((res.contents[0] as { text: string }).text).not.toContain('og:image');
+  });
+  it('serves the link-preview image and escapes an address taken from request headers', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, ogImage: png });
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const at = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
+    try {
+      const img = await fetch(`${at}/og.png`);
+      expect(img.headers.get('content-type')).toBe('image/png');
+      expect(Buffer.from(await img.arrayBuffer())).toEqual(png);
+      const html = await (await fetch(`${at}/`, { headers: { 'x-forwarded-host': 'evil.example"><script>x()</script>' } })).text();
+      expect(html).not.toContain('"><script>x()');
+      expect(html).toContain('evil.example&quot;&gt;&lt;script&gt;');
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
   it('guards the local MCP endpoint against DNS rebinding', async () => {
     const r = await fetch(`${base}/mcp`, {
       method: 'POST',

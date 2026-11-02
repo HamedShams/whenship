@@ -6,7 +6,7 @@ import { createServer } from '../mcp/server';
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : '0.0.0-dev';
-const FALLBACK_URL = 'https://hamedshams.github.io/whenship/';
+const FALLBACK_URL = 'https://whenship.app/';
 
 const HELP = `whenship ${VERSION}: when will it ship, honestly?
 
@@ -98,6 +98,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) return;
   const html = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
+  // stderr for problems; the start-up banner goes to stdout (hosts like Railway show stderr as errors)
   const log = (msg: string) => process.stderr.write(`${msg}\n`);
 
   if (args.stdio) {
@@ -117,7 +118,7 @@ function main() {
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : args.port;
     const shown = local ? `http://localhost:${port}/` : args.publicUrl ?? `http://${args.host}:${port}/`;
-    log(`whenship ${VERSION}\n  App:  ${shown}\n  MCP:  ${shown}mcp\n  Stop: Ctrl+C`);
+    process.stdout.write(`whenship ${VERSION}\n  App:  ${shown}\n  MCP:  ${shown}mcp\n${local ? '  Stop: Ctrl+C\n' : ''}`);
     if (args.open && local) openBrowser(shown);
   });
   const stop = () => server.close(() => process.exit(0));

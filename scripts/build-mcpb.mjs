@@ -1,12 +1,12 @@
 // Packs whenship as a Claude Desktop extension (dist/whenship.mcpb): the same connector, run locally over stdio by
 // Claude Desktop's built-in Node. Set WHENSHIP_PUBLIC_URL to the website that share links and "Open in browser"
-// should point to (default: the public GitHub Pages address).
+// should point to (default: https://whenship.app/).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 
 for (const f of ['dist/cli.js', 'dist/app.html']) if (!existsSync(f)) throw new Error(`run \`npm run build\` first (${f} is missing)`);
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-let publicUrl = process.env.WHENSHIP_PUBLIC_URL || 'https://hamedshams.github.io/whenship/';
+let publicUrl = process.env.WHENSHIP_PUBLIC_URL || 'https://whenship.app/';
 if (!publicUrl.endsWith('/')) publicUrl += '/';
 
 const manifest = {

@@ -1,6 +1,6 @@
 # whenship
 
-**When will it ship, honestly?** A tiny planner for small teams. List the work, who does it and roughly how long it takes; whenship draws the timeline, tells you which deadlines will slip and why, and lets you drag things around until the plan works. It runs in the browser, offline, and inside Claude.
+**When will it ship, honestly?** A tiny planner for small teams. List the work, who does it and roughly how long it takes; whenship draws the timeline, tells you which deadlines will slip and why, and lets you drag things around until the plan works. It runs in the browser, offline, and inside Claude. It's open source: use the hosted copy at [whenship.app](https://whenship.app), or run your own with one command, as an offline file or on your own server. Every copy works the same.
 
 ![A whenship plan: two people, seven client deliverables, one deadline late and four tight](docs/example.svg)
 
@@ -14,6 +14,7 @@
 
 | Where | How |
 |---|---|
+| **Web** | Open [whenship.app](https://whenship.app), the hosted copy. Your plan stays in your browser. |
 | **Your computer** | `npx whenship` opens it in your browser. Nothing leaves your machine. |
 | **Offline file** | Download `whenship.html` (from any running whenship, at `/whenship.html`) and double-click it. |
 | **Claude** | Add the connector (below) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
@@ -25,7 +26,7 @@ Bring your plan in any shape: paste a list (`Grant draft for Acme, 5d, due 7 Oct
 
 whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview): Claude calls its engine for the dates and shows the interactive chart right in the conversation. Edit the chart and Claude sees your changes automatically, with no "send" button.
 
-**Connector (claude.ai, Claude Desktop, mobile).** Settings → Connectors → Add custom connector, and enter your whenship address followed by `/mcp`, for example `https://your-whenship.example/mcp`. A public hosted address is coming; until then, use your own (see [Self-host](#self-host)) or the local options below.
+**Connector (claude.ai, Claude Desktop, mobile).** Settings → Connectors → Add custom connector, and enter the address of a whenship server followed by `/mcp`: `https://whenship.app/mcp` for the hosted copy, or your own (see [Self-host](#self-host)). Prefer nothing leaving your computer? Use one of the local options below.
 
 **Claude Code**
 

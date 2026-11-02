@@ -291,7 +291,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
       const r = await c.callTool({ name: 'show_plan', arguments: { plan: PLAN } });
       expect(textOf(r)).toContain('## Client deliverables');
       const res = await c.readResource({ uri: UI_URI });
-      expect((res.contents[0] as { text: string }).text).toContain('hamedshams.github.io/whenship');
+      expect((res.contents[0] as { text: string }).text).toContain('https://whenship.app/');
     } finally {
       await c.close();
     }

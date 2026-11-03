@@ -98,7 +98,8 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args) return;
   const html = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
-  const ogImage = existsSync(new URL('./og.png', import.meta.url)) ? readFileSync(new URL('./og.png', import.meta.url)) : undefined;
+  const image = (name: string) => (existsSync(new URL(name, import.meta.url)) ? readFileSync(new URL(name, import.meta.url)) : undefined);
+  const images = { og: image('./og.png'), icon: image('./icon.png') };
   // stderr for problems; the start-up banner goes to stdout (hosts like Railway show stderr as errors)
   const log = (msg: string) => process.stderr.write(`${msg}\n`);
 
@@ -110,7 +111,7 @@ function main() {
   }
 
   const local = args.host === '127.0.0.1' || args.host === 'localhost' || args.host === '::1';
-  const server = createHttpServer({ html, version: VERSION, local, log, ...(ogImage ? { ogImage } : {}), ...(args.publicUrl ? { publicUrl: args.publicUrl } : {}) });
+  const server = createHttpServer({ html, version: VERSION, local, log, images, ...(args.publicUrl ? { publicUrl: args.publicUrl } : {}) });
   server.on('error', (err: NodeJS.ErrnoException) => {
     log(err.code === 'EADDRINUSE' ? `Port ${args.port} is busy. Try: npx whenship --port ${args.port + 1}` : err.message);
     process.exit(1);

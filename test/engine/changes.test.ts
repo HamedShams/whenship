@@ -6,10 +6,10 @@ const base = () =>
   validatePlan(
     {
       start: '2026-10-05',
-      lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
+      lanes: [{ name: 'Sara' }, { name: 'Martin', availability: 50 }],
       items: [
         { name: 'Alpha', who: 'Sara', days: 3, deadline: '2026-10-09' },
-        { name: 'Beta', who: 'Omar', days: 2 },
+        { name: 'Beta', who: 'Martin', days: 2 },
         { name: 'Gamma', who: 'Sara', days: 4, dependsOn: ['Alpha'] },
       ],
     },
@@ -28,9 +28,9 @@ describe('changes (shared by the chart, the suggestions and what_if)', () => {
     const p = base();
     const more = applyChanges(p, [{ op: 'setEffort', item: 'Alpha', lane: 'sara', days: 5 }]).plan;
     expect(more.items[0]!.work).toEqual([{ lane: 'sara', days: 5, maxPeople: 1 }]);
-    const added = applyChanges(p, [{ op: 'setEffort', item: 'Alpha', lane: 'Omar', days: 1 }]).plan;
-    expect(added.items[0]!.work.map((w) => [w.lane, w.days])).toEqual([['sara', 3], ['omar', 1]]);
-    const removed = applyChanges(added, [{ op: 'setEffort', item: 'Alpha', lane: 'omar', days: 0 }]).plan;
+    const added = applyChanges(p, [{ op: 'setEffort', item: 'Alpha', lane: 'Martin', days: 1 }]).plan;
+    expect(added.items[0]!.work.map((w) => [w.lane, w.days])).toEqual([['sara', 3], ['martin', 1]]);
+    const removed = applyChanges(added, [{ op: 'setEffort', item: 'Alpha', lane: 'martin', days: 0 }]).plan;
     expect(removed.items[0]!.work.map((w) => w.lane)).toEqual(['sara']);
     // zero days for someone who isn't on the item changes nothing
     expect(applyChanges(p, [{ op: 'setEffort', item: 'Beta', lane: 'sara', days: 0 }]).plan.items[1]!.work).toHaveLength(1);
@@ -53,8 +53,8 @@ describe('changes (shared by the chart, the suggestions and what_if)', () => {
   });
 
   it('setLane renames, changes availability, and turns a person into a team when it grows', () => {
-    const p = applyChanges(base(), [{ op: 'setLane', lane: 'Omar', availability: 100, name: 'Omar K' }]).plan;
-    expect(p.lanes[1]).toMatchObject({ name: 'Omar K', availability: 100, kind: 'person' });
+    const p = applyChanges(base(), [{ op: 'setLane', lane: 'Martin', availability: 100, name: 'Martin K' }]).plan;
+    expect(p.lanes[1]).toMatchObject({ name: 'Martin K', availability: 100, kind: 'person' });
     const team = applyChanges(p, [{ op: 'setLane', lane: 'sara', size: 3 }]).plan;
     expect(team.lanes[0]).toMatchObject({ kind: 'team', size: 3 });
   });
@@ -67,7 +67,7 @@ describe('changes (shared by the chart, the suggestions and what_if)', () => {
       { op: 'addHoliday', from: '2026-10-12', to: '2026-10-13' },
       { op: 'setStart', date: '2026-10-04' },
     ]).plan;
-    expect(p.lanes.map((l) => l.name)).toEqual(['Sara', 'Omar', 'Lea']);
+    expect(p.lanes.map((l) => l.name)).toEqual(['Sara', 'Martin', 'Lea']);
     expect(p.calendar.workdays).toEqual(['mon', 'tue', 'wed', 'thu', 'sun']);
     expect(p.calendar.holidays).toEqual([
       { from: '2026-10-06', to: '2026-10-06', label: 'Closed' },

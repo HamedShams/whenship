@@ -131,16 +131,16 @@ Plans are small JSON files (`*.whenship.json`) you can keep in a repo, edit by h
   "start": "2026-10-05",
   "lanes": [
     { "name": "Sara" },
-    { "name": "Omar", "availability": 50 }
+    { "name": "Martin", "availability": 50 }
   ],
   "items": [
     { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14" },
-    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" }
+    { "name": "Revise Lumen proposal", "work": [{ "lane": "Martin", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Martin" }], "deadline": "2026-10-20" }
   ]
 }
 ```
 
-Items are in priority order (an item's prerequisites in `dependsOn` are worked on at its priority). `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Omar is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
+Items are in priority order (an item's prerequisites in `dependsOn` are worked on at its priority). `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Martin is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
 
 ## Self-host
 

@@ -66,12 +66,12 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
   },
   "lanes": [
     { "name": "Sara" },
-    { "name": "Omar", "availability": 50 },
+    { "name": "Martin", "availability": 50 },
     { "name": "Back-end", "size": 3 }
   ],
   "items": [
     { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14" },
-    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" },
+    { "name": "Revise Lumen proposal", "work": [{ "lane": "Martin", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Martin" }], "deadline": "2026-10-20" },
     { "name": "Checkout redesign", "work": [{ "lane": "Back-end", "days": 6, "maxPeople": 2 }], "dependsOn": ["Appeal for Northwind"], "notBefore": "2026-10-12" }
   ]
 }
@@ -79,6 +79,6 @@ Method, if asked: a blended outside-view heuristic (Todd Little's 2006 lognormal
 
 - `start` is optional (default today).
 - `availability` is the percent of someone's working time available for this plan; `size` makes a lane a team.
-- `items` are in priority order. `after` inside `work` is a hand-off (Sara starts when Omar is done); `maxPeople` lets several people of a team work on one item at once; `notBefore` means waiting on something external.
+- `items` are in priority order. `after` inside `work` is a hand-off (Sara starts when Martin is done); `maxPeople` lets several people of a team work on one item at once; `notBefore` means waiting on something external.
 
 For advice on what to recommend and worked examples for different kinds of teams, see the `whenship-insights` skill.

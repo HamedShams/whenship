@@ -57,7 +57,7 @@ describe('scheduler: one person, a queue of work', () => {
 
 describe('scheduler: capacity, teams and parallel caps', () => {
   it('part-time people take longer', () => {
-    const p = plan({ lanes: [{ name: 'Omar', availability: 50 }], items: [{ name: 'A', who: 'Omar', days: 5 }] });
+    const p = plan({ lanes: [{ name: 'Martin', availability: 50 }], items: [{ name: 'A', who: 'Martin', days: 5 }] });
     expect(dates(p)).toEqual([['2026-09-24', '2026-10-07']]); // 10 working days
   });
 
@@ -89,25 +89,25 @@ describe('scheduler: capacity, teams and parallel caps', () => {
 
   it('runs parts of one item in parallel, and hand-offs in sequence', () => {
     const p = plan({
-      lanes: ['Sara', 'Omar'],
+      lanes: ['Sara', 'Martin'],
       items: [
-        { name: 'Parallel', work: [{ lane: 'Sara', days: 3 }, { lane: 'Omar', days: 1 }] },
-        { name: 'Handoff', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 2, after: 'Omar' }] },
+        { name: 'Parallel', work: [{ lane: 'Sara', days: 3 }, { lane: 'Martin', days: 1 }] },
+        { name: 'Handoff', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 2, after: 'Martin' }] },
       ],
     });
     const s = schedule(p);
     expect(s.byId.get('parallel')).toMatchObject({ start: 0, end: 2 });
     const h = s.byId.get('handoff')!;
-    expect(h.parts.find((x) => x.lane === 'omar')).toMatchObject({ start: 1, end: 1 });
-    expect(h.parts.find((x) => x.lane === 'sara')).toMatchObject({ start: 3, end: 4, reason: 'handoff', reasonRef: 'omar' });
+    expect(h.parts.find((x) => x.lane === 'martin')).toMatchObject({ start: 1, end: 1 });
+    expect(h.parts.find((x) => x.lane === 'sara')).toMatchObject({ start: 3, end: 4, reason: 'handoff', reasonRef: 'martin' });
   });
 
   it('respects dependencies (including on lower-priority items) and not-before dates', () => {
     const p = plan({
-      lanes: ['Sara', 'Omar'],
+      lanes: ['Sara', 'Martin'],
       items: [
         { name: 'Launch', who: 'Sara', days: 1, dependsOn: ['Build'] },
-        { name: 'Build', who: 'Omar', days: 3 },
+        { name: 'Build', who: 'Martin', days: 3 },
         { name: 'Client reply', who: 'Sara', days: 1, notBefore: '2026-10-01' },
       ],
     });

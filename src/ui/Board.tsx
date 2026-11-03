@@ -13,6 +13,8 @@ import { Avatar, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
+/** Room for a note drawn in place of a bar ("add effort to schedule this"). */
+const NOTE_W = 170;
 const BADGE_VAR: Record<Badge, string> = { safe: 'var(--ok)', likely: 'var(--ok)', tight: 'var(--warn)', late: 'var(--danger)', unknown: 'var(--fg3)' };
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -165,6 +167,21 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       onFocused();
     }
   }, [focusId, order]);
+
+  // The header marks itself stuck once the page has scrolled it under the toolbar (set directly, not rendered).
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const head = wrap?.querySelector<HTMLElement>('.board-head');
+    if (!wrap || !head) return;
+    const check = () => head.classList.toggle('stuck', wrap.getBoundingClientRect().top < head.getBoundingClientRect().top - 0.5);
+    check();
+    window.addEventListener('scroll', check, { passive: true });
+    window.addEventListener('resize', check);
+    return () => {
+      window.removeEventListener('scroll', check);
+      window.removeEventListener('resize', check);
+    };
+  }, []);
 
   useEffect(() => {
     if (!focusReq) return;
@@ -507,6 +524,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 lensActive={factor !== 1}
                 x={x}
                 ppd={geo.ppd}
+                todayLine={todayX !== null ? todayX + geo.ppd / 2 : null}
                 laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
                 dragging={!!drag}
                 isDragged={drag?.id === it.id}
@@ -550,6 +568,8 @@ function BarRow(props: {
   lensActive: boolean;
   x: (iso: string) => number;
   ppd: number;
+  /** Where the today line is drawn, if it's on the chart. */
+  todayLine: number | null;
   laneColor: (id: string) => string;
   dragging: boolean;
   isDragged: boolean;
@@ -576,6 +596,11 @@ function BarRow(props: {
   const labelX = diamondX !== null && diamondX > endX - 8 && diamondX < endX + 56 ? diamondX + 10 : endX + 8;
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
   const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
+  // a note in place of the bar ("add effort…") moves past the deadline diamond and the today line instead of running over them
+  let noteX = 8;
+  for (const mark of [diamondX, props.todayLine].filter((m): m is number => m !== null).sort((a, b) => a - b)) {
+    if (mark > noteX - 10 && mark < noteX + NOTE_W) noteX = mark + 12;
+  }
   return (
     <div
       data-item={it.id}
@@ -625,8 +650,8 @@ function BarRow(props: {
           {delta > 0 ? `+${delta}d` : `${delta}d`}
         </span>
       )}
-      {r.status === 'empty' && <span class="empty-bar" style={{ left: '8px', top: `${ROW / 2 - 9}px` }}>add effort to schedule this</span>}
-      {r.status === 'blocked' && <span class="empty-bar" style={{ left: '8px', top: `${ROW / 2 - 9}px`, color: 'var(--danger)' }}>⛔ {r.problem}</span>}
+      {r.status === 'empty' && <span class="empty-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px` }}>add effort to schedule this</span>}
+      {r.status === 'blocked' && <span class="empty-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px`, color: 'var(--danger)' }}>⛔ {r.problem}</span>}
     </div>
   );
 }

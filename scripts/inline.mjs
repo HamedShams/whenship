@@ -1,5 +1,5 @@
 // Inlines the built JS and CSS into one HTML file: dist/app.html (served as the website and the Claude widget)
-// and dist/whenship.html (the offline, double-click version), plus dist/og.png for link previews.
+// and dist/whenship.html (the offline, double-click version), plus dist/og.png for link previews and dist/icon.png.
 import { readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -14,4 +14,5 @@ if (/src="\/assets|href="\/assets/.test(html)) throw new Error('an asset was not
 writeFileSync('dist/app.html', html);
 copyFileSync('dist/app.html', 'dist/whenship.html');
 copyFileSync('docs/og.png', 'dist/og.png'); // the link-preview image, served at /og.png
+copyFileSync('packaging/icon-192.png', 'dist/icon.png'); // the app icon for search results and home screens, served at /icon.png
 console.log(`dist/app.html ${(Buffer.byteLength(html) / 1024).toFixed(0)} KB`);

@@ -17,12 +17,12 @@ const HTML = '<!doctype html><html><head><!--WHENSHIP_BOOT--></head><body><div i
 const PLAN = {
   title: 'Client deliverables',
   start: '2026-10-05',
-  lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
+  lanes: [{ name: 'Sara' }, { name: 'Martin', availability: 50 }],
   items: [
     { name: 'Quick fix', who: 'Sara', days: 1 },
     { name: 'Appeal A', who: 'Sara', days: 4, deadline: '2026-10-14' },
     { name: 'Research B', who: 'Sara', days: 5, deadline: '2026-10-16' },
-    { name: 'Proposal C', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 3, after: 'Omar' }], deadline: '2026-10-20' },
+    { name: 'Proposal C', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 3, after: 'Martin' }], deadline: '2026-10-20' },
   ],
 };
 
@@ -139,16 +139,16 @@ describe('MCP connector', () => {
   });
 
   it('what_if compares a whole alternative plan: work moved to someone else', async () => {
-    const alternative = { ...PLAN, items: PLAN.items.map((it) => (it.name === 'Research B' ? { ...it, who: 'Omar' } : it)) };
+    const alternative = { ...PLAN, items: PLAN.items.map((it) => (it.name === 'Research B' ? { ...it, who: 'Martin' } : it)) };
     const r = (await client.callTool({ name: 'what_if', arguments: { plan: PLAN, alternative } })) as ToolResult;
     const text = textOf(r);
     expect(r.isError).toBeFalsy();
     expect(text).toContain('**Before:**');
-    // Omar (half time) finishes Research B the same day Sara would have, but then starts Proposal C two days later
+    // Martin (half time) finishes Research B the same day Sara would have, but then starts Proposal C two days later
     expect(text).not.toMatch(/\| Research B \| /);
     expect(text).toMatch(/\| Proposal C \| 21 Oct \| 23 Oct \| \+2 working days \|/);
     const changed = JSON.parse(text.slice(text.lastIndexOf('```json') + 7, text.lastIndexOf('```')));
-    expect(changed.items.find((x: { name: string }) => x.name === 'Research B').work[0].lane).toBe('omar');
+    expect(changed.items.find((x: { name: string }) => x.name === 'Research B').work[0].lane).toBe('martin');
   });
 
   it('what_if alternatives can split and cut items, keep the plan start, and take changes on top', async () => {
@@ -158,7 +158,7 @@ describe('MCP connector', () => {
       items: [
         ...PLAN.items.filter((it) => it.name !== 'Research B' && it.name !== 'Quick fix'),
         { name: 'Research B part 1', who: 'Sara', days: 2, deadline: '2026-10-16' },
-        { name: 'Research B part 2', who: 'Omar', days: 3 },
+        { name: 'Research B part 2', who: 'Martin', days: 3 },
       ],
     };
     const text = textOf(await client.callTool({ name: 'what_if', arguments: { plan: PLAN, alternative, changes: [{ op: 'setDeadline', item: 'Appeal A', date: '2026-10-30' }] } }));
@@ -243,19 +243,26 @@ describe('web server', () => {
     expect(html).toContain(`<meta property="og:image" content="${base}/og.png">`);
     expect(await (await fetch(`${base}/robots.txt`)).text()).toContain(`Sitemap: ${base}/sitemap.xml`);
     expect(await (await fetch(`${base}/sitemap.xml`)).text()).toContain(`<loc>${base}/privacy</loc>`);
-    expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no image
+    expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no images
+    expect((await fetch(`${base}/favicon.ico`)).status).toBe(404);
+    const llms = await (await fetch(`${base}/llms.txt`)).text(); // the summary AI assistants read
+    expect(llms).toMatch(/^# whenship\n\n> /);
+    expect(llms).toContain(`\`${base}/mcp\``);
     const res = await client.readResource({ uri: UI_URI });
     expect((res.contents[0] as { text: string }).text).not.toContain('og:image');
   });
-  it('serves the link-preview image and escapes an address taken from request headers', async () => {
+  it('serves the link-preview image and the icon, and escapes an address taken from request headers', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, ogImage: png });
+    const icon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1]);
+    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, images: { og: png, icon } });
     await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
     const at = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
     try {
       const img = await fetch(`${at}/og.png`);
       expect(img.headers.get('content-type')).toBe('image/png');
       expect(Buffer.from(await img.arrayBuffer())).toEqual(png);
+      for (const p of ['/icon.png', '/favicon.ico']) expect(Buffer.from(await (await fetch(`${at}${p}`)).arrayBuffer())).toEqual(icon);
+      expect(await (await fetch(`${at}/`)).text()).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${at}/icon.png">`);
       const html = await (await fetch(`${at}/`, { headers: { 'x-forwarded-host': 'evil.example"><script>x()</script>' } })).text();
       expect(html).not.toContain('"><script>x()');
       expect(html).toContain('evil.example&quot;&gt;&lt;script&gt;');

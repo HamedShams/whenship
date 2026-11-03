@@ -13,7 +13,7 @@ export function describeWorkdays(plan: NormalizedPlan): string {
   return off.length ? `off on ${off.map((d) => DAY_NAMES[d]).join(' & ')}` : 'every day is a working day';
 }
 
-/** Who-does-what, e.g. "Sara 5d + Omar 1d (after Omar)". */
+/** Who-does-what, e.g. "Sara 5d + Martin 1d (after Martin)". */
 export function describeWork(plan: NormalizedPlan, itemId: string): string {
   const it = plan.items.find((x) => x.id === itemId);
   if (!it || !it.work.length) return '—';

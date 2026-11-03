@@ -9,11 +9,17 @@
     <link rel="author" href="https://hamedshams.com" />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#4f46e5" />
+    <meta name="application-name" content="whenship" />
+    <meta name="apple-mobile-web-app-title" content="whenship" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="whenship" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="whenship: when will it ship, honestly?" />
     <meta property="og:description" content="A tiny planner for small teams: a live what-if Gantt, deadline risk and realistic dates. Free, open source, no sign-up." />
+    <meta property="og:image:alt" content="whenship: a Gantt chart of client deliverables with deadline diamonds and expected delivery dates" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="whenship: when will it ship, honestly?" />
+    <meta name="twitter:description" content="A tiny planner for small teams: a live what-if Gantt, deadline risk and realistic dates. Free, open source, no sign-up." />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -36,6 +42,14 @@
     <noscript>
       <h1>whenship: when will it ship, honestly?</h1>
       <p>A tiny planner for small teams: list the work, who does it and roughly how long it takes, and whenship draws the timeline, shows which deadlines will slip and why, and lets you try changes live. It needs JavaScript.</p>
+      <ul>
+        <li>Realistic dates: see the plan as planned, as likely (1.6×) or as a safe bet (3.1×), with each deadline's chance of being met.</li>
+        <li>What-if: drag to reprioritise, change who does what or add a person, and every date updates at once.</li>
+        <li>Suggestions: the changes that meet more deadlines, each checked by re-planning.</li>
+        <li>Exports: Excel with a Gantt sheet, PNG, SVG, calendar (.ics), CSV, Markdown, or a share link with the plan inside.</li>
+        <li>In Claude: add the connector (this address followed by <code>/mcp</code>) and ask Claude whether the deadlines will hold; the same live chart opens in the chat.</li>
+        <li>Private: no accounts; plans stay in your browser. Free and open source (BSD 3-Clause); runs offline or with <code>npx whenship</code>.</li>
+      </ul>
       <p>Made by <a href="https://hamedshams.com">Seyed Hamed Shams</a>. Source: <a href="https://github.com/HamedShams/whenship">github.com/HamedShams/whenship</a>.</p>
     </noscript>
     <script type="module" src="/src/ui/main.tsx"></script>

@@ -13,8 +13,8 @@ export interface HttpOptions {
   /** True when bound to localhost only: DNS-rebinding guards on /mcp. */
   local: boolean;
   log?: (msg: string) => void;
-  /** The link-preview image (dist/og.png), served at /og.png. */
-  ogImage?: Buffer;
+  /** The link-preview image (dist/og.png, served at /og.png) and the 192 px app icon (dist/icon.png, served at /icon.png and /favicon.ico). */
+  images?: { og?: Buffer; icon?: Buffer };
 }
 
 const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -24,7 +24,7 @@ export function withBoot(html: string, boot: Record<string, unknown>): string {
   const json = JSON.stringify(boot).replace(/</g, '\\u003c');
   const url = boot.mode === 'web' && typeof boot.publicUrl === 'string' ? attr(boot.publicUrl) : '';
   const meta = url
-    ? `<link rel="canonical" href="${url}"><meta property="og:url" content="${url}"><meta property="og:image" content="${url}og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${url}og.png">`
+    ? `<link rel="canonical" href="${url}"><meta property="og:url" content="${url}"><meta property="og:image" content="${url}og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${url}og.png"><meta name="twitter:image:alt" content="whenship: a Gantt chart of client deliverables with deadline diamonds and expected delivery dates"><link rel="icon" type="image/png" sizes="192x192" href="${url}icon.png"><link rel="apple-touch-icon" href="${url}icon.png">`
     : '';
   return html.replace('<!--WHENSHIP_BOOT-->', `${meta}<script>window.__WHENSHIP__=${json}</script>`);
 }
@@ -45,6 +45,26 @@ const PRIVACY = (publicUrl: string) => doc('whenship privacy', `<h1>Privacy</h1>
 </ul>
 <p>Source code: <a href="https://github.com/HamedShams/whenship">github.com/HamedShams/whenship</a> (BSD-3-Clause), made by <a href="https://hamedshams.com">Seyed Hamed Shams</a>. Questions: open an issue there.</p>
 <p><a href="${publicUrl}">Back to whenship</a></p>`);
+
+/** /llms.txt: a plain summary for AI assistants and agents that read a site before using it (llmstxt.org). */
+const LLMS = (publicUrl: string) => `# whenship
+
+> A tiny planner for small teams that answers "when will it ship?": list the work, who does it and roughly how long it takes, and whenship schedules it, shows which deadlines will slip and why, and suggests changes that meet more of them. Free, open source (BSD 3-Clause), no accounts; plans stay with the user.
+
+whenship is a deterministic scheduler, not an estimate from a language model: every date and every suggestion is an exact re-plan. Effort can be seen as planned (1×), likely (1.6×) or as a safe bet (3.1×), with a chance of meeting each deadline.
+
+## Use it
+
+- [Web app](${publicUrl}): paste a list or start from a sample; scheduling runs in the browser.
+- MCP connector for Claude and other MCP hosts: \`${publicUrl}mcp\` (Streamable HTTP, no sign-in). Tools: show_plan (interactive chart), what_if, find_options, export_plan.
+- Local: \`npx whenship\` (web app) or \`npx whenship --stdio\` (MCP server); a Claude Desktop extension is attached to each GitHub release.
+
+## Docs
+
+- [README: plan format, how the dates and suggestions work](https://github.com/HamedShams/whenship#readme)
+- [Privacy](${publicUrl}privacy): nothing about users or plans is stored on the server.
+- Made by [Seyed Hamed Shams](https://hamedshams.com).
+`;
 
 /** What a browser sees at /mcp: the address is for Claude, so say how to add it there. */
 const CONNECTOR = (publicUrl: string) => doc('whenship connector for Claude', `<h1>whenship connector for Claude</h1>
@@ -152,6 +172,8 @@ export function createHttpServer(opts: HttpOptions): Server {
         return send(req, res, 200, 'application/json', JSON.stringify({ ok: true, version: opts.version }));
       case '/robots.txt':
         return send(req, res, 200, 'text/plain', `User-agent: *\nAllow: /\nDisallow: /mcp\nSitemap: ${publicUrl}sitemap.xml\n`);
+      case '/llms.txt':
+        return send(req, res, 200, 'text/plain; charset=utf-8', LLMS(publicUrl));
       case '/sitemap.xml':
         return send(
           req,
@@ -161,8 +183,12 @@ export function createHttpServer(opts: HttpOptions): Server {
           `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${attr(publicUrl)}</loc></url><url><loc>${attr(publicUrl)}privacy</loc></url></urlset>\n`,
         );
       case '/og.png':
-        if (opts.ogImage) return send(req, res, 200, 'image/png', opts.ogImage, { 'cache-control': 'public, max-age=86400' });
+      case '/icon.png':
+      case '/favicon.ico': {
+        const image = path === '/og.png' ? opts.images?.og : opts.images?.icon;
+        if (image) return send(req, res, 200, 'image/png', image, { 'cache-control': 'public, max-age=86400' });
         return send(req, res, 404, 'text/plain; charset=utf-8', 'Not found');
+      }
       default:
         return send(req, res, 404, 'text/plain; charset=utf-8', 'Not found');
     }

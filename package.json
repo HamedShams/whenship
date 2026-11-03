@@ -1,8 +1,9 @@
 {
   "name": "whenship",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "When will it ship, honestly? A tiny planner for small teams: live what-if Gantt, deadline risk and realistic dates. Works in the browser, offline, and inside Claude as an MCP App.",
   "license": "BSD-3-Clause",
+  "mcpName": "io.github.HamedShams/whenship",
   "author": "Seyed Hamed Shams (https://hamedshams.com)",
   "homepage": "https://whenship.app",
   "repository": {
@@ -38,7 +39,8 @@
     "dist/whenship.html",
     "README.md",
     "LICENSE",
-    "dist/og.png"
+    "dist/og.png",
+    "dist/icon.png"
   ],
   "scripts": {
     "dev": "vite",

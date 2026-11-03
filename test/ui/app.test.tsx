@@ -11,7 +11,7 @@ import { SAMPLES } from '../../src/io/samples';
 const today = '2026-10-05';
 const sample = () => validatePlan(SAMPLES[0]!.build(today), { today }).plan;
 
-function mount(host: Partial<Host> = {}) {
+function mount(host: Partial<Host> = {}, plan = sample()) {
   const root = document.createElement('div');
   document.body.appendChild(root);
   const changes: unknown[] = [];
@@ -23,7 +23,7 @@ function mount(host: Partial<Host> = {}) {
     onChange: (plan) => changes.push(plan),
     ...host,
   };
-  act(() => render(<App host={h} initialPlan={sample()} today={today} />, root));
+  act(() => render(<App host={h} initialPlan={plan} today={today} />, root));
   return { root, host: h, changes };
 }
 const text = (root: Element, sel: string) => root.querySelector(sel)?.textContent ?? '';
@@ -183,13 +183,13 @@ describe('the item list', () => {
 
   it('one "who" editor shows everyone on an item; nothing gets hidden when there are several people', async () => {
     const { root } = mount();
-    // "Revise Lumen proposal": Omar 1d, then Sara 3d
+    // "Revise Lumen proposal": Martin 1d, then Sara 3d
     const cell = realRows(root)[3]!.querySelector('.who-cell') as HTMLButtonElement;
     expect(cell.querySelectorAll('.avatar')).toHaveLength(2);
-    expect(cell.getAttribute('aria-label')).toMatch(/Omar 1d \+ Sara 3d after Omar/);
+    expect(cell.getAttribute('aria-label')).toMatch(/Martin 1d \+ Sara 3d after Martin/);
     await act(() => cell.click());
     const pop = document.querySelector('.who-pop')!;
-    expect([...pop.querySelectorAll('.who-person')].map((b) => b.textContent)).toEqual(['OMOmar', 'SASara']);
+    expect([...pop.querySelectorAll('.who-person')].map((b) => b.textContent)).toEqual(['MAMartin', 'SASara']);
     expect(pop.querySelector('select.add-who')).toBeNull(); // everyone already has a part
   });
 
@@ -200,10 +200,10 @@ describe('the item list', () => {
     const pop = document.querySelector('.who-pop')!;
     expect(pop.getAttribute('aria-label')).toBe('Who works on New item');
     const add = pop.querySelector('select.add-who') as HTMLSelectElement;
-    add.value = 'omar';
+    add.value = 'martin';
     await act(() => void add.dispatchEvent(new Event('change', { bubbles: true })));
     const row = realRows(root).at(-1)!;
-    expect(row.querySelector('.who-cell')!.textContent).toMatch(/Omar\s*1d/);
+    expect(row.querySelector('.who-cell')!.textContent).toMatch(/Martin\s*1d/);
   });
 
   it('status pills follow the forecast lens', async () => {
@@ -260,7 +260,7 @@ describe('timeline details', () => {
     const pop = document.querySelector('.who-pop')!;
     expect([...pop.querySelectorAll('.col-h')].map((h) => h.textContent)).toEqual(['Days']); // one person: no "Starts", no team column
     const add = pop.querySelector('select.add-who') as HTMLSelectElement;
-    add.value = 'omar';
+    add.value = 'martin';
     await act(() => void add.dispatchEvent(new Event('change', { bubbles: true })));
     expect([...document.querySelectorAll('.who-pop .col-h')].map((h) => h.textContent)).toEqual(['Days', 'Starts']);
     expect(document.querySelectorAll('.who-pop .who-person')).toHaveLength(2);
@@ -456,6 +456,11 @@ describe('selection, dragging bars, lenses, colours and title', () => {
     const version = (f: string) => (JSON.parse(readFileSync(f, 'utf8')) as { version: string }).version;
     expect(VERSION).toBe(version('package.json'));
     expect(version('plugin/.claude-plugin/plugin.json')).toBe(version('package.json'));
+    // the MCP Registry entry: same version, same name as the npm package claims
+    const registry = JSON.parse(readFileSync('server.json', 'utf8'));
+    expect([registry.version, registry.packages[0].version]).toEqual([version('package.json'), version('package.json')]);
+    expect(registry.name).toBe(JSON.parse(readFileSync('package.json', 'utf8')).mcpName);
+    expect(registry.description.length).toBeLessThanOrEqual(100);
   });
 });
 
@@ -493,6 +498,28 @@ describe('clean drags, sticky headers, chart key, copy link and asking Claude', 
     expect(root.querySelector('.board .list-head, .board .tl-head')).toBeNull();
     // the header and the item card both read the toolbar's height
     expect((root.querySelector('.app') as HTMLElement).style.getPropertyValue('--toolbar-h')).toMatch(/^\d+px$/);
+    // once scrolled under the toolbar it marks itself stuck (and covers any seam above it); back at rest it doesn't
+    const wrap = root.querySelector('.board-wrap')!;
+    const at = (el: Element, top: number) => vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({ top } as DOMRect);
+    at(wrap, -400);
+    at(head, 117);
+    window.dispatchEvent(new Event('scroll'));
+    expect(head.classList.contains('stuck')).toBe(true);
+    at(wrap, 300);
+    at(head, 300);
+    window.dispatchEvent(new Event('scroll'));
+    expect(head.classList.contains('stuck')).toBe(false);
+  });
+
+  it('a row without effort says so beside the deadline diamond and the today line, not over them', () => {
+    const plan = validatePlan({ start: today, lanes: ['Sara'], items: [{ name: 'Draft', who: 'Sara', days: 3 }, { name: 'Unsized', deadline: '2026-10-06' }] }, { today }).plan;
+    const { root } = mount({}, plan);
+    const note = root.querySelector<HTMLElement>('.empty-bar')!;
+    expect(note.textContent).toBe('add effort to schedule this');
+    const left = (el: HTMLElement) => parseFloat(el.style.left);
+    const diamond = note.parentElement!.querySelector<HTMLElement>('.deadline')!;
+    expect(left(note)).toBeGreaterThan(left(diamond));
+    expect(left(note)).toBeGreaterThan(left(root.querySelector<HTMLElement>('.today')!));
   });
 
   it('one quiet legend under the chart: the marks, then the tips; with a lens on, the baseline and the way back', async () => {
@@ -717,25 +744,25 @@ describe('the setup bar', () => {
 
   it('the person editor renames, makes a team, sets availability and colour, and removes a person from their items', async () => {
     const { root } = mount();
-    await act(() => (root.querySelector('[data-lane="omar"]') as HTMLButtonElement).click());
-    await set(field('Name').querySelector('input')!, 'Omar K');
-    expect(root.querySelector('[data-lane="omar"]')!.textContent).toMatch(/Omar K/);
+    await act(() => (root.querySelector('[data-lane="martin"]') as HTMLButtonElement).click());
+    await set(field('Name').querySelector('input')!, 'Martin K');
+    expect(root.querySelector('[data-lane="martin"]')!.textContent).toMatch(/Martin K/);
     await set(field('Kind').querySelector('select')!, 'team', 'change');
     await set(field('People').querySelector('input')!, '3');
-    expect(root.querySelector('[data-lane="omar"]')!.textContent).toMatch(/×3/);
+    expect(root.querySelector('[data-lane="martin"]')!.textContent).toMatch(/×3/);
     await set(field('Time for this plan').querySelector('input')!, '80');
     expect(field('Time for this plan').textContent).toMatch(/^Time for this plan: 80%/);
     await act(() => (document.querySelector('[aria-label="Colour #7950f2"]') as HTMLButtonElement).click());
-    expect((root.querySelector('[data-lane="omar"] .dot') as HTMLElement).style.background).toMatch(/#7950f2|rgb\(121, 80, 242\)/);
+    expect((root.querySelector('[data-lane="martin"] .dot') as HTMLElement).style.background).toMatch(/#7950f2|rgb\(121, 80, 242\)/);
     await set(field('Kind').querySelector('select')!, 'person', 'change');
-    expect(root.querySelector('[data-lane="omar"]')!.textContent).not.toMatch(/×/);
+    expect(root.querySelector('[data-lane="martin"]')!.textContent).not.toMatch(/×/);
     const usedBy = button(document.querySelector('.popover')!, 'Remove');
     expect(usedBy.textContent).toMatch(/used by 2/);
     await act(() => usedBy.click());
-    expect(root.querySelector('[data-lane="omar"]')).toBeNull();
+    expect(root.querySelector('[data-lane="martin"]')).toBeNull();
     expect(document.querySelector('.popover')).toBeNull();
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
-    expect(root.querySelector('.who-cell[title*="Omar"]')).toBeNull(); // gone from every item it was on
+    expect(root.querySelector('.who-cell[title*="Martin"]')).toBeNull(); // gone from every item it was on
   });
 });
 

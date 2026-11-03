@@ -13,10 +13,10 @@ const sample = plan({
   title: 'Grant season',
   currency: '€',
   calendar: { workdays: ['sat', 'sun', 'mon', 'tue', 'wed'], holidays: [{ from: '2026-10-03', label: 'Unity Day' }] },
-  lanes: ['Sara', { name: 'Omar', availability: 50 }],
+  lanes: ['Sara', { name: 'Martin', availability: 50 }],
   items: [
     { name: 'Appeal, with "quotes"', who: 'Sara', days: 4, deadline: '2026-10-01', value: 20000 },
-    { name: 'Research', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }], deadline: '2026-10-07', value: 85000, note: 'needs questionnaire' },
+    { name: 'Research', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 5, after: 'Martin' }], deadline: '2026-10-07', value: 85000, note: 'needs questionnaire' },
   ],
 });
 
@@ -108,11 +108,11 @@ describe('pasting tables and lists', () => {
   });
 
   it('reads CSV with quotes, Markdown tables and people with split effort', () => {
-    const csv = 'Task,Owner,Effort,Due\n"Design, v2",Sara 3d + Omar 1d,,Oct 9\nShip,Sara,2d,2026-10-12';
+    const csv = 'Task,Owner,Effort,Due\n"Design, v2",Sara 3d + Martin 1d,,Oct 9\nShip,Sara,2d,2026-10-12';
     const p = validatePlan({ start: '2026-09-24', ...parseTable(csv, '2026-09-24') }).plan;
     expect(p.items[0]!.name).toBe('Design, v2');
-    expect(p.items[0]!.work.map((w) => [w.lane, w.days])).toEqual([['sara', 3], ['omar', 1]]);
-    const md = '| Item | Who | Days |\n|---|---|---|\n| A | Sara | 2 |\n| B | Omar | 1.5 |';
+    expect(p.items[0]!.work.map((w) => [w.lane, w.days])).toEqual([['sara', 3], ['martin', 1]]);
+    const md = '| Item | Who | Days |\n|---|---|---|\n| A | Sara | 2 |\n| B | Martin | 1.5 |';
     expect(validatePlan(parseTable(md, '2026-09-24')).plan.items.map((i) => i.work[0]!.days)).toEqual([2, 1.5]);
   });
 

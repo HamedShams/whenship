@@ -38,15 +38,15 @@ Each example shows a realistic request, the plan you would send to `show_plan`, 
   "start": "2026-10-05",
   "lanes": [
     { "name": "Sara" },
-    { "name": "Omar", "availability": 50 }
+    { "name": "Martin", "availability": 50 }
   ],
   "items": [
     { "name": "Quick fix for Acme", "who": "Sara", "days": 1 },
     { "name": "Appeal for Northwind", "who": "Sara", "days": 4, "deadline": "2026-10-14" },
     { "name": "Research for Brightside", "who": "Sara", "days": 5, "deadline": "2026-10-20" },
-    { "name": "Revise Lumen proposal", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Omar" }], "deadline": "2026-10-20" },
+    { "name": "Revise Lumen proposal", "work": [{ "lane": "Martin", "days": 1 }, { "lane": "Sara", "days": 3, "after": "Martin" }], "deadline": "2026-10-20" },
     { "name": "Full application: Orbit", "who": "Sara", "days": 6, "deadline": "2026-11-10" },
-    { "name": "Research for Helix", "work": [{ "lane": "Omar", "days": 1 }, { "lane": "Sara", "days": 5, "after": "Omar" }], "notBefore": "2026-10-15", "deadline": "2026-11-16" }
+    { "name": "Research for Helix", "work": [{ "lane": "Martin", "days": 1 }, { "lane": "Sara", "days": 5, "after": "Martin" }], "notBefore": "2026-10-15", "deadline": "2026-11-16" }
   ]
 }
 ```
@@ -54,7 +54,7 @@ Each example shows a realistic request, the plan you would send to `show_plan`, 
 Good answer shape:
 - "One deadline is late even as planned: **Lumen** finishes 21 Oct, a day after its deadline, because Sara is busy with Brightside and Northwind until 16 Oct. Three more are tight."
 - Options from `find_options`, e.g. "Do the Acme quick fix after the dated work → Lumen makes it."
-- The real constraint: "Almost everything queues behind Sara. Omar's prep work is never the bottleneck."
+- The real constraint: "Almost everything queues behind Sara. Martin's prep work is never the bottleneck."
 - What to tell clients: "Promise Orbit for the safe-bet date, not the as-planned one."
 
 ### 2. Product squads with back-end, front-end and data

@@ -27,9 +27,9 @@ describe('validatePlan', () => {
   });
 
   it('creates missing people instead of failing, and says so', () => {
-    const { plan, warnings } = validatePlan({ items: [{ name: 'X', work: [{ lane: 'Omar', days: 2 }] }] }, { today: '2026-10-05' });
-    expect(plan.lanes.map((l) => l.name)).toEqual(['Omar']);
-    expect(warnings[0]!.message).toMatch(/added "Omar"/);
+    const { plan, warnings } = validatePlan({ items: [{ name: 'X', work: [{ lane: 'Martin', days: 2 }] }] }, { today: '2026-10-05' });
+    expect(plan.lanes.map((l) => l.name)).toEqual(['Martin']);
+    expect(warnings[0]!.message).toMatch(/added "Martin"/);
   });
 
   it('makes ids unique and resolves dependencies by name, even forward', () => {
@@ -61,16 +61,16 @@ describe('validatePlan', () => {
   it('keeps hand-offs only when they point at another part of the same item', () => {
     const { plan, warnings } = validatePlan(
       {
-        lanes: ['Sara', 'Omar'],
+        lanes: ['Sara', 'Martin'],
         items: [
-          { name: 'Ok', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }] },
-          { name: 'Bad', work: [{ lane: 'Sara', days: 1, after: 'Omar' }] },
-          { name: 'Loop', work: [{ lane: 'Sara', days: 1, after: 'Omar' }, { lane: 'Omar', days: 1, after: 'Sara' }] },
+          { name: 'Ok', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 5, after: 'Martin' }] },
+          { name: 'Bad', work: [{ lane: 'Sara', days: 1, after: 'Martin' }] },
+          { name: 'Loop', work: [{ lane: 'Sara', days: 1, after: 'Martin' }, { lane: 'Martin', days: 1, after: 'Sara' }] },
         ],
       },
       { today: '2026-10-05' },
     );
-    expect(plan.items[0]!.work[1]!.after).toBe('omar');
+    expect(plan.items[0]!.work[1]!.after).toBe('martin');
     expect(plan.items[1]!.work[0]!.after).toBeUndefined();
     expect(plan.items[2]!.work.filter((w) => w.after).length).toBe(1);
     expect(warnings.length).toBeGreaterThanOrEqual(2);

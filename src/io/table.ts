@@ -42,7 +42,7 @@ function splitRow(line: string, sep: string): string[] {
   return out;
 }
 
-/** Splits "Sara 3d + Omar 1d", "Sara & Omar", "Backend" into lane/day pairs. */
+/** Splits "Sara 3d + Martin 1d", "Sara & Martin", "Backend" into lane/day pairs. */
 function parseWho(who: string, days: number | null): { lane: string; days: number }[] {
   const parts = who.split(/\s*(?:\+|&|,|;|\band\b|\/)\s*/i).map((p) => p.trim()).filter(Boolean);
   if (!parts.length) return [];

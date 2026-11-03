@@ -134,7 +134,8 @@ button:disabled { cursor: default; }
 .insight b { font-weight: 600; font-size: 13.5px; }
 .insight p { margin: 0; color: var(--fg2); font-size: 12.5px; }
 .insight-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg3); font-weight: 700; }
+.kind { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; line-height: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg3); font-weight: 700; }
+.kind svg { flex: none; display: block; }
 .insight.ask { border-style: dashed; border-color: var(--border2); background: var(--bg2); }
 .insight.ask .kind { color: var(--accent); }
 /* the chart key and tips: one muted block under the chart */
@@ -150,9 +151,12 @@ button:disabled { cursor: default; }
 .link-btn { border: none; background: transparent; padding: 0 2px; color: var(--accent); font-size: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── board: list + timeline ───────────────────────────── */
-.board-wrap { --list-w: 484px; display: flex; flex-direction: column; flex: 1; margin-top: 8px; border-top: 1px solid var(--border); }
-/* the column titles and calendar scale stick under the toolbar once the page scrolls past them */
-.board-head { position: sticky; top: var(--toolbar-h, 0px); z-index: 20; display: flex; height: 52px; background: var(--bg2); border-bottom: 1px solid var(--border2); }
+.board-wrap { --list-w: 484px; display: flex; flex-direction: column; flex: 1; margin-top: 8px; }
+/* The column titles and calendar scale stick under the toolbar once the page scrolls past them. They tuck 1px under it,
+   and while stuck they also paint the 8px above them, so no row shows through a seam between the two sticky layers
+   (sub-pixel heights, or a browser repainting them a frame apart while scrolling). */
+.board-head { position: sticky; top: calc(var(--toolbar-h, 0px) - 1px); z-index: 20; display: flex; height: 53px; background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border2); }
+.board-head.stuck { box-shadow: 0 -8px 0 var(--bg); }
 .board-head .list-head { flex: none; width: var(--list-w); border-right: 1px solid var(--border); }
 .tl-clip { flex: 1; min-width: 0; overflow: hidden; }
 .board { display: flex; position: relative; overflow-x: auto; overflow-y: hidden; flex: 1; }

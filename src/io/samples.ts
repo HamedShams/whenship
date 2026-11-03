@@ -27,15 +27,15 @@ export const SAMPLES: Sample[] = [
       return {
         title: 'Client deliverables',
         start: s,
-        lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
+        lanes: [{ name: 'Sara' }, { name: 'Martin', availability: 50 }],
         items: [
           { name: 'Quick fix for Acme', who: 'Sara', days: 1 },
           { name: 'Appeal for Northwind', who: 'Sara', days: 4, deadline: at(s, 9) },
           { name: 'Research for Brightside', who: 'Sara', days: 5, deadline: at(s, 15) },
-          { name: 'Revise Lumen proposal', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 3, after: 'Omar' }], deadline: at(s, 15) },
+          { name: 'Revise Lumen proposal', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 3, after: 'Martin' }], deadline: at(s, 15) },
           { name: 'Appeal for Kestrel', who: 'Sara', days: 5, deadline: at(s, 30) },
           { name: 'Full application: Orbit', who: 'Sara', days: 6, deadline: at(s, 36) },
-          { name: 'Research for Helix', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }], deadline: at(s, 42), notBefore: at(s, 10), note: 'Waiting for the client questionnaire' },
+          { name: 'Research for Helix', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 5, after: 'Martin' }], deadline: at(s, 42), notBefore: at(s, 10), note: 'Waiting for the client questionnaire' },
         ],
       };
     },

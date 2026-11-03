@@ -55,11 +55,11 @@ describe('insights', () => {
 
   it('never proposes something that loses deadlines overall', () => {
     const p = plan({
-      lanes: ['Sara', 'Omar'],
+      lanes: ['Sara', 'Martin'],
       items: [
         { name: 'A', who: 'Sara', days: 3, deadline: '2026-09-29' },
         { name: 'B', who: 'Sara', days: 3, deadline: '2026-10-01' },
-        { name: 'C', who: 'Omar', days: 2, deadline: '2026-09-25' },
+        { name: 'C', who: 'Martin', days: 2, deadline: '2026-09-25' },
         { name: 'D', who: 'Sara', days: 2, deadline: '2026-09-28' },
       ],
     });
@@ -73,16 +73,16 @@ describe('report', () => {
       title: 'Grant season',
       currency: '€',
       calendar: { workdays: ['sat', 'sun', 'mon', 'tue', 'wed'] },
-      lanes: ['Sara', { name: 'Omar', availability: 50 }],
+      lanes: ['Sara', { name: 'Martin', availability: 50 }],
       items: [
         { name: 'Appeal', who: 'Sara', days: 4, deadline: '2026-10-01', value: 20000 },
-        { name: 'Research', work: [{ lane: 'Omar', days: 1 }, { lane: 'Sara', days: 5, after: 'Omar' }], deadline: '2026-10-04', value: 85000 },
+        { name: 'Research', work: [{ lane: 'Martin', days: 1 }, { lane: 'Sara', days: 5, after: 'Martin' }], deadline: '2026-10-04', value: 85000 },
       ],
     });
     const md = renderReport(p, { method: true });
     expect(md).toMatch(/^## Grant season/);
     expect(md).toMatch(/off on Thu & Fri/);
-    expect(md).toMatch(/\| 2 \| Research \| Omar 1d \+ Sara 5d after Omar \|/);
+    expect(md).toMatch(/\| 2 \| Research \| Martin 1d \+ Sara 5d after Martin \|/);
     expect(md).toMatch(/What sets the end date:/);
     expect(md).toMatch(/Little 2006 \+ Flyvbjerg et al\. 2022/);
   });

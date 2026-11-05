@@ -54,7 +54,7 @@ describe('forgiving input', () => {
 describe('assess()', () => {
   it('measures a proposed change exactly, and reports what could not be applied', () => {
     const p = plan({
-      lanes: [{ name: 'Sara' }, { name: 'Omar', availability: 50 }],
+      lanes: [{ name: 'Sara' }, { name: 'Martin', availability: 50 }],
       items: [
         { name: 'Quick fix', who: 'Sara', days: 3 },
         { name: 'Appeal', who: 'Sara', days: 4, deadline: '2026-09-30' },
@@ -68,5 +68,14 @@ describe('assess()', () => {
     expect(b.skipped).toEqual(['no item "Nope"']);
     const c = assess(p, [{ op: 'setEffort', item: 'Quick fix', lane: 'Sara', days: 6 }]);
     expect(c.effect).toMatch(/later|no deadline or end-date change/);
+  });
+});
+
+describe('effort has a ceiling', () => {
+  it('caps a part at a person-year and says so; the engine never has to plan past that', () => {
+    const v = validatePlan({ lanes: ['Me'], items: [{ name: 'Everything', who: 'Me', days: 999 }] }, { today: '2026-09-24' });
+    expect(v.plan.items[0]!.work[0]!.days).toBe(250);
+    expect(v.errors).toEqual([]);
+    expect(v.warnings.map((w) => w.message)).toEqual(['capped at 250 working days (a person-year): split longer work into items']);
   });
 });

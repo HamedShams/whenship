@@ -136,13 +136,16 @@ describe('Claude widget (MCP App)', () => {
     await show(h);
     await openFull(h);
     await act(() => saturday(h.root).click()); // an edit that hasn't been synced yet
-    const ask = h.root.querySelector('.option.ask')!;
+    const ask = h.root.querySelector('.options-title .ask-claude')!;
     await act(() => (ask.querySelector('button') as HTMLButtonElement).click());
     await until(() => h.log.messages.length === 1);
     expect(h.log.events).toEqual(['context', 'message']);
     expect(h.log.context[0].structuredContent.plan.calendar.workdays).toContain('sat');
     expect(h.log.messages[0]).toMatchObject({ role: 'user' });
-    expect(h.log.messages[0].content[0].text).toMatch(/moving work between people.*what_if/s);
+    const text = h.log.messages[0].content[0].text as string;
+    expect(text).toMatch(/up to two better options.*moving work between people.*what_if, at most four calls.*show_plan.*unchanged.*`suggestions`/s);
+    expect(text).toMatch(/Stay in the chart: no spreadsheet, report, document or file/); // the answer stays in the chart
+    expect(text).toMatch(/at most three lines/);
     await until(() => h.root.querySelector('.toast')?.textContent?.includes('Asked Claude'));
   });
 
@@ -150,7 +153,7 @@ describe('Claude widget (MCP App)', () => {
     const h = await start();
     await show(h);
     await openFull(h);
-    expect(h.root.querySelector('.option.ask')).toBeNull();
+    expect(h.root.querySelector('.ask-claude')).toBeNull();
   });
 
   it('saves files through the host, or hands the plan to the website when the host cannot download', async () => {
@@ -205,7 +208,11 @@ describe('Claude widget (MCP App)', () => {
     await until(() => h.log.links.length === 1);
     expect(h.log.links[0]).toMatch(/^https:\/\/whenship\.example\/#p=[^&]+$/);
     await openFull(h);
-    await act(() => button(h.root, 'Weeks')!.click());
+    await act(() => {
+      const sel = h.root.querySelector('select.zoom-select') as HTMLSelectElement;
+      sel.value = 'week';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await act(() => button(h.root, 'Done')!.click());
     await until(() => h.root.querySelector('.card'));
     await act(() => button(h.root, 'Open in browser')!.click());

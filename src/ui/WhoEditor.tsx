@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { applyChanges } from '../engine/changes';
+import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
 import { Popover } from './Popover';
 import { Icon } from './lib';
@@ -40,9 +41,32 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
   const setWork = (work: NormalizedWork[], key?: string) =>
     onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, work } : x)) }, []).plan, key);
   const setPart = (lane: string, patch: Partial<NormalizedWork>, key?: string) => setWork(it.work.map((w) => (w.lane === lane ? { ...w, ...patch } : w)), key);
+  /**
+   * A hand-off, with the newest choice winning: if "A after B" would close a loop (B already waits for A, directly or
+   * through others), the part that waited for A is freed to start right away, so the plan never ends up with no one
+   * able to start.
+   */
+  const setAfter = (lane: string, target: string | undefined) => {
+    let work = it.work.map((w) => (w.lane === lane ? { ...w, after: target } : w));
+    if (target) {
+      const byLane = new Map(work.map((w) => [w.lane, w] as const));
+      let cur = byLane.get(target);
+      const seen = new Set<string>();
+      while (cur && cur.after && cur.after !== lane && !seen.has(cur.lane)) {
+        seen.add(cur.lane);
+        cur = byLane.get(cur.after);
+      }
+      if (cur?.after === lane) {
+        const freed = cur.lane;
+        work = work.map((w) => (w.lane === freed ? { ...w, after: undefined } : w));
+      }
+    }
+    setWork(work);
+  };
+  const cap = (lane: NormalizedPlan['lanes'][number]) => Math.max(1, Math.ceil(lane.size));
   const anyTeam = it.work.some((w) => laneOf(w.lane)?.kind === 'team');
   const multi = it.work.length > 1;
-  const cols = `minmax(0, 1fr) 58px${anyTeam ? ' 52px' : ''}${multi ? ' 116px' : ''} 26px`;
+  const cols = `minmax(0, 1fr) 58px${anyTeam ? ' 82px' : ''}${multi ? ' 128px' : ''} 26px`;
 
   return (
     <Popover anchor={anchor} onClose={onClose} label={`Who works on ${it.name}`} className={anyTeam && multi ? 'who-pop wide' : 'who-pop'}>
@@ -55,8 +79,8 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
               <span />
               <span class="col-h">Days</span>
               {anyTeam && (
-                <span class="col-h" title="Most people of a team who can work on it at the same time">
-                  At once
+                <span class="col-h" title="Of a team, how many people can work on this item at the same time (the team's size at most)">
+                  People
                 </span>
               )}
               {multi && <span class="col-h">Starts</span>}
@@ -74,29 +98,34 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
                   <input
                     type="number"
                     min="0"
+                    max={LIMITS.maxDays}
                     step="0.5"
                     value={w.days}
                     data-days={w.lane}
                     aria-label={`${name}: working days`}
-                    onInput={(e) => setPart(w.lane, { days: Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0) }, `days:${it.id}:${w.lane}`)}
+                    onInput={(e) => setPart(w.lane, { days: Math.min(LIMITS.maxDays, Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0)) }, `days:${it.id}:${w.lane}`)}
                   />
                   {anyTeam &&
                     (lane?.kind === 'team' ? (
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={w.maxPeople}
-                        aria-label={`${name}: people at once`}
-                        onInput={(e) => setPart(w.lane, { maxPeople: Math.max(1, Math.round(Number((e.currentTarget as HTMLInputElement).value) || 1)) }, `mp:${it.id}:${w.lane}`)}
-                      />
+                      <span class="at-once" title={`Up to ${cap(lane)} of ${name} can work on this at the same time`}>
+                        <input
+                          type="number"
+                          min="1"
+                          max={cap(lane)}
+                          step="1"
+                          value={w.maxPeople}
+                          aria-label={`${name}: people at once`}
+                          onInput={(e) => setPart(w.lane, { maxPeople: Math.min(cap(lane), Math.max(1, Math.round(Number((e.currentTarget as HTMLInputElement).value) || 1))) }, `mp:${it.id}:${w.lane}`)}
+                        />
+                        <span class="of">of {cap(lane)}</span>
+                      </span>
                     ) : (
                       <span class="na" aria-hidden="true">
                         –
                       </span>
                     ))}
                   {multi && (
-                    <select value={w.after ?? ''} aria-label={`${name}: starts`} onChange={(e) => setPart(w.lane, { after: (e.currentTarget as HTMLSelectElement).value || undefined })}>
+                    <select value={w.after ?? ''} aria-label={`${name}: starts`} onChange={(e) => setAfter(w.lane, (e.currentTarget as HTMLSelectElement).value || undefined)}>
                       <option value="">right away</option>
                       {it.work
                         .filter((x) => x.lane !== w.lane)

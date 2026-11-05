@@ -1,4 +1,3 @@
-import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
 import { applyChanges, moveItem, type Change } from '../engine/changes';
@@ -8,6 +7,7 @@ import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
 import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
+import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { useAnchor } from './Popover';
 import { Avatar, WhoEditor } from './WhoEditor';
@@ -16,8 +16,10 @@ import { cx, DateButton, Icon } from './lib';
 export const ROW = 44;
 /** Room for a note drawn in place of a bar ("add effort to schedule this"). */
 const NOTE_W = 170;
-/** Height of an item's open details when it can't be measured (tests, old browsers). */
-const DETAILS_FALLBACK = 260;
+/** Room after the last day for its finish label ("19 Mar 2027" and a ±days badge): the calendar runs on under it, so the chart looks full. */
+export const LABEL_ROOM = 96;
+/** The chart never draws more calendar than this (the engine's own horizon plus the label room at a pixel a day). */
+const MAX_DRAWN_DAYS = 1100 + LABEL_ROOM;
 const BADGE_VAR: Record<Badge, string> = { safe: 'var(--ok)', likely: 'var(--ok)', tight: 'var(--warn)', late: 'var(--danger)', unknown: 'var(--fg3)' };
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -35,8 +37,6 @@ interface Props {
   zoom: Zoom;
   /** A plan to show as a ghost over the current one: an option being previewed. */
   preview?: NormalizedPlan | null;
-  /** Renders the selected item's details, in place under its row. */
-  renderDetails?: ((id: string) => ComponentChildren) | undefined;
 }
 
 /** The calendar days the chart covers: plan start → the last finish or deadline, plus a few days. */
@@ -52,8 +52,21 @@ export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: st
   for (const it of plan.items) bump(it.deadline);
   const t = parseISO(today);
   if (t !== null && t > start && t < start + 400) end = Math.max(end, t);
-  end = Math.min(end + 6, start + 1100);
+  end = Math.min(end, start + 1100);
   return { start, end, span: end - start + 1 };
+}
+
+/**
+ * A month block's label for the width it has: "Jan 2027" → "Jan ’27" → "Jan" (or "’27" where the year says more than
+ * the name) → "J" → nothing. `year` is set only where the year changes from the plan's own.
+ */
+export function monthLabel(width: number, name: string, year: number | null): string {
+  const yy = year === null ? '' : `’${String(year).slice(2)}`;
+  if (width >= 72) return year === null ? name : `${name} ${year}`;
+  if (width >= 46) return year === null ? name : `${name} ${yy}`;
+  if (width >= 28) return year === null ? name : yy;
+  if (width >= 12) return name[0]!;
+  return '';
 }
 
 /** The fixed scale a plan of this length reads best at (used by `fit` while the chart's width is unknown). */
@@ -83,7 +96,11 @@ interface Resize {
   days0: number;
   /** Person-days one working day of this lane is worth for this item (people at once × availability). */
   perDay: number;
+  /** The effort the plan is re-planned with: half-day steps. */
   days: number;
+  /** The bar's width when the drag began, and how far the pointer has moved: the bar itself follows the pointer. */
+  width0: number;
+  dx: number;
 }
 /** Dragging a deadline diamond moves the deadline. */
 interface DeadlineDrag {
@@ -106,7 +123,7 @@ function startDragging(wrap: HTMLElement | null) {
 
 const snapHalf = (n: number) => Math.round(n * 2) / 2;
 
-export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom, preview: previewPlan, renderDetails }: Props) {
+export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom, preview: previewPlan }: Props) {
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [resize, setResize] = useState<Resize | null>(null);
@@ -136,18 +153,26 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (b && Math.abs(e.deltaX) > Math.abs(e.deltaY)) b.scrollLeft += e.deltaX;
   };
 
-  // the width the timeline has, so `fit` can size days to it
+  // The width the timeline has, so `fit` can size days to it. The first render can't know it (nothing is laid out
+  // yet) and draws at a fixed scale; the first measured render draws at the fitted one without animating the step.
   const [clipW, setClipW] = useState(0);
+  const [fresh, setFresh] = useState(true);
   useLayoutEffect(() => {
     const el = clipRef.current;
     if (!el) return;
     const measure = () => setClipW(el.clientWidth);
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
+    const raf = el.clientWidth ? 0 : requestAnimationFrame(measure); // not laid out yet: once more after the first frame
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
   }, []);
+  useEffect(() => {
+    if (clipW > 0 && fresh) setFresh(false); // after the first measured paint: transitions from here on
+  }, [clipW]);
 
   // live edits that re-plan before they're committed: a drag's new order, a bar's new effort, a moved deadline
   const liveChanges = useMemo<Change[] | null>(() => {
@@ -169,11 +194,18 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   // moving DOM nodes mid-drag could drop the pointer capture and strand the drag.
   const slot = useMemo(() => new Map(order.map((it, i) => [it.id, i])), [order]);
 
-  // timeline geometry (calendar days, so dates line up with real weeks)
+  // Timeline geometry (calendar days, so dates line up with real weeks). The scale comes from the plan as it is; a
+  // preview or ghost that runs past its end only widens the chart. So nothing rescales under the pointer while a bar
+  // is being resized, a row dragged or an option previewed; the chart re-fits once the change is real.
   const geo = useMemo(() => {
-    const { start, end, span } = timelineSpan(plan, analysis, today, preview ?? ghost);
-    const ppd = pixelsPerDay(zoom, span, clipW);
-    return { start, end, span, ppd, width: span * ppd };
+    const own = timelineSpan(plan, analysis, today, null);
+    const full = timelineSpan(plan, analysis, today, preview ?? ghost);
+    const ppd = pixelsPerDay(zoom, own.span, Math.max(0, clipW - LABEL_ROOM));
+    // The calendar drawn: at least the plan plus room for its last label; under `fit` it runs to the right edge of the
+    // width at hand, so the chart is never followed by a blank strip.
+    const least = full.span + Math.ceil(LABEL_ROOM / ppd);
+    const span = Math.min(MAX_DRAWN_DAYS, zoom === 'fit' && clipW > 0 ? Math.max(least, Math.floor(clipW / ppd)) : least);
+    return { start: full.start, end: full.start + span - 1, span, ppd, width: span * ppd };
   }, [plan, analysis, preview, ghost, today, zoom, clipW]);
   const x = (iso: string) => (parseISO(iso)! - geo.start) * geo.ppd;
 
@@ -201,7 +233,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     for (let d = geo.start; d <= geo.end; ) {
       const p = dayParts(toISO(d));
       const next = Math.min(geo.end + 1, Date.UTC(p.year, p.month + 1, 1) / 86_400_000);
-      months.push({ left: (d - geo.start) * geo.ppd, width: (next - d) * geo.ppd, label: `${monthName(p.month)}${p.year !== planYear ? ` ${p.year}` : ''}` });
+      // a month too narrow for its name shows its initial (a pixel a day fits a year in a laptop's width)
+      // the year is named where it changes: on January, or on the first block when the chart starts in another year
+      const showYear = p.year !== planYear && (p.month === 0 || d === geo.start);
+      months.push({ left: (d - geo.start) * geo.ppd, width: (next - d) * geo.ppd, label: monthLabel((next - d) * geo.ppd, monthName(p.month), showYear ? p.year : null) });
       d = next;
     }
     const work = new Set(plan.calendar.workdays);
@@ -211,7 +246,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     for (let d = geo.start; d <= geo.end; d++) {
       const p = dayParts(toISO(d));
       if (byDay) ticks.push({ d, label: String(p.day), dow: DOW[p.weekday]!, off: !work.has((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[p.weekday]!) });
-      else if (p.weekday === 0 && (t === null || Math.abs(d - t) * geo.ppd >= 22)) ticks.push({ d, label: String(p.day) });
+      // zoomed far out, every other week keeps the labels apart; narrower still, the month blocks are the scale
+      else if (p.weekday === 0 && geo.ppd >= 2 && (geo.ppd >= 4 || Math.floor(d / 7) % 2 === 0) && (t === null || Math.abs(d - t) * geo.ppd >= 22)) ticks.push({ d, label: String(p.day) });
     }
     return { months, ticks, byDay };
   }, [geo, plan.start, plan.calendar.workdays, today]);
@@ -264,32 +300,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const laneOf = (id: string) => plan.lanes.find((l) => l.id === id);
   const commitChange = (changes: Change[], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
 
-  // ── the selected item's details, open in place under its row ──
-  const detailsFor = renderDetails && selected && slot.has(selected) ? selected : null;
-  const detailsIndex = detailsFor ? slot.get(detailsFor)! : -1;
-  const [detailsH, setDetailsH] = useState(0);
-  const detailsRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const el = detailsRef.current;
-    if (!el || !detailsFor) {
-      setDetailsH(0);
-      return;
-    }
-    const measure = () => setDetailsH(el.offsetHeight || DETAILS_FALLBACK);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [detailsFor]);
-  const detailsGap = detailsFor ? detailsH : 0;
-
   // ── drag handlers ──
   // The dragged row and its bars follow the pointer directly (no re-render per move); the board re-renders only when
   // the row crosses into another slot, which also re-plans the live preview.
   const dragged = (id: string) => wrapRef.current?.querySelectorAll<HTMLElement>(`[data-item="${CSS.escape(id)}"]`) ?? [];
   const slotOf = (d: Drag, dy: number) => Math.max(0, Math.min(plan.items.length - 1, Math.round(d.from + dy / ROW)));
-  const rowTop = (i: number) => i * ROW + (detailsIndex >= 0 && i > detailsIndex ? detailsGap : 0);
+  const rowTop = (i: number) => i * ROW;
   // Capturing the pointer keeps moves coming when it leaves the window; the drag works without it (see below).
   const capture = (e: PointerEvent) => {
     try {
@@ -332,7 +348,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     startDragging(wrapRef.current);
     capture(e);
     const perDay = Math.max(0.1, (Math.min(part.maxPeople, Math.max(l.size, 0.1)) * l.availability) / 100);
-    const r: Resize = { id, lane, startX: e.clientX, days0: part.days, perDay, days: part.days };
+    const bar = (e.currentTarget as HTMLElement).parentElement;
+    const width0 = (bar && (parseFloat(bar.style.width) || bar.offsetWidth)) || 4;
+    const r: Resize = { id, lane, startX: e.clientX, days0: part.days, perDay, days: part.days, width0, dx: 0 };
     resizeRef.current = r;
     setResize(r);
   };
@@ -351,13 +369,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     const rs = resizeRef.current;
     if (rs) {
       // a day of sideways movement is a day of the calendar; working days are what effort is counted in
-      const calDays = (e.clientX - rs.startX) / geo.ppd;
+      const dx = e.clientX - rs.startX;
+      const calDays = dx / geo.ppd;
       const workDays = calDays * (plan.calendar.workdays.length / 7);
-      const days = Math.max(0.5, snapHalf(rs.days0 + workDays * rs.perDay));
-      if (days !== rs.days) {
-        resizeRef.current = { ...rs, days };
-        setResize(resizeRef.current);
-      }
+      const days = Math.min(LIMITS.maxDays, Math.max(0.5, snapHalf(rs.days0 + workDays * rs.perDay)));
+      resizeRef.current = { ...rs, days, dx };
+      setResize(resizeRef.current);
       return;
     }
     const dd = dlRef.current;
@@ -371,11 +388,15 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     }
     const p = pressed.current;
     if (p && !dragRef.current) {
-      if (Math.abs(e.clientY - p.y) > 4) {
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      if (Math.abs(dy) > 4 && Math.abs(dy) >= Math.abs(dx)) {
+        // an up-or-down pull reorders
         pressed.current = null;
         const d: Drag = { id: p.id, from: p.index, over: p.index, startY: p.y, byBar: true };
-        const dy = e.clientY - p.y;
         begin({ ...d, over: slotOf(d, dy) }, dy);
+      } else if (Math.abs(dx) > 8) {
+        pressed.current = null; // a sideways pull on a bar's body is neither a reorder nor a click (its edge changes the effort)
       }
       return;
     }
@@ -484,13 +505,15 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     else draftRef.current?.focus();
   };
 
-  const height = (order.length + 1) * ROW + detailsGap; // + the empty row for a new item
+  const height = (order.length + 1) * ROW; // + the empty row for a new item
+  // one person, no team: effort is a number in the row, the person is implied
+  const solo = plan.lanes.length === 1 && plan.lanes[0]!.kind !== 'team' ? plan.lanes[0]! : null;
 
   return (
     <div
       ref={wrapRef}
       tabIndex={-1}
-      class={cx('board-wrap', drag && 'is-dragging', resize && 'is-resizing', dlDrag && 'is-resizing', ghost && 'has-ghost')}
+      class={cx('board-wrap', drag && 'is-dragging', resize && 'is-resizing', dlDrag && 'is-resizing', ghost && 'has-ghost', fresh && 'unmeasured')}
       onPointerLeave={() => hover(null)}
       onDragStart={(e) => e.preventDefault()} // no native drag of selected text or images (Safari)
     >
@@ -500,7 +523,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         <div class="list-head">
           <span>#</span>
           <span>Item</span>
-          <span>Who</span>
+          <span title="Working days of effort, per person">Effort</span>
           <span>Due</span>
           <span>Finish</span>
           <span />
@@ -509,8 +532,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <div ref={scaleRef} class="tl-head" style={{ width: `${geo.width}px` }}>
             <div class="months">
               {scale.months.map((m) => (
-                <div key={m.left} class="month" style={{ left: `${m.left}px`, width: `${m.width}px` }}>
-                  {m.width >= 34 ? m.label : ''}
+                <div key={m.left} class={cx('month', m.width < 46 && 'tight')} style={{ left: `${m.left}px`, width: `${m.width}px` }}>
+                  {m.label}
                 </div>
               ))}
             </div>
@@ -591,7 +614,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     }}
                     onFocus={() => onSelect(it.id)}
                   />
-                  <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  {solo ? (
+                    <DaysCell item={shownIt} lane={solo} onFocus={() => onSelect(it.id)} onChange={(days) => commitChange([{ op: 'setEffort', item: it.id, lane: solo.id, days }], `days:${it.id}`)} />
+                  ) : (
+                    <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  )}
                   <div class="due-cell">
                     <DateButton
                       value={shownIt.deadline}
@@ -610,11 +637,6 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 </div>
               );
             })}
-            {detailsFor && (
-              <div class="row-details-slot" ref={detailsRef} style={{ top: `${(detailsIndex + 1) * ROW}px` }}>
-                {renderDetails!(detailsFor)}
-              </div>
-            )}
             <div class="row draft" style={{ top: `${rowTop(order.length)}px` }}>
               <span class="handle" aria-hidden="true">
                 <Icon.plus />
@@ -636,9 +658,19 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   setFocusReq({ id, mode: 'end' });
                 }}
               />
-              <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
-                <span class="who-empty">+ who</span>
-              </button>
+              {solo ? (
+                <DaysCell
+                  item={null}
+                  lane={solo}
+                  onChange={(days) => {
+                    if (days > 0) setFocusReq({ id: createItem({ work: [{ lane: solo.id, days, maxPeople: 1 }] }), mode: 'select' });
+                  }}
+                />
+              ) : (
+                <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
+                  <span class="who-empty">+ who</span>
+                </button>
+              )}
               <div class="due-cell">
                 <DateButton
                   value={undefined}
@@ -662,7 +694,6 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
               <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
             ))}
             {todayX !== null && <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />}
-            {detailsFor && <div class="details-gap" style={{ top: `${(detailsIndex + 1) * ROW}px`, height: `${detailsGap}px` }} />}
           </div>
           <div class="rows" style={{ height: `${height}px` }}>
             {plan.items.map((it) => (
@@ -794,12 +825,13 @@ function BarRow(props: {
         const width = Math.max(4, x(e) - x(s) + ppd - 2);
         const lateFrom = late ? Math.max(0, dueEnd - left) : width;
         const rs = props.resizing && props.resizing.lane === p.lane ? props.resizing : null;
+        const drawnW = rs ? Math.max(4, rs.width0 + rs.dx) : width; // under the pointer the bar moves with it, not in half-day steps
         return (
           <div
             key={p.lane}
             class={cx('bar', props.chain && 'chain', rs && 'resizing')}
             title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}. Drag the right edge to change the effort.`}
-            style={{ left: `${left}px`, width: `${width}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
+            style={{ left: `${left}px`, width: `${drawnW}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
           >
             {lateFrom < width && <span class="bar-late" style={{ left: `${lateFrom}px` }} />}
             {rs && <span class="bar-days">{fmtDays(rs.days)}</span>}
@@ -853,12 +885,17 @@ function BarRow(props: {
 }
 
 /**
- * One quiet block under the chart, out of the way: what the marks mean, then how to work with the chart. Diamonds are the
- * usual Gantt milestone marker; here each one is an item's deadline, coloured like its delivery date. With a lens on,
- * bars are stretched and a thin baseline keeps the user's own estimate.
+ * One quiet line under the chart: what the marks mean, and a "Tips" toggle for how to work with the chart (open on a
+ * first visit, since the intro is the one time it's read; closed after that, the tooltips on the chart carry the rest).
+ * Diamonds are the usual Gantt milestone marker; here each one is an item's deadline, coloured like its delivery date.
+ * With a lens on, bars are stretched and a thin baseline keeps the user's own estimate.
  */
-export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
+export function Legend({ lens, onPlanned, tipsOpen }: { lens: LensId; onPlanned: () => void; tipsOpen?: boolean }) {
   const l = lensById(lens);
+  const [tips, setTips] = useState(!!tipsOpen);
+  useEffect(() => {
+    if (tipsOpen) setTips(true);
+  }, [tipsOpen]);
   return (
     <div class="legend" aria-label="Chart key and tips">
       <span>
@@ -873,9 +910,6 @@ export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => voi
       <span>
         <i class="k-today" /> today
       </span>
-      <span>
-        <i class="k-ghost" /> an option, previewed
-      </span>
       {l.factor !== 1 && (
         <span class="k-lens">
           <i class="k-baseline" /> your estimate · bars show {l.label} ({l.short})
@@ -884,7 +918,14 @@ export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => voi
           </button>
         </span>
       )}
-      <span class="legend-tips">Drag ⠿ or a bar up or down to reprioritize · drag a bar's right edge to change its effort · drag a diamond to move a deadline · click a row to see why it lands when it does</span>
+      <button class="link-btn tips-toggle" aria-expanded={tips} onClick={() => setTips((v) => !v)}>
+        {tips ? 'Hide tips' : 'Tips'}
+      </button>
+      {tips && (
+        <span class="legend-tips">
+          Drag ⠿ or a bar up or down to reprioritize · drag a bar's right edge to change its effort · drag a diamond to move a deadline · click a row to see why it lands when it does · hover an option to preview it as dashed bars
+        </span>
+      )}
     </div>
   );
 }
@@ -986,6 +1027,33 @@ function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'
         <span class="who-empty">+ who</span>
       )}
     </button>
+  );
+}
+
+/**
+ * Effort as a plain number in the row, for plans with one person: type the days, the way you would in a spreadsheet,
+ * and the item is theirs. (With several people or a team, the who cell and its editor take over.)
+ */
+function DaysCell({ item, lane, onChange, onFocus }: { item: NormalizedPlan['items'][number] | null; lane: NormalizedPlan['lanes'][number]; onChange: (days: number) => void; onFocus?: () => void }) {
+  const part = item?.work.find((w) => w.lane === lane.id);
+  return (
+    <span class="days-cell" data-who={item?.id ?? ''}>
+      <input
+        type="number"
+        min="0"
+        max={LIMITS.maxDays}
+        step="0.5"
+        inputMode="decimal"
+        value={part && part.days > 0 ? part.days : ''}
+        placeholder="days"
+        aria-label={item ? `${item.name}: working days for ${lane.name}` : 'New item: working days'}
+        onFocus={onFocus}
+        onInput={(e) => onChange(Math.min(LIMITS.maxDays, Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0)))}
+      />
+      <span class="unit" aria-hidden="true">
+        {part?.days === 1 ? 'day' : 'days'}
+      </span>
+    </span>
   );
 }
 

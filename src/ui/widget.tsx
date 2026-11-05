@@ -114,11 +114,12 @@ const CAPTIONS: Record<State['sync'], string> = {
  * back as cards in the chart: show_plan with `suggestions` puts its options next to the engine's.
  */
 const ASK_CLAUDE =
-  "Look at my whenship chart (its current plan is in your context) and find better options than the chart's own " +
-  "suggestions. Try what the engine can't search: moving work between people, splitting or cutting items, changing " +
-  'dependencies or hand-offs, and combinations. Check each idea with what_if. Then call show_plan with the current ' +
-  'plan unchanged and your best two or three ideas in `suggestions` (a short title plus the changes), so they appear in ' +
-  'my chart as options I can apply, and tell me in a few lines what each one does.';
+  'From my whenship chart (its current plan is in your context): find up to two better options than its built-in ' +
+  "suggestions. Try what the engine can't search: moving work between people, splitting or cutting an item, changing " +
+  'a hand-off or dependency, or a combination. Check each idea with what_if, at most four calls in all. Then call ' +
+  'show_plan with the current plan unchanged and your best ideas in `suggestions` (a short title plus the changes), ' +
+  'so they appear in my chart as options I can apply. Reply in at most three lines, one per option: what it changes, ' +
+  'what it gains, what it costs. Stay in the chart: no spreadsheet, report, document or file.';
 
 // ── host adapter for the shared App ────────────────────────────────────────
 const host: Host = {

@@ -23,10 +23,12 @@ const unmount = () => act(() => render(null, root));
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 const button = (label: string, within: ParentNode = document) => [...within.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label))!;
 const lensOn = () => root.querySelector('.seg [aria-pressed="true"]')?.textContent;
-const zoomOn = () => [...root.querySelectorAll('.seg [aria-pressed="true"]')].map((b) => b.textContent).find((t) => /^(Fit|Days|Weeks|Months)$/.test(t ?? ''));
+const zoomOn = () => (root.querySelector('select.zoom-select') as HTMLSelectElement | null)?.value;
 const INTRO_KEY = 'whenship:intro:v1';
 /** The example plan is loaded as the user's own: a click on its lens or zoom works right away. */
-const example = () => expect(root.querySelector('.intro')).not.toBeNull();
+const example = () => expect(root.querySelector('.intro:not(.leaving)')).not.toBeNull();
+/** The intro strip folds away over a quarter second rather than vanishing with a jump. */
+const folded = () => act(() => new Promise((r) => setTimeout(r, 320)));
 const type = (el: HTMLTextAreaElement, value: string) => {
   el.value = value;
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -56,9 +58,11 @@ describe('website', () => {
     expect(document.querySelectorAll('.dialog .sample')).toHaveLength(SAMPLES.length);
     await act(() => (document.querySelectorAll('.dialog .sample')[1] as HTMLButtonElement).click());
     expect((root.querySelector('.title-input') as HTMLInputElement).value).toBe('Q4 roadmap');
-    // loading a plan counts as an edit: the intro is over, now and on later visits
-    expect(root.querySelector('.intro')).toBeNull();
+    // loading a plan counts as an edit: the intro is over, now and on later visits (the strip folds away first)
+    expect(root.querySelector('.intro.leaving')).not.toBeNull();
     expect(localStorage.getItem(INTRO_KEY)).toBe('1');
+    await folded();
+    expect(root.querySelector('.intro')).toBeNull();
     unmount();
     boot();
     expect(root.querySelector('.intro')).toBeNull();
@@ -68,6 +72,8 @@ describe('website', () => {
     boot();
     example();
     await act(() => (root.querySelector('.intro-close') as HTMLButtonElement).click());
+    expect(root.querySelector('.intro.leaving')).not.toBeNull();
+    await folded();
     expect(root.querySelector('.intro')).toBeNull();
     expect(root.querySelectorAll('.list .row:not(.draft)')).toHaveLength(7);
     expect(localStorage.getItem(INTRO_KEY)).toBe('1');
@@ -95,19 +101,23 @@ describe('website', () => {
   it('remembers the timeline zoom too, and a shared link opens with its own view', async () => {
     boot();
     example();
-    expect(zoomOn()).toBe('Fit'); // the whole plan in the width at hand
-    await act(() => button('Weeks').click());
+    expect(zoomOn()).toBe('fit'); // the whole plan in the width at hand
+    await act(() => {
+      const sel = root.querySelector('select.zoom-select') as HTMLSelectElement;
+      sel.value = 'week';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await wait(300);
     expect(localStorage.getItem(ZOOM_KEY)).toBe('week');
     unmount();
     boot();
-    expect(zoomOn()).toBe('Weeks');
+    expect(zoomOn()).toBe('week');
     unmount();
     const plan = validatePlan(SAMPLES[0]!.build(today), { today }).plan;
     const link = new URL(shareUrl('http://localhost:3000/', plan, 'likely', 'month'));
     history.replaceState(null, '', link.pathname + link.hash);
     boot();
-    expect(zoomOn()).toBe('Months');
+    expect(zoomOn()).toBe('month');
     expect(lensOn()).toBe('Likely1.6×');
   });
 

@@ -12,7 +12,8 @@ import {
   type Weekday,
 } from './types';
 
-export const LIMITS = { items: 500, lanes: 50, partsPerItem: 20, maxDays: 10_000 } as const;
+/** `maxDays`: one part of one item is at most a person-year of effort (longer work is several items). `horizon`: the scheduler's safety limit in working days. */
+export const LIMITS = { items: 500, lanes: 50, partsPerItem: 20, maxDays: 250, horizon: 10_000 } as const;
 /** The name of a plan nobody has named yet. */
 export const DEFAULT_TITLE = 'Untitled WhenShip';
 export const DEFAULT_WORKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri'];
@@ -289,7 +290,7 @@ export function validatePlan(input: unknown, options: ValidateOptions = {}): Val
         days = 0;
       }
       if (days > LIMITS.maxDays) {
-        errors.push({ path: `${wp}.days`, message: `capped at ${LIMITS.maxDays}` });
+        warnings.push({ path: `${wp}.days`, message: `capped at ${LIMITS.maxDays} working days (a person-year): split longer work into items` });
         days = LIMITS.maxDays;
       }
       let maxPeople = parseNumberish(w.maxPeople ?? w.parallel ?? w.maxParallel, 'days') ?? 1;

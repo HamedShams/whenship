@@ -58,7 +58,7 @@ The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/S
 
 Tools: `show_plan` (schedule and chart), `what_if` (compare a list of changes, or a whole alternative version of the plan), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
 
-In the chart, **Ask Claude for better options** posts a request to the chat. Claude then tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and answers with the best two or three and their exact effects.
+In the chart, **Ask Claude for better options** (a button above the options) posts a request to the chat. Claude tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and sends its best one or two back through `show_plan`: they appear in the chart as options with their exact effects, in place of the lowest-ranked built-in ones, so the chart never shows more than three. Claude's reply stays short, and nothing leaves the chart: it exports itself.
 
 ## How the forecast works
 
@@ -89,6 +89,8 @@ The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence versi
 | Thin grey line under a bar | Only with *Likely* or *Safe bet* on: your own estimate (the *As planned* dates), while the bar shows the stretched ones. Gantt tools call this the baseline. |
 
 A small key under the chart repeats this, next to the tips for working with it, and hovering any mark gives its dates.
+
+**Working in the chart.** The columns are `# · Item · Effort · Due · Finish`. With one person in the plan, effort is a number you type into the row, the way you would in a spreadsheet; with several people or a team, the Effort cell opens an editor for who does how many days and who starts after whom. Drag a row (or its bar) up or down to reprioritise, a bar's right edge to change its effort, a deadline diamond to move the deadline. Click a row to open its details in a panel under the chart (it stays at the bottom of the window while you scroll): the finish date and its chance, why the dates are what they are, and the few settings that don't fit in the row. A single part of an item is at most 250 working days, a person-year; longer work is several items. The chart fits the whole plan to the width it has and only scrolls when days would get too narrow (a year still fits a laptop screen); the small Zoom menu offers fixed day, week and month scales. Under the chart, at most three options: hover one to see it on the chart as a ghost, Apply to keep it (undo takes it back).
 
 ## How the dates and suggestions work
 

@@ -51,7 +51,7 @@ export function OpenDialog({ today, onLoad, onClose, tab: initial = 'paste' }: {
             <textarea
               value={text}
               autoFocus
-              placeholder={'Grant draft for Acme, 5d, due 7 Oct\nAppeal for Northwind, Omar 4 days, due Oct 2\nResearch for Brightside, 6d'}
+              placeholder={'Grant draft for Acme, 5d, due 7 Oct\nAppeal for Northwind, Martin 4 days, due Oct 2\nResearch for Brightside, 6d'}
               onInput={(e) => {
                 setText((e.currentTarget as HTMLTextAreaElement).value);
                 setError('');
@@ -108,9 +108,9 @@ export function OpenDialog({ today, onLoad, onClose, tab: initial = 'paste' }: {
  * The first visit opens on an example plan, so the chart itself is the welcome. This strip above it says so, and
  * offers the three ways out. It goes away on the first edit, or when dismissed, and never comes back.
  */
-export function IntroStrip({ onOpen, onBlank, onDismiss }: { onOpen: (tab: OpenTab) => void; onBlank: () => void; onDismiss: () => void }) {
+export function IntroStrip({ onOpen, onBlank, onDismiss, leaving }: { onOpen: (tab: OpenTab) => void; onBlank: () => void; onDismiss: () => void; leaving?: boolean }) {
   return (
-    <div class="intro" role="note">
+    <div class={cx('intro', leaving && 'leaving')} role="note" aria-hidden={leaving ? 'true' : undefined}>
       <span class="intro-text">
         <b>This is an example plan.</b> Drag a row to reprioritise, click any value to change it, or start your own:
       </span>

@@ -84,7 +84,7 @@ export interface ScheduleOptions {
  */
 export function schedule(plan: NormalizedPlan, options: ScheduleOptions = {}): Schedule {
   const factor = options.factor ?? 1;
-  const maxIndex = options.maxIndex ?? LIMITS.maxDays;
+  const maxIndex = options.maxIndex ?? LIMITS.horizon;
   const cal = new WorkCalendar(plan);
   const items = plan.items;
   const n = items.length;

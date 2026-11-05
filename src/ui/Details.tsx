@@ -8,8 +8,10 @@ import { Delivery } from './Board';
 import { cx, DateButton, Icon } from './lib';
 
 /**
- * An item's details, opened in place under its row (the rows below move down): facts first, then why the dates are
- * what they are, then the few settings that don't fit in the row. Nothing covers the chart.
+ * The selected item's details, as one panel under the chart that sticks to the bottom of the window while the page
+ * scrolls: a header with the name and the done control, one line of facts (finish, chance, due, who, dates), then
+ * why the dates are what they are beside the few settings that don't fit in the row. Nothing covers the chart's rows
+ * for long: the panel has its own place below the chart, and no scrolling is done for the user.
  */
 export function ItemDetails({
   plan,
@@ -34,45 +36,67 @@ export function ItemDetails({
   const patch = (p: Partial<typeof it>, key?: string) => onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === id ? { ...x, ...p } : x)) }, []).plan, key);
   const nameOf = (ref: string) => plan.items.find((x) => x.id === ref)?.name ?? ref;
   const candidates = plan.items.filter((x) => x.id !== id && !it.dependsOn.includes(x.id));
+  const sep = <span class="sep">·</span>;
 
   return (
-    <div class={cx('row-details', it.done && 'is-done')} role="region" aria-label={`Details for ${it.name}`}>
+    <section class={cx('details-dock', it.done && 'is-done')} role="region" aria-label={`Details for ${it.name}`}>
       <header class="insp-head">
         <span class="insp-num">#{index + 1}</span>
         <h3 title={it.name}>{it.name}</h3>
+        {it.done && (
+          <span class="pill done" title="Finished: it takes no more time">
+            done
+          </span>
+        )}
         <button
-          class={cx('btn small', it.done ? 'primary' : 'ghost')}
-          title={it.done ? 'Put it back in the plan' : 'Finished: it takes no more time, and anything waiting for it can start'}
+          class="btn small ghost done-toggle"
+          aria-pressed={it.done ? 'true' : 'false'}
+          title={it.done ? 'Put it back into the plan: it takes its days again' : 'Finished: it takes no more time, and anything waiting for it can start'}
           onClick={() => onCommit(applyChanges(plan, [{ op: 'setDone', item: id, done: !it.done }]).plan)}
         >
-          <Icon.check /> {it.done ? 'Done' : 'Mark done'}
+          {it.done ? (
+            <>
+              <Icon.undo /> Reopen
+            </>
+          ) : (
+            <>
+              <Icon.check /> Mark done
+            </>
+          )}
         </button>
         <button class="icon-btn" aria-label="Close details" title="Close (Esc)" onClick={onClose}>
           <Icon.close />
         </button>
       </header>
 
-      <div class="insp-body">
-        <dl class="insp-facts">
-          <dt>Finish</dt>
-          <dd>
-            <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
-            {o?.chance !== undefined && !it.done && <span class="sub"> {chanceLabel(o.chance)} chance on time</span>}
-          </dd>
-          <dt>Due</dt>
-          <dd>{it.deadline ? formatDayLong(it.deadline, year) : <span class="sub">no deadline</span>}</dd>
-          <dt>Who</dt>
-          <dd>{it.work.length ? describeWork(plan, id) : <span class="sub">nobody yet</span>}</dd>
-          {r.startDate && r.endDate && (
-            <>
-              <dt>Dates</dt>
-              <dd>
-                {formatDay(r.startDate, year)} → {formatDay(r.endDate, year)}
-              </dd>
-            </>
-          )}
-        </dl>
+      <p class="insp-meta">
+        <span>
+          <span class="k">Finish</span>{' '}
+          <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
+        </span>
+        {o?.chance !== undefined && !it.done && (
+          <>
+            {sep}
+            <span>{chanceLabel(o.chance)} chance on time</span>
+          </>
+        )}
+        {sep}
+        <span>
+          <span class="k">Due</span> {it.deadline ? formatDayLong(it.deadline, year) : 'no deadline'}
+        </span>
+        {sep}
+        <span>{it.work.length ? describeWork(plan, id) : 'nobody on it yet'}</span>
+        {r.startDate && r.endDate && (
+          <>
+            {sep}
+            <span>
+              {formatDay(r.startDate, year)} → {formatDay(r.endDate, year)}
+            </span>
+          </>
+        )}
+      </p>
 
+      <div class="dock-body">
         <section class="insp-why">
           <h4>Why these dates</h4>
           <ul>
@@ -131,6 +155,6 @@ export function ItemDetails({
           </label>
         </section>
       </div>
-    </div>
+    </section>
   );
 }

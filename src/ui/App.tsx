@@ -14,7 +14,7 @@ import { buildExport, type ExportFile } from './exporters';
 import { Header, type ExportKind } from './Header';
 import { Setup } from './Setup';
 import { usePlanHistory } from './state';
-import { Headline, Options, type Option } from './Summary';
+import { Headline, MAX_OPTIONS, Options, type Option } from './Summary';
 import { EmptyState, IntroStrip, OpenDialog, TextDialog, type OpenTab } from './Welcome';
 import { useDebounced } from './lib';
 
@@ -66,6 +66,9 @@ export interface AppProps {
   caption?: string;
 }
 
+/** How long the intro strip takes to fold away (matches the stylesheet). */
+const INTRO_EXIT_MS = 260;
+
 export function App(props: AppProps) {
   const { host, today } = props;
   const h = usePlanHistory(props.initialPlan);
@@ -76,7 +79,8 @@ export function App(props: AppProps) {
   const [dialog, setDialog] = useState<null | { kind: 'open'; tab: OpenTab } | { kind: 'text'; title: string; note: string; text: string }>(null);
   const [toast, setToast] = useState<string | null>(props.notice ?? null);
   const [focusId, setFocusId] = useState<string | null>(null);
-  const [intro, setIntro] = useState(!!props.intro);
+  // the intro strip: shown on a first visit, collapses (then goes) after the first edit or a dismissal
+  const [intro, setIntro] = useState<'on' | 'leaving' | 'off'>(props.intro ? 'on' : 'off');
   const [previewOpt, setPreviewOpt] = useState<Option | null>(null);
   const appRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -98,11 +102,14 @@ export function App(props: AppProps) {
     if (props.externalPlan) h.reset(props.externalPlan);
   }, [props.externalVersion]);
 
-  // The first edit ends the intro: the example became the user's plan.
+  // The first edit ends the intro: the example became the user's plan. The strip folds away rather than vanishing,
+  // so the chart doesn't jump under the pointer right after a drop.
   const endIntro = useCallback(() => {
-    setIntro((on) => {
-      if (on) props.onIntroDone?.();
-      return false;
+    setIntro((state) => {
+      if (state !== 'on') return state;
+      props.onIntroDone?.();
+      setTimeout(() => setIntro('off'), INTRO_EXIT_MS);
+      return 'leaving';
     });
   }, [props.onIntroDone]);
   const commit = useCallback(
@@ -118,7 +125,8 @@ export function App(props: AppProps) {
   const settled = useDebounced(plan, 180);
   const insights: Insight[] = useMemo(() => findInsights(settled, lens), [settled, lens]);
   const pending = settled !== plan;
-  // one rail: the engine's suggestions, then Claude's (measured against the plan as it is now)
+  // One rail of at most three cards: Claude's options (measured against the plan as it is now) take the place of the
+  // engine's lowest-ranked suggestions, so the rail never grows.
   const options = useMemo<Option[]>(() => {
     const own: Option[] = insights.map((s) => ({ id: s.id, kind: s.kind, title: s.title, effect: s.effect, changes: s.changes }));
     const fromClaude: Option[] = (props.claudeOptions ?? []).flatMap((c, i) => {
@@ -126,7 +134,7 @@ export function App(props: AppProps) {
       if (a.skipped.length) return []; // it no longer applies (the item or person is gone)
       return [{ id: `claude:${i}:${JSON.stringify(c.changes)}`, kind: 'claude', title: c.title, effect: a.effect, changes: c.changes }];
     });
-    return [...own, ...fromClaude];
+    return [...fromClaude, ...own].slice(0, MAX_OPTIONS);
   }, [insights, props.claudeOptions, settled, lens]);
   // the option under the pointer, re-planned, drawn as a ghost on the chart
   const previewPlan = useMemo(() => (previewOpt ? applyChanges(plan, previewOpt.changes).plan : null), [previewOpt, plan]);
@@ -238,7 +246,7 @@ export function App(props: AppProps) {
         />
         {!empty && <Setup plan={plan} onCommit={commit} />}
       </div>
-      {intro && !empty && <IntroStrip onOpen={openDialog} onBlank={startBlank} onDismiss={endIntro} />}
+      {intro !== 'off' && !empty && <IntroStrip onOpen={openDialog} onBlank={startBlank} onDismiss={endIntro} leaving={intro === 'leaving'} />}
       {empty ? (
         <EmptyState onOpen={openDialog} onBlank={startBlank} />
       ) : (
@@ -256,8 +264,8 @@ export function App(props: AppProps) {
             onFocused={() => setFocusId(null)}
             zoom={zoom}
             preview={previewPlan}
-            renderDetails={(id) => <ItemDetails plan={plan} analysis={analysis} id={id} onCommit={commit} onClose={() => setSelected(null)} />}
           />
+          {selected && <ItemDetails plan={plan} analysis={analysis} id={selected} onCommit={commit} onClose={() => setSelected(null)} />}
           <Options
             options={options}
             pending={pending}
@@ -269,7 +277,7 @@ export function App(props: AppProps) {
             }}
             onAskClaude={canAsk ? askClaude : undefined}
           />
-          <Legend lens={lens} onPlanned={() => setLens('planned')} />
+          <Legend lens={lens} onPlanned={() => setLens('planned')} tipsOpen={intro !== 'off'} />
         </>
       )}
       {props.footer}

@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { badgeLabel, headline, type Analysis } from '../engine/analysis';
 import type { Change } from '../engine/changes';
 import type { Insight } from '../engine/insights';
-import type { Zoom } from '../io/view';
+import { toZoom, type Zoom } from '../io/view';
 import { cx, Icon } from './lib';
 
 const ZOOMS: [Zoom, string, string][] = [
-  ['fit', 'Fit', 'Fit the whole plan into the chart (it scrolls only when days would get too narrow)'],
+  ['fit', 'Fit to width', 'The whole plan in the chart (it scrolls only when days would get too narrow)'],
   ['day', 'Days', 'A fixed day scale'],
   ['week', 'Weeks', 'A fixed week scale'],
   ['month', 'Months', 'A fixed month scale'],
@@ -19,7 +19,17 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
   return (
     <section class="summary" aria-live="polite">
       <div class="headline">
-        <span class="headline-text">{text.charAt(0).toUpperCase() + text.slice(1)}</span>
+        <span class="headline-text">
+          {text.charAt(0).toUpperCase() + text.slice(1)}
+          {analysis.current.endDate && (
+            <>
+              {' · '}
+              <button class={cx('link-btn chain-link', chainOn && 'on')} aria-pressed={chainOn} onClick={onChain} title="Highlight the chain of work and busy people that sets the end date">
+                {chainOn ? 'hide the chain' : 'what sets the end date?'}
+              </button>
+            </>
+          )}
+        </span>
         <span class="counts">
           {(['late', 'tight', 'likely', 'safe'] as const).map((b) =>
             c[b] ? (
@@ -30,18 +40,16 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
           )}
         </span>
         <span class="spacer" />
-        <div class="seg small" role="group" aria-label="Timeline zoom">
-          {ZOOMS.map(([z, label, tip]) => (
-            <button key={z} aria-pressed={zoom === z} onClick={() => onZoom(z)} title={tip}>
-              {label}
-            </button>
-          ))}
-        </div>
-        {analysis.current.endDate && (
-          <button class={cx('btn small', chainOn && 'primary')} onClick={onChain} title="Highlight the chain of work and busy people that sets the end date">
-            <Icon.chain /> What sets the end date?
-          </button>
-        )}
+        <label class="zoom" title={ZOOMS.find(([z]) => z === zoom)?.[2]}>
+          <span class="label">Zoom</span>
+          <select class="zoom-select" aria-label="Timeline zoom" value={zoom} onChange={(e) => onZoom(toZoom((e.currentTarget as HTMLSelectElement).value) ?? 'fit')}>
+            {ZOOMS.map(([z, label]) => (
+              <option key={z} value={z}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     </section>
   );
@@ -68,10 +76,14 @@ const KIND_LABEL: Record<Option['kind'], string> = {
 /** Hovering (or focusing) a card for this long previews it on the chart; a quick pass over the rail changes nothing. */
 const PREVIEW_DELAY = 280;
 
+/** Never more than this many cards: inside Claude, its ideas take the place of the engine's lowest-ranked ones. */
+export const MAX_OPTIONS = 3;
+
 /**
- * The options rail, under the chart so the timeline keeps the focus. Each card is one exact re-plan: hover to see
- * it as a ghost on the chart, click Apply to make it real (undo takes it back). Inside Claude, a last card asks the
- * chat for ideas the engine can't search; Claude's answers come back as cards of their own.
+ * The options rail, under the chart so the timeline keeps the focus: at most three cards, each one exact re-plan.
+ * Hover to see it as a ghost on the chart, click Apply to make it real (undo takes it back). Inside Claude, a button
+ * in the title asks the chat for ideas the engine can't search; Claude's answers come back as cards, in place of the
+ * engine's lowest-ranked ones.
  */
 export function Options({
   options,
@@ -94,10 +106,11 @@ export function Options({
   useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
     if (asked !== 'sent' && asked !== 'failed') return;
-    const t = setTimeout(() => setAsked('idle'), 6000);
+    const t = setTimeout(() => setAsked('idle'), 8000);
     return () => clearTimeout(t);
   }, [asked]);
-  if (!options.length && !onAskClaude) return null;
+  const shown = options.slice(0, MAX_OPTIONS);
+  if (!shown.length && !onAskClaude) return null;
   const enter = (o: Option) => {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => onPreview(o), PREVIEW_DELAY);
@@ -114,56 +127,55 @@ export function Options({
   return (
     <section class="options" aria-label="Options">
       <h3 class="options-title">
-        Options <span class="sub">hover one to preview it on the chart, Apply to keep it</span>
-      </h3>
-      <div class="option-rail">
-        {options.map((o) => (
-          <div
-            key={o.id}
-            class={cx('option', o.kind === 'claude' && 'from-claude')}
-            tabIndex={0}
-            onPointerEnter={() => enter(o)}
-            onPointerLeave={leave}
-            onFocus={() => onPreview(o)}
-            onBlur={leave}
-          >
-            <span class="opt-kind">
-              {o.kind === 'claude' ? <Icon.spark /> : null} {KIND_LABEL[o.kind]}
-            </span>
-            <b class="opt-title">{o.title}</b>
-            <p class="opt-effect">{o.effect}</p>
+        Options
+        <span class="sub">{shown.length ? 'hover one to preview it on the chart, Apply to keep it' : 'nothing to fix as planned'}</span>
+        {onAskClaude && (
+          <span class="ask-claude">
             <button
               class="btn small"
-              disabled={pending}
-              onClick={() => {
-                leave();
-                onApply(o);
-              }}
-              title="Apply this change (you can undo it)"
+              disabled={asked === 'sending'}
+              onClick={() => void ask()}
+              title="Posts a request to the chat. Claude sees this chart as it is now and tries what this list can't: moving work between people, splitting or cutting items, combinations. Its ideas come back here as cards, checked by the engine."
             >
-              Apply
+              <Icon.spark /> {asked === 'sending' ? 'Asking Claude…' : 'Ask Claude for better options'}
             </button>
-          </div>
-        ))}
-        {onAskClaude && (
-          <div class="option ask">
-            <span class="opt-kind">
-              <Icon.spark /> Ask Claude
-            </span>
-            <b class="opt-title">Better options?</b>
-            <p class="opt-effect">
-              {asked === 'sent'
-                ? 'Asked. Claude answers in the chat, and its options appear here as cards.'
-                : asked === 'failed'
-                  ? "Couldn't post to the chat. Ask Claude there in your own words."
-                  : 'Claude can try what this list can’t: moving work between people, splitting or cutting items, combinations. Each idea is checked by the engine.'}
-            </p>
-            <button class="btn small primary" disabled={asked === 'sending'} onClick={() => void ask()} title="Posts the request to the chat; Claude sees this chart as it is now">
-              {asked === 'sending' ? 'Asking…' : 'Ask Claude'}
-            </button>
-          </div>
+            {asked === 'sent' && <span class="sub">Asked. Claude answers in the chat; its options appear here.</span>}
+            {asked === 'failed' && <span class="sub err">Couldn't post to the chat. Ask Claude there in your own words.</span>}
+          </span>
         )}
-      </div>
+      </h3>
+      {shown.length > 0 && (
+        <div class="option-rail">
+          {shown.map((o) => (
+            <div
+              key={o.id}
+              class={cx('option', o.kind === 'claude' && 'from-claude')}
+              tabIndex={0}
+              onPointerEnter={() => enter(o)}
+              onPointerLeave={leave}
+              onFocus={() => onPreview(o)}
+              onBlur={leave}
+            >
+              <span class="opt-kind">
+                {o.kind === 'claude' ? <Icon.spark /> : null} {KIND_LABEL[o.kind]}
+              </span>
+              <b class="opt-title">{o.title}</b>
+              <p class="opt-effect">{o.effect}</p>
+              <button
+                class="btn small"
+                disabled={pending}
+                onClick={() => {
+                  leave();
+                  onApply(o);
+                }}
+                title="Apply this change (you can undo it)"
+              >
+                Apply
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

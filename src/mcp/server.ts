@@ -40,6 +40,8 @@ export const INSTRUCTIONS = `whenship is a deterministic scheduling engine for s
 
 The user edits the chart directly; their latest edits arrive in context as the current plan, which supersedes any earlier version. Items can be marked done (\`done: true\`, or the setDone change): they take no more time and free whatever waited for them.
 
+The chart is where a plan's answers, options and exports live: it exports XLSX, CSV, iCalendar, PNG, SVG and Markdown itself (export_plan covers JSON, CSV, iCalendar, Markdown and a share link), so a plan has no need of a separate spreadsheet, report, document or file. Options for the user go into show_plan's \`suggestions\`, where they appear as cards in the chart.
+
 Effort is the user's own estimate and stays as given. Forecast lenses (likely 1.6×, safe bet 3.1×) are a heuristic view of the same plan, not a change to it: ${METHOD_NOTE}`;
 
 // ── input schemas (descriptive, permissive: the engine validates and reports precise problems) ─────────────────
@@ -113,7 +115,7 @@ const changeSchema = z.discriminatedUnion('op', [
 ]);
 
 const suggestionSchema = z.object({
-  title: z.string().max(120).describe('Short imperative, e.g. "Let Omar take the Helix research"'),
+  title: z.string().max(120).describe('Short imperative, e.g. "Let Martin take the Helix research"'),
   changes: z.array(changeSchema).min(1).describe('The simple changes that make this option'),
 });
 

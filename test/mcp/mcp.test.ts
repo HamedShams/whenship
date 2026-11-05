@@ -87,6 +87,7 @@ describe('MCP connector', () => {
     expect(instructions).toMatch(/authoritative answer/);
     expect(instructions).toMatch(/stays as given/);
     expect(instructions).toMatch(/suggestions/);
+    expect(instructions).toMatch(/no need of a separate spreadsheet, report, document or file/); // the chart exports itself
     expect(instructions).not.toMatch(/\b(do not|never|you must|always)\b/i); // descriptive, as the directory review wants
   });
 
@@ -340,7 +341,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
         });
         proc.on('exit', () => reject(new Error(`exited early: ${out}`)));
       });
-      expect(out).toMatch(/^whenship [\d.]+\n/); // the banner goes to stdout, not stderr
+      expect(out).toMatch(/^whenship [\w.-]+\n/); // the banner goes to stdout, not stderr
       const html = await (await fetch(at)).text();
       expect(html).toContain(`<meta property="og:image" content="${at}og.png">`);
       expect(html).toContain('<meta name="author" content="Seyed Hamed Shams"');

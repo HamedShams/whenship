@@ -122,10 +122,13 @@ describe('people, deleting and the details pane', () => {
     await act(() => button(document.body, 'Cancel').click());
     expect(document.querySelector('.dialog.confirm')).toBeNull();
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
+    await act(() => (root.querySelector('.row .status') as HTMLElement).click()); // its card is open…
+    expect(root.querySelector('.details')).not.toBeNull();
     await act(() => firstDelete().click());
     await act(() => (document.querySelector('.dialog.confirm .btn.danger') as HTMLButtonElement).click());
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(6);
     expect(text(root, '.row')).not.toMatch(/Quick fix for Acme/);
+    expect(root.querySelector('.details')).toBeNull(); // …and closes with it
   });
 
   it('the details pane has no move or delete buttons', async () => {
@@ -152,6 +155,31 @@ describe('the item list', () => {
     el.value = value;
     await act(() => void el.dispatchEvent(new Event('input', { bubbles: true })));
   };
+
+  it('the keyboard works too: ↑/↓ on a row’s handle moves it, Enter in a name goes to the next row', async () => {
+    const { root } = mount();
+    const before = names(root);
+    const key = (el: Element, k: string) => act(() => void el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));
+    const handle = (i: number) => realRows(root)[i]!.querySelector('[data-handle]')!;
+    await key(handle(0), 'ArrowDown');
+    expect(names(root).slice(0, 2)).toEqual([before[1], before[0]]);
+    await act(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+    expect(document.activeElement).toBe(handle(1)); // the focus moves with the row
+    await key(handle(0), 'ArrowUp'); // already at the top: nothing moves
+    expect(names(root).slice(0, 2)).toEqual([before[1], before[0]]);
+    const inputs = () => realRows(root).map((r) => r.querySelector('.cell-input') as HTMLInputElement);
+    await key(inputs()[0]!, 'Enter');
+    expect(document.activeElement).toBe(inputs()[1]);
+    await key(inputs().at(-1)!, 'Enter'); // after the last item comes the empty row
+    expect(document.activeElement).toBe(root.querySelector('.row.draft .cell-input'));
+  });
+
+  it('an item that someone without time works on is marked blocked, with the reason beside its row', () => {
+    const plan = validatePlan({ start: today, lanes: ['Sara', { name: 'Kim', availability: 0 }], items: [{ name: 'Fine', who: 'Sara', days: 2 }, { name: 'Stuck', who: 'Kim', days: 2 }] }, { today }).plan;
+    const { root } = mount({}, plan);
+    expect(realRows(root)[1]!.querySelector('.pill.blocked')!.getAttribute('title')).toMatch(/Kim has no available time/);
+    expect(root.querySelector('.empty-bar')!.textContent).toMatch(/^⛔ Kim has no available time/);
+  });
 
   it('typing into the empty row creates an item, and a fresh empty row appears below', async () => {
     const { root } = mount();
@@ -880,5 +908,13 @@ describe('the view travels: zoom in links and images, and what opens last is on 
     expect(z('.toolbar:has(.popover)')).toBeGreaterThan(z('.details'));
     expect(z('.details')).toBeGreaterThan(z('.toolbar'));
     expect(z('.popover')).toBeGreaterThan(z('.details')); // popovers outside the toolbar (the who editor)
+  });
+
+  it('the stylesheet keeps the column titles tucked under the toolbar and the suggestion icons centred on their labels', () => {
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    const rule = (selector: string) => new RegExp(`(?:^|\\n)${selector.replace(/[.()]/g, '\\$&')} \\{([^}]*)\\}`).exec(css)![1]!;
+    expect(rule('.board-head')).toContain('top: calc(var(--toolbar-h, 0px) - 1px)');
+    expect(rule('.board-head.stuck')).toMatch(/box-shadow: 0 -8px 0 var\(--bg\)/);
+    expect(rule('.kind')).toMatch(/display: inline-flex; align-items: center/);
   });
 });

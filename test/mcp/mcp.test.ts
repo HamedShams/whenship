@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { strFromU8, unzipSync } from 'fflate';
 import type { AddressInfo } from 'node:net';
@@ -307,6 +307,8 @@ describe.skipIf(!existsSync('dist/whenship.mcpb'))('Claude Desktop extension (di
     const { tools } = await client.listTools();
     expect(manifest.tools.map((t) => t.name).sort()).toEqual(tools.map((t) => t.name).sort());
     expect(manifest.tools.find((t) => t.name === 'what_if')!.description).toMatch(/alternative plan/);
+    expect(manifest).toMatchObject({ license: 'BSD-3-Clause', author: { name: 'Seyed Hamed Shams', url: 'https://hamedshams.com' } });
+    expect(strFromU8(files['LICENSE']!)).toMatch(/^BSD 3-Clause License/);
   });
 });
 
@@ -324,6 +326,51 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
     expect(run('--public-url=example.com').stderr).toMatch(/--public-url must start with http/);
   });
 
+  it('serves the website, its images and the connector over HTTP, as on a host', async () => {
+    const proc = spawn(process.execPath, ['dist/cli.js', '--port', '0', '--host', '127.0.0.1', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      let out = '';
+      const at = await new Promise<string>((resolve, reject) => {
+        proc.stdout.on('data', (d: Buffer) => {
+          out += d.toString();
+          const m = /App:\s+http:\/\/localhost:(\d+)\//.exec(out);
+          if (m) resolve(`http://127.0.0.1:${m[1]}/`);
+        });
+        proc.on('exit', () => reject(new Error(`exited early: ${out}`)));
+      });
+      expect(out).toMatch(/^whenship [\d.]+\n/); // the banner goes to stdout, not stderr
+      const html = await (await fetch(at)).text();
+      expect(html).toContain(`<meta property="og:image" content="${at}og.png">`);
+      expect(html).toContain('<meta name="author" content="Seyed Hamed Shams"');
+      for (const path of ['og.png', 'icon.png', 'favicon.ico']) {
+        const r = await fetch(`${at}${path}`);
+        expect([path, r.status, r.headers.get('content-type')]).toEqual([path, 200, 'image/png']);
+      }
+      expect(await (await fetch(`${at}llms.txt`)).text()).toContain(`\`${at}mcp\``);
+      const c = new Client({ name: 'test', version: '1.0.0' });
+      await c.connect(new StreamableHTTPClientTransport(new URL(`${at}mcp`)));
+      try {
+        expect((await c.listTools()).tools.map((t) => t.name).sort()).toEqual(['export_plan', 'find_options', 'show_plan', 'what_if']);
+      } finally {
+        await c.close();
+      }
+    } finally {
+      proc.kill();
+    }
+  }, 20_000);
+
+  it('the npm package ships what `npx whenship` needs, and nothing else', () => {
+    const r = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { encoding: 'utf8', timeout: 60_000 });
+    const files = (JSON.parse(r.stdout) as { files: { path: string }[] }[])[0]!.files.map((f) => f.path).sort();
+    expect(files).toEqual(['LICENSE', 'README.md', 'dist/app.html', 'dist/cli.js', 'dist/cli.js.LEGAL.txt', 'dist/icon.png', 'dist/og.png', 'dist/whenship.html', 'package.json']);
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { bin: Record<string, string>; dependencies?: object; license: string; mcpName: string };
+    expect(pkg.bin).toEqual({ whenship: 'dist/cli.js' });
+    expect(readFileSync('dist/cli.js', 'utf8')).toMatch(/^#!\/usr\/bin\/env node\n/);
+    expect(pkg.dependencies ?? {}).toEqual({}); // everything is bundled into the CLI
+    expect(pkg.license).toBe('BSD-3-Clause');
+    expect(pkg.mcpName).toBe('io.github.HamedShams/whenship'); // the MCP Registry checks the package claims this name
+  }, 60_000);
+
   it('serves the same tools over stdio', async () => {
     const c = new Client({ name: 'test', version: '1.0.0' });
     await c.connect(new StdioClientTransport({ command: process.execPath, args: ['dist/cli.js', '--stdio'] }));
@@ -338,4 +385,48 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
       await c.close();
     }
   }, 20_000);
+});
+
+describe('the website page and the license', () => {
+  const page = readFileSync('index.html', 'utf8');
+  const meta = (attr: string, name: string) => new RegExp(`<meta ${attr}="${name}" content="([^"]+)"`).exec(page)?.[1];
+
+  it('carries the tags search engines and link previews read, and no keywords tag', () => {
+    expect(page).toMatch(/<html lang="en">/);
+    expect(page).toMatch(/<title>whenship: when will it ship, honestly\?<\/title>/);
+    expect(meta('name', 'description')!.length).toBeLessThanOrEqual(160);
+    expect([meta('name', 'author'), meta('name', 'robots'), meta('name', 'application-name')]).toEqual(['Seyed Hamed Shams', 'index, follow', 'whenship']);
+    expect(page).toContain('<link rel="author" href="https://hamedshams.com" />');
+    for (const p of ['og:type', 'og:site_name', 'og:locale', 'og:title', 'og:description', 'og:image:alt']) expect(meta('property', p), p).toBeTruthy();
+    for (const n of ['twitter:card', 'twitter:title', 'twitter:description']) expect(meta('name', n), n).toBeTruthy();
+    expect(page).not.toMatch(/name="keywords"/); // ignored by Google, a spam hint to Bing
+    expect(page).toMatch(/<noscript>[\s\S]*\/mcp[\s\S]*BSD 3-Clause[\s\S]*<\/noscript>/); // what crawlers without JavaScript read
+  });
+
+  it('describes the app in valid structured data, with its author and license', () => {
+    const ld = JSON.parse(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(page)![1]!);
+    expect(ld).toMatchObject({
+      '@type': 'WebApplication',
+      name: 'whenship',
+      isAccessibleForFree: true,
+      author: { '@type': 'Person', name: 'Seyed Hamed Shams', url: 'https://hamedshams.com' },
+      license: 'https://opensource.org/license/bsd-3-clause',
+    });
+  });
+
+  it.skipIf(!existsSync('dist/app.html'))('keeps those tags in the built single-file app', () => {
+    const built = readFileSync('dist/app.html', 'utf8');
+    expect(built).toContain('<meta name="author" content="Seyed Hamed Shams" />');
+    expect(built).toContain('"@type": "WebApplication"');
+    expect(built).toContain('<!--WHENSHIP_BOOT-->');
+  });
+
+  it('is BSD 3-Clause everywhere, in the name of its author', () => {
+    const license = readFileSync('LICENSE', 'utf8');
+    expect(license).toMatch(/^BSD 3-Clause License\n\nCopyright \(c\) 2026, Seyed Hamed Shams \(https:\/\/hamedshams\.com\)\nAll rights reserved\.\n/);
+    expect(license).toContain('Neither the name of the copyright holder nor the names of its');
+    const plugin = JSON.parse(readFileSync('plugin/.claude-plugin/plugin.json', 'utf8')) as { license: string; author: { name: string } };
+    expect([plugin.license, plugin.author.name]).toEqual(['BSD-3-Clause', 'Seyed Hamed Shams']);
+    expect(readFileSync('README.md', 'utf8')).toMatch(/## License\n\n\[BSD 3-Clause\]\(LICENSE\)/);
+  });
 });

@@ -20,6 +20,8 @@
 | **Claude** | Add the connector (below) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
 | **Your own server** | One small Node service, no database, no Docker. See [Self-host](#self-host). |
 
+The `npx whenship` commands below need the npm package, which isn't published yet. Until it is, run the same thing from a clone: `npm ci && npm run build`, then `node dist/cli.js` (add `--stdio` for the MCP server).
+
 Bring your plan in any shape: paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or a saved plan file. Export it as a plan file (JSON), Excel with a Gantt sheet, PNG or SVG (at the chart's zoom), a calendar (`.ics`), CSV or Markdown, or copy a link with the whole plan inside it. Links keep the view too: the forecast lens and the Days/Weeks/Months zoom, which the website also remembers between visits.
 
 ## Use it in Claude
@@ -52,7 +54,7 @@ claude plugin marketplace add HamedShams/whenship
 claude plugin install whenship@whenship
 ```
 
-The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/SKILL.md) (workflow and plan format) and [plugin/skills/whenship-insights](plugin/skills/whenship-insights/SKILL.md) (recommendations, with worked examples for consultancies, product squads, solo founders, agencies, teams with a Saturday–Wednesday week, and teams working with AI agents).
+The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/SKILL.md) (workflow and plan format) and [plugin/skills/whenship-insights](plugin/skills/whenship-insights/SKILL.md) (recommendations, with worked examples for consultancies, product squads, solo founders, agencies, teams with a Sunday–Thursday week, and teams working with AI agents).
 
 Tools: `show_plan` (schedule and chart), `what_if` (compare a list of changes, or a whole alternative version of the plan), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
 
@@ -144,7 +146,7 @@ Items are in priority order (an item's prerequisites in `dependsOn` are worked o
 
 ## Self-host
 
-whenship is one stateless Node service: the web app at `/`, the MCP connector at `/mcp`, a health check at `/healthz` and a privacy page at `/privacy`. No database, no accounts, no Docker.
+whenship is one stateless Node service: the web app at `/`, the MCP connector at `/mcp` (opened in a browser, it explains how to add it to Claude), a health check at `/healthz` and a privacy page at `/privacy`. For search engines and AI assistants it also serves `/robots.txt`, `/sitemap.xml`, `/llms.txt`, a link-preview image and an icon, all pointing at the server's own address. No database, no accounts, no Docker.
 
 On Railway: create a service from this repository. `railway.json` sets the build, start command and health check. Optionally set `PUBLIC_URL` to your address (e.g. `https://whenship.example.com/`) for share links; otherwise the address requests come in on is used.
 
@@ -166,7 +168,7 @@ npm install
 npm run dev
 ```
 
-`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`); `npm run build:mcpb` packs the Claude Desktop extension. `npm run check` runs the type check, all unit, regression, UI, widget and connector tests with a coverage floor, and the scheduler tests in three time zones. CI also audits dependencies and runs the built CLI on Node 20. Pushing a version tag (`v1.4.0`) publishes a GitHub Release with the extension attached.
+`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`); `npm run build:mcpb` packs the Claude Desktop extension. `npm run check` runs the type check, all unit, regression, UI, widget and connector tests with a coverage floor, and the scheduler tests in three time zones. The tests also run the built CLI (web, connector over HTTP and stdio), check what the npm package ships and the website's search tags. CI also audits dependencies and runs the built CLI on Node 20. Pushing a version tag (`vX.Y.Z`) publishes a GitHub Release with the extension attached. `server.json` is the entry for the [MCP Registry](https://registry.modelcontextprotocol.io).
 
 The code is small on purpose: `src/engine` (scheduler, forecast lens, insights; no dependencies), `src/io` (plan files, tables, links, Excel, calendar, SVG), `src/ui` (Preact app shared by the website and the Claude widget), `src/mcp` (connector and web server) and `src/cli`.
 

@@ -16,7 +16,7 @@ import { Setup } from './Setup';
 import { usePlanHistory } from './state';
 import { Headline, MAX_OPTIONS, Options, type Option } from './Summary';
 import { EmptyState, IntroStrip, OpenDialog, TextDialog, type OpenTab } from './Welcome';
-import { useDebounced } from './lib';
+import { cx, useDebounced } from './lib';
 
 /** What differs between the website, the offline file and the Claude widget. */
 export interface Host {
@@ -178,7 +178,7 @@ export function App(props: AppProps) {
     async (kind: ExportKind) => {
       try {
         const dark = document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
-        const file = await buildExport(kind, plan, lens, !!dark, zoom);
+        const file = await buildExport(kind, plan, lens, !!dark, zoom, today);
         const ok = await host.save(file);
         if (ok === 'saved') setToast(`Saved ${file.name}`);
         else if (ok === 'opened') setToast('Opened this plan in whenship in your browser: export it from there');
@@ -188,7 +188,7 @@ export function App(props: AppProps) {
         setToast(`Export failed: ${(err as Error).message}`);
       }
     },
-    [plan, lens, zoom, host],
+    [plan, lens, zoom, host, today],
   );
 
   const copyLink = useCallback(async () => {
@@ -265,18 +265,30 @@ export function App(props: AppProps) {
             zoom={zoom}
             preview={previewPlan}
           />
-          {selected && <ItemDetails plan={plan} analysis={analysis} id={selected} onCommit={commit} onClose={() => setSelected(null)} />}
-          <Options
-            options={options}
-            pending={pending}
-            onPreview={setPreviewOpt}
-            onApply={(o) => {
-              setPreviewOpt(null);
-              commit(applyChanges(plan, o.changes).plan);
-              setToast(`Applied: ${o.title}. Undo with ⌘/Ctrl Z`);
-            }}
-            onAskClaude={canAsk ? askClaude : undefined}
-          />
+          {/* The dock: the plan's options on the left, always; the selected item on the right. It sticks to the bottom
+              of the window while the chart scrolls, with its own place under the chart. */}
+          <section class={cx('dock', selected && 'has-item')} aria-label="Options and the selected item">
+            <div class="dock-options">
+              <Options
+                options={options}
+                pending={pending}
+                onPreview={setPreviewOpt}
+                onApply={(o) => {
+                  setPreviewOpt(null);
+                  commit(applyChanges(plan, o.changes).plan);
+                  setToast(`Applied: ${o.title}. Undo with ⌘/Ctrl Z`);
+                }}
+                onAskClaude={canAsk ? askClaude : undefined}
+              />
+            </div>
+            <div class="dock-item">
+              {selected ? (
+                <ItemDetails plan={plan} analysis={analysis} id={selected} onCommit={commit} onClose={() => setSelected(null)} />
+              ) : (
+                <p class="item-hint">Click a row, or its bar, to see why it lands when it does and to set what it waits for.</p>
+              )}
+            </div>
+          </section>
           <Legend lens={lens} onPlanned={() => setLens('planned')} tipsOpen={intro !== 'off'} />
         </>
       )}

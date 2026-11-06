@@ -3,15 +3,13 @@ import { chanceLabel, explain } from '../engine/analysis';
 import { applyChanges } from '../engine/changes';
 import { dayParts, formatDay, formatDayLong } from '../engine/dates';
 import { describeWork } from '../engine/report';
-import type { NormalizedPlan } from '../engine/types';
+import type { NormalizedItem, NormalizedPlan } from '../engine/types';
 import { Delivery } from './Board';
 import { cx, DateButton, Icon } from './lib';
 
 /**
- * The selected item's details, as one panel under the chart that sticks to the bottom of the window while the page
- * scrolls: a header with the name and the done control, one line of facts (finish, chance, due, who, dates), then
- * why the dates are what they are beside the few settings that don't fit in the row. Nothing covers the chart's rows
- * for long: the panel has its own place below the chart, and no scrolling is done for the user.
+ * The selected item, in the dock's right-hand column: the name and the done control; one line of facts (delivery,
+ * chance, due, who, start → finish); why the dates are what they are; and the few settings that don't fit in the row.
  */
 export function ItemDetails({
   plan,
@@ -34,12 +32,27 @@ export function ItemDetails({
   const year = dayParts(plan.start).year;
   const why = explain(analysis.current, id);
   const patch = (p: Partial<typeof it>, key?: string) => onCommit(applyChanges({ ...plan, items: plan.items.map((x) => (x.id === id ? { ...x, ...p } : x)) }, []).plan, key);
+  // The note is typed, so it's kept exactly as typed (re-validating on every keystroke would trim the space just pressed).
+  const setNote = (v: string) =>
+    onCommit(
+      {
+        ...plan,
+        items: plan.items.map((x) => {
+          if (x.id !== id) return x;
+          const { note: _old, ...rest } = x;
+          const next: NormalizedItem = rest;
+          if (v) next.note = v.slice(0, 500);
+          return next;
+        }),
+      },
+      `note:${id}`,
+    );
   const nameOf = (ref: string) => plan.items.find((x) => x.id === ref)?.name ?? ref;
   const candidates = plan.items.filter((x) => x.id !== id && !it.dependsOn.includes(x.id));
   const sep = <span class="sep">·</span>;
 
   return (
-    <section class={cx('details-dock', it.done && 'is-done')} role="region" aria-label={`Details for ${it.name}`}>
+    <section class={cx('item-panel', it.done && 'is-done')} role="region" aria-label={`Details for ${it.name}`}>
       <header class="insp-head">
         <span class="insp-num">#{index + 1}</span>
         <h3 title={it.name}>{it.name}</h3>
@@ -71,7 +84,7 @@ export function ItemDetails({
 
       <p class="insp-meta">
         <span>
-          <span class="k">Finish</span>{' '}
+          <span class="k">Delivery</span>{' '}
           <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
         </span>
         {o?.chance !== undefined && !it.done && (
@@ -96,65 +109,63 @@ export function ItemDetails({
         )}
       </p>
 
-      <div class="dock-body">
-        <section class="insp-why">
-          <h4>Why these dates</h4>
-          <ul>
-            {why.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </section>
+      <section class="insp-why">
+        <h4>Why these dates</h4>
+        <ul>
+          {why.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </section>
 
-        <section class="insp-fields">
-          <div class="insp-row">
-            <span class="k">Can't start before</span>
-            <span class="date-field">
-              <DateButton value={it.notBefore} label="Can't start before" placeholder="any time" format={(d) => formatDayLong(d, year)} onChange={(d) => patch({ notBefore: d ?? undefined })} />
-              {it.notBefore && (
-                <button class="icon-btn" aria-label="Clear the can't-start-before date" title="Clear" onClick={() => patch({ notBefore: undefined })}>
+      <section class="insp-fields">
+        <div class="insp-row">
+          <span class="k">Can't start before</span>
+          <span class="date-field">
+            <DateButton value={it.notBefore} label="Can't start before" placeholder="any time" format={(d) => formatDayLong(d, year)} onChange={(d) => patch({ notBefore: d ?? undefined })} />
+            {it.notBefore && (
+              <button class="icon-btn" aria-label="Clear the can't-start-before date" title="Clear" onClick={() => patch({ notBefore: undefined })}>
+                <Icon.close />
+              </button>
+            )}
+          </span>
+        </div>
+        <div class="insp-row">
+          <span class="k">Starts after</span>
+          <span class="deps">
+            {it.dependsOn.map((dep) => (
+              <span key={dep} class="dep-chip" title={nameOf(dep)}>
+                <span>{nameOf(dep)}</span>
+                <button aria-label={`Remove: starts after ${nameOf(dep)}`} onClick={() => patch({ dependsOn: it.dependsOn.filter((x) => x !== dep) })}>
                   <Icon.close />
                 </button>
-              )}
-            </span>
-          </div>
-          <div class="insp-row">
-            <span class="k">Starts after</span>
-            <span class="deps">
-              {it.dependsOn.map((dep) => (
-                <span key={dep} class="dep-chip" title={nameOf(dep)}>
-                  <span>{nameOf(dep)}</span>
-                  <button aria-label={`Remove: starts after ${nameOf(dep)}`} onClick={() => patch({ dependsOn: it.dependsOn.filter((x) => x !== dep) })}>
-                    <Icon.close />
-                  </button>
-                </span>
-              ))}
-              {candidates.length > 0 && (
-                <select
-                  class="add-dep"
-                  value=""
-                  aria-label="Add an item this one must wait for"
-                  onChange={(e) => {
-                    const v = (e.currentTarget as HTMLSelectElement).value;
-                    if (v) patch({ dependsOn: [...it.dependsOn, v] });
-                  }}
-                >
-                  <option value="">{it.dependsOn.length ? '+ add' : 'nothing · + add'}</option>
-                  {candidates.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </span>
-          </div>
-          <label class="insp-row">
-            <span class="k">Note</span>
-            <input value={it.note ?? ''} placeholder="Anything worth remembering" onInput={(e) => patch({ note: (e.currentTarget as HTMLInputElement).value || undefined }, `note:${id}`)} />
-          </label>
-        </section>
-      </div>
+              </span>
+            ))}
+            {candidates.length > 0 && (
+              <select
+                class="add-dep"
+                value=""
+                aria-label="Add an item this one must wait for"
+                onChange={(e) => {
+                  const v = (e.currentTarget as HTMLSelectElement).value;
+                  if (v) patch({ dependsOn: [...it.dependsOn, v] });
+                }}
+              >
+                <option value="">{it.dependsOn.length ? '+ add' : 'nothing · + add'}</option>
+                {candidates.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </span>
+        </div>
+        <label class="insp-row note">
+          <span class="k">Note</span>
+          <input value={it.note ?? ''} placeholder="Anything worth remembering" onInput={(e) => setNote((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+      </section>
     </section>
   );
 }

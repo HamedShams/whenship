@@ -90,7 +90,7 @@ The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence versi
 
 A small key under the chart repeats this, next to the tips for working with it, and hovering any mark gives its dates.
 
-**Working in the chart.** The columns are `# · Item · Effort · Due · Finish`. With one person in the plan, effort is a number you type into the row, the way you would in a spreadsheet; with several people or a team, the Effort cell opens an editor for who does how many days and who starts after whom. Drag a row (or its bar) up or down to reprioritise, a bar's right edge to change its effort, a deadline diamond to move the deadline. Click a row to open its details in a panel under the chart (it stays at the bottom of the window while you scroll): the finish date and its chance, why the dates are what they are, and the few settings that don't fit in the row. A single part of an item is at most 250 working days, a person-year; longer work is several items. The chart fits the whole plan to the width it has and only scrolls when days would get too narrow (a year still fits a laptop screen); the small Zoom menu offers fixed day, week and month scales. Under the chart, at most three options: hover one to see it on the chart as a ghost, Apply to keep it (undo takes it back).
+**Working in the chart.** The columns are `# · Item · Effort · Due · Finish`. With one person in the plan, effort is a number you type into the row, the way you would in a spreadsheet; with several people or a team, the Effort cell opens an editor for who does how many days and who starts after whom. Drag a row (or its bar) up or down to reprioritise, a bar's right edge to change its effort, a deadline diamond to move the deadline. Under the chart sits the **dock**, which stays at the bottom of the window while you scroll: on the left, up to two options (each an exact re-plan: hover to see it on the chart as dashed bars, Apply to keep it, undo to take it back); on the right, the row you clicked: its expected delivery and chance, why the dates are what they are, and the few settings that don't fit in the row (can't start before, starts after, a note). The columns are `# · Item · Effort · Due · Expected delivery`; with one person, effort is a number you type into the row, Enter moves down a row. The chart fits the whole plan to the width it has, down to a pixel a day; the small Zoom menu offers fixed day, week and month scales. Export gives the plan file, Excel, CSV, an image of the chart (with the same columns and key) and a Markdown summary. Under the chart, at most three options: hover one to see it on the chart as a ghost, Apply to keep it (undo takes it back).
 
 ## How the dates and suggestions work
 
@@ -145,6 +145,19 @@ Plans are small JSON files (`*.whenship.json`) you can keep in a repo, edit by h
 ```
 
 Items are in priority order (an item's prerequisites in `dependsOn` are worked on at its priority). `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Martin is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
+
+### Limits, and why
+
+whenship is for a plan you can see at once, so it has two deliberate ceilings. Anything over them is read, trimmed, and said so (in the chart, and in Claude's answer).
+
+| Limit | Why |
+|---|---|
+| **25 items in a plan** | One screen. A chart you have to scroll to read stops being the answer to "when will it ship?" Bigger work is several plans: one per team, release or quarter, each saved as a file or a link. |
+| **250 working days for one part of an item** | A person-year. Nobody estimates a single task at more than that; beyond it the number is a placeholder, and the chart would be a wall. Longer work is several items, which also gives the chart something to say about the order. |
+
+Smaller ones you will not meet: 50 people or teams, 20 parts per item.
+
+**Share links** carry the whole plan after the `#` in the address (`…/#p=…`), not in a `?query`. Browsers never send the part after `#` to a server, so a shared plan still never reaches whenship.app or anyone's logs; it unpacks in the reader's browser. The lens and zoom travel with it (`&l=`, `&z=`).
 
 ## Self-host
 

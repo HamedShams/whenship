@@ -6,7 +6,7 @@ import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { createHttpServer } from '../../src/mcp/http';
+import { createHttpServer, withBoot } from '../../src/mcp/http';
 import { compare, UI_URI } from '../../src/mcp/server';
 import { decodeShareLink } from '../../src/io/format';
 import { applyChanges } from '../../src/engine';
@@ -244,6 +244,8 @@ describe('web server', () => {
     const html = await (await fetch(`${base}/`)).text();
     expect(html).toContain(`<link rel="canonical" href="${base}/">`);
     expect(html).toContain(`<meta property="og:image" content="${base}/og.png">`);
+    expect(html).not.toMatch(/<link rel="icon" href="data:/); // the website's icon is the PNG file: search engines can't use a data: URI
+    expect(html).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${base}/icon.png">`);
     expect(await (await fetch(`${base}/robots.txt`)).text()).toContain(`Sitemap: ${base}/sitemap.xml`);
     expect(await (await fetch(`${base}/sitemap.xml`)).text()).toContain(`<loc>${base}/privacy</loc>`);
     expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no images
@@ -253,6 +255,10 @@ describe('web server', () => {
     expect(llms).toContain(`\`${base}/mcp\``);
     const res = await client.readResource({ uri: UI_URI });
     expect((res.contents[0] as { text: string }).text).not.toContain('og:image');
+    // the inline (data:) icon stays for the widget and the offline file; the website drops it in favour of the PNG, which search engines can fetch
+    const withIcon = '<!doctype html><html><head><link rel="icon" href="data:image/svg+xml,x" /><!--WHENSHIP_BOOT--></head></html>';
+    expect(withBoot(withIcon, { mode: 'web', publicUrl: 'https://x.test/' })).not.toContain('href="data:');
+    expect(withBoot(withIcon, { mode: 'widget' })).toContain('href="data:image/svg+xml,x"');
   });
   it('serves the link-preview image and the icon, and escapes an address taken from request headers', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);

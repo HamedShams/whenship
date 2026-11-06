@@ -26,7 +26,9 @@ export function withBoot(html: string, boot: Record<string, unknown>): string {
   const meta = url
     ? `<link rel="canonical" href="${url}"><meta property="og:url" content="${url}"><meta property="og:image" content="${url}og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${url}og.png"><meta name="twitter:image:alt" content="whenship: a Gantt chart of client deliverables with deadline diamonds and expected delivery dates"><link rel="icon" type="image/png" sizes="192x192" href="${url}icon.png"><link rel="apple-touch-icon" href="${url}icon.png">`
     : '';
-  return html.replace('<!--WHENSHIP_BOOT-->', `${meta}<script>window.__WHENSHIP__=${json}</script>`);
+  // the website's icon is the PNG file (search engines can't use a data: URI); the offline file and the widget keep the inline one
+  const page = url ? html.replace(/<link rel="icon" href="data:[^"]*"\s*\/?>\s*/, '') : html;
+  return page.replace('<!--WHENSHIP_BOOT-->', `${meta}<script>window.__WHENSHIP__=${json}</script>`);
 }
 
 /** A plain text page in the site's style. */

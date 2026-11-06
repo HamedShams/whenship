@@ -16,8 +16,8 @@ import { cx, DateButton, Icon } from './lib';
 export const ROW = 44;
 /** Room for a note drawn in place of a bar ("add effort to schedule this"). */
 const NOTE_W = 170;
-/** Room after the last day for its finish label ("19 Mar 2027" and a ±days badge): the calendar runs on under it, so the chart looks full. */
-export const LABEL_ROOM = 96;
+/** Room after the last day for its finish label ("19 Mar 2027" and a ±days badge beside it): the calendar runs on under it, so the chart looks full. */
+export const LABEL_ROOM = 120;
 /** The chart never draws more calendar than this (the engine's own horizon plus the label room at a pixel a day). */
 const MAX_DRAWN_DAYS = 1100 + LABEL_ROOM;
 const BADGE_VAR: Record<Badge, string> = { safe: 'var(--ok)', likely: 'var(--ok)', tight: 'var(--warn)', late: 'var(--danger)', unknown: 'var(--fg3)' };
@@ -160,9 +160,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   useLayoutEffect(() => {
     const el = clipRef.current;
     if (!el) return;
-    const measure = () => setClipW(el.clientWidth);
+    // whole pixels, rounded down: a chart half a pixel wider than its box makes Safari show a scrollbar for it
+    const measure = () => setClipW(Math.floor(el.getBoundingClientRect().width));
     measure();
-    const raf = el.clientWidth ? 0 : requestAnimationFrame(measure); // not laid out yet: once more after the first frame
+    const raf = el.getBoundingClientRect().width ? 0 : requestAnimationFrame(measure); // not laid out yet: once more after the first frame
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     ro?.observe(el);
     return () => {
@@ -200,12 +201,13 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const geo = useMemo(() => {
     const own = timelineSpan(plan, analysis, today, null);
     const full = timelineSpan(plan, analysis, today, preview ?? ghost);
-    const ppd = pixelsPerDay(zoom, own.span, Math.max(0, clipW - LABEL_ROOM));
+    // one day of slack: the label room is rounded up to whole days below, and that must never push the chart past its box
+    const ppd = pixelsPerDay(zoom, own.span + 1, Math.max(0, clipW - LABEL_ROOM));
     // The calendar drawn: at least the plan plus room for its last label; under `fit` it runs to the right edge of the
     // width at hand, so the chart is never followed by a blank strip.
     const least = full.span + Math.ceil(LABEL_ROOM / ppd);
     const span = Math.min(MAX_DRAWN_DAYS, zoom === 'fit' && clipW > 0 ? Math.max(least, Math.floor(clipW / ppd)) : least);
-    return { start: full.start, end: full.start + span - 1, span, ppd, width: span * ppd };
+    return { start: full.start, end: full.start + span - 1, span, ppd, width: Math.ceil(span * ppd) }; // a whole number of pixels, never past the box
   }, [plan, analysis, preview, ghost, today, zoom, clipW]);
   const x = (iso: string) => (parseISO(iso)! - geo.start) * geo.ppd;
 
@@ -494,6 +496,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
 
   /** The always-there empty row at the bottom turns into a real item as soon as something is typed or picked. */
   const createItem = (fields: Partial<NormalizedPlan['items'][number]>) => {
+    if (plan.items.length >= LIMITS.items) return '';
     const next = { ...plan, items: [...plan.items, { id: '', name: 'New item', work: [], dependsOn: [], ...fields }] };
     const clean = applyChanges(next as NormalizedPlan, []).plan;
     onCommit(clean);
@@ -504,6 +507,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (next) nameRefs.current.get(next.id)?.focus();
     else draftRef.current?.focus();
   };
+  // Enter in an effort cell goes to the next row's, like Enter in a name
+  const focusDays = (index: number) => {
+    const next = order[index];
+    wrapRef.current?.querySelector<HTMLInputElement>(next ? `.row[data-item="${CSS.escape(next.id)}"] .days-cell input` : '.row.draft .days-cell input')?.focus();
+  };
+  const full = plan.items.length >= LIMITS.items;
 
   const height = (order.length + 1) * ROW; // + the empty row for a new item
   // one person, no team: effort is a number in the row, the person is implied
@@ -524,8 +533,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           <span>#</span>
           <span>Item</span>
           <span title="Working days of effort, per person">Effort</span>
-          <span>Due</span>
-          <span>Finish</span>
+          <span title="The deadline">Due</span>
+          <span title="When it will be finished, as scheduled">Expected delivery</span>
           <span />
         </div>
         <div class="tl-clip" ref={clipRef}>
@@ -615,7 +624,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     onFocus={() => onSelect(it.id)}
                   />
                   {solo ? (
-                    <DaysCell item={shownIt} lane={solo} onFocus={() => onSelect(it.id)} onChange={(days) => commitChange([{ op: 'setEffort', item: it.id, lane: solo.id, days }], `days:${it.id}`)} />
+                    <DaysCell item={shownIt} lane={solo} onFocus={() => onSelect(it.id)} onEnter={() => focusDays(i + 1)} onChange={(days) => commitChange([{ op: 'setEffort', item: it.id, lane: solo.id, days }], `days:${it.id}`)} />
                   ) : (
                     <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
                   )}
@@ -637,6 +646,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 </div>
               );
             })}
+            {full ? (
+              <div class="row draft full" style={{ top: `${rowTop(order.length)}px` }}>
+                <span class="handle" aria-hidden="true">
+                  <Icon.plus />
+                </span>
+                <span class="full-note">This plan is full ({LIMITS.items} items). Split it into two plans, or delete what's finished.</span>
+              </div>
+            ) : (
             <div class="row draft" style={{ top: `${rowTop(order.length)}px` }}>
               <span class="handle" aria-hidden="true">
                 <Icon.plus />
@@ -684,6 +701,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 />
               </div>
             </div>
+            )}
           </div>
         </div>
 
@@ -859,13 +877,9 @@ function BarRow(props: {
         />
       )}
       {r.endDate && (
-        <span class={cx('end-label', late && 'late')} style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
-          {formatDay(r.endDate, props.year)}
-        </span>
-      )}
-      {delta !== 0 && r.endDate && (
-        <span class={cx('delta', delta < 0 ? 'up' : 'down')} style={{ left: `${labelX + 48}px`, top: `${ROW / 2 - 8}px` }}>
-          {delta > 0 ? `+${delta}d` : `${delta}d`}
+        <span class="end-tag" style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
+          <span class={cx('end-label', late && 'late')}>{formatDay(r.endDate, props.year)}</span>
+          {delta !== 0 && <span class={cx('delta', delta < 0 ? 'up' : 'down')}>{delta > 0 ? `+${delta}d` : `${delta}d`}</span>}
         </span>
       )}
       {gDelta !== null && gDelta !== 0 && gEndX !== null && (
@@ -985,44 +999,34 @@ function DueLabel({ iso, year }: { iso: string; year: number }) {
 }
 
 /**
- * Who works on an item, in a narrow cell: one person with name and days; two with avatar + days each (or stacked
- * avatars if they don't fit, measured after layout); three or more as stacked avatars and the total days.
+ * Who works on an item, in a narrow cell: everyone's avatar, always (stacked when there are several), the name when
+ * it's one person, a "→" when there's a hand-off, and the days as a pill (one person's, or everyone's together).
+ * The tooltip has the whole story ("Martin 1d + Sara 3d after Martin").
  */
 function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'][number]; laneOf: (id: string) => NormalizedPlan['lanes'][number] | undefined; label: string; onOpen: (el: HTMLElement) => void }) {
-  const ref = useRef<HTMLButtonElement>(null);
   const work = item.work;
-  const shape = work.map((w) => `${laneOf(w.lane)?.name}:${w.days}:${w.after ?? ''}`).join('|');
-  const [squeezed, setSqueezed] = useState<string | null>(null);
-  const stacked = work.length > 2 || (work.length === 2 && squeezed === shape);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && work.length === 2 && squeezed !== shape && el.scrollWidth > el.clientWidth + 1) setSqueezed(shape);
-  });
   const color = (lane: string) => laneOf(lane)?.color ?? '#868e96';
   const name = (lane: string) => laneOf(lane)?.name ?? lane;
+  const one = work.length === 1 ? laneOf(work[0]!.lane) : undefined;
   return (
-    <button ref={ref} class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
-      {stacked ? (
-        <span class="who-part stack">
-          {work.slice(0, 3).map((w) => (
-            <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
-          ))}
-          {work.length > 3 && <span class="more">+{work.length - 3}</span>}
-          <span class="who-days">{fmtDays(work.reduce((t, w) => t + w.days, 0))}</span>
-        </span>
-      ) : work.length ? (
-        work.map((w, k) => {
-          const lane = laneOf(w.lane);
-          return (
-            <span key={w.lane} class="who-part">
-              {k > 0 && <span class="sep">{w.after ? '→' : '+'}</span>}
-              <Avatar name={name(w.lane)} color={color(w.lane)} />
-              {work.length === 1 && <span class="who-name">{name(w.lane)}</span>}
-              {work.length === 1 && lane?.kind === 'team' && <span class="who-team">×{fmtSize(lane.size)}</span>}
-              <span class="who-days">{fmtDays(w.days)}</span>
+    <button class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
+      {work.length ? (
+        <>
+          <span class={cx('who-people', work.length > 1 && 'who-stack')}>
+            {work.slice(0, 3).map((w) => (
+              <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
+            ))}
+            {work.length > 3 && <span class="more">+{work.length - 3}</span>}
+          </span>
+          {work.length === 1 && <span class="who-name">{name(work[0]!.lane)}</span>}
+          {one?.kind === 'team' && <span class="who-team">×{fmtSize(one.size)}</span>}
+          {work.some((w) => w.after) && (
+            <span class="who-handoff" aria-hidden="true">
+              →
             </span>
-          );
-        })
+          )}
+          <span class="who-days">{fmtDays(work.reduce((t, w) => t + w.days, 0))}</span>
+        </>
       ) : (
         <span class="who-empty">+ who</span>
       )}
@@ -1034,7 +1038,7 @@ function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'
  * Effort as a plain number in the row, for plans with one person: type the days, the way you would in a spreadsheet,
  * and the item is theirs. (With several people or a team, the who cell and its editor take over.)
  */
-function DaysCell({ item, lane, onChange, onFocus }: { item: NormalizedPlan['items'][number] | null; lane: NormalizedPlan['lanes'][number]; onChange: (days: number) => void; onFocus?: () => void }) {
+function DaysCell({ item, lane, onChange, onFocus, onEnter }: { item: NormalizedPlan['items'][number] | null; lane: NormalizedPlan['lanes'][number]; onChange: (days: number) => void; onFocus?: () => void; onEnter?: () => void }) {
   const part = item?.work.find((w) => w.lane === lane.id);
   return (
     <span class="days-cell" data-who={item?.id ?? ''}>
@@ -1048,6 +1052,12 @@ function DaysCell({ item, lane, onChange, onFocus }: { item: NormalizedPlan['ite
         placeholder="days"
         aria-label={item ? `${item.name}: working days for ${lane.name}` : 'New item: working days'}
         onFocus={onFocus}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
         onInput={(e) => onChange(Math.min(LIMITS.maxDays, Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0)))}
       />
       <span class="unit" aria-hidden="true">

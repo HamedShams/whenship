@@ -168,6 +168,10 @@ button:disabled { cursor: default; }
 .list-head { display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; align-items: center; padding: 0 6px 0 4px; font-size: 12px; color: var(--fg3); font-weight: 500; gap: 5px; }
 .list-head > :first-child { text-align: center; }
 .list-head > span { line-height: 1.25; }
+/* each title starts where its cell's text starts (the cells have their own padding and borders) */
+.list-head > span:nth-child(2) { padding-left: 7px; }
+.list-head > span:nth-child(3), .list-head > span:nth-child(4) { padding-left: 5px; }
+.list-head > span:nth-child(5) { padding-left: 7px; }
 .rows { position: relative; }
 .list::after, .timeline::after { content: ''; display: block; height: 16px; }
 .row { position: absolute; left: 0; right: 0; height: var(--row); display: grid; grid-template-columns: 28px 1fr 112px 60px 70px 22px; gap: 5px; align-items: center; padding: 0 6px 0 4px; border-bottom: 1px solid var(--border); background: var(--bg); transition: top .16s ease; }
@@ -190,21 +194,26 @@ button:disabled { cursor: default; }
 .row.draft .handle { cursor: default; opacity: .6; }
 .row.draft .handle svg { display: block; }
 .row.draft .cell-input::placeholder { color: var(--fg3); }
+.row.draft.full .full-note { grid-column: 2 / -1; color: var(--fg3); font-size: 12.5px; }
 .cell-input { width: 100%; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 5px 6px; text-overflow: ellipsis; }
 .cell-input:hover { border-color: var(--border); }
 .cell-input:focus { border-color: var(--accent); background: var(--bg); outline: none; }
-.who-cell { display: block; width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 4px 5px; font-size: 12px; color: var(--fg); }
+.who-cell { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 3px 5px; font-size: 12px; color: var(--fg); }
+.who-people { display: inline-flex; align-items: center; flex: none; }
+.who-stack .avatar + .avatar { margin-left: -5px; box-shadow: 0 0 0 1.5px var(--bg); }
+.who-stack .more { font-size: 10.5px; color: var(--fg3); margin-left: 2px; }
+.who-handoff { color: var(--fg3); font-size: 11px; flex: none; }
 .who-cell:hover { border-color: var(--border); background: var(--bg2); }
 .who-part { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
 .who-part + .who-part { margin-left: 3px; }
 .who-part .sep { color: var(--fg3); margin-right: 1px; }
-.who-name { overflow: hidden; text-overflow: ellipsis; max-width: 58px; }
-.who-days { font-variant-numeric: tabular-nums; color: var(--fg2); }
+.who-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.who-days { flex: none; font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; color: var(--fg2); background: var(--bg3); border-radius: 999px; padding: 1px 6px; }
 .who-team { color: var(--fg3); font-size: 11px; margin-left: -2px; }
 .who-empty { color: var(--fg3); }
 /* one person: the effort is a plain number in the row */
 .days-cell { display: inline-flex; align-items: center; gap: 1px; width: 100%; min-width: 0; }
-.days-cell input { width: 46px; min-width: 0; text-align: right; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 4px 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
+.days-cell input { width: 44px; min-width: 0; text-align: left; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 4px 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
 .days-cell input::-webkit-outer-spin-button, .days-cell input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .days-cell input:hover { border-color: var(--border); }
 .days-cell input:focus { border-color: var(--accent); background: var(--bg); outline: none; }
@@ -275,9 +284,11 @@ button:disabled { cursor: default; }
 .late-zone { position: absolute; border-radius: 0 5px 5px 0; background: repeating-linear-gradient(-45deg, rgba(224, 49, 49, .16) 0 4px, transparent 4px 8px); }
 .bar-late { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, .34) 0 3px, transparent 3px 7px); box-shadow: inset 0 -3px 0 var(--danger); }
 .deadline { position: absolute; width: 12px; height: 12px; transform: translate(-50%, 0) rotate(45deg); border: 2px solid var(--bg); border-radius: 2px; transition: left .18s ease; }
-.end-label { position: absolute; font-size: 11px; color: var(--fg2); white-space: nowrap; transition: left .18s ease; font-variant-numeric: tabular-nums; }
+.end-tag { position: absolute; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; transition: left .18s ease; }
+.end-label { font-size: 11px; color: var(--fg2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .end-label.late { color: var(--danger); font-weight: 600; }
-.delta { position: absolute; font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; white-space: nowrap; transition: left .18s ease; }
+.delta { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; white-space: nowrap; }
+.delta.ghost-delta { position: absolute; transition: left .18s ease; }
 .delta.up { background: var(--ok-bg); color: var(--ok); }
 .delta.down { background: var(--danger-bg); color: var(--danger); }
 .empty-bar { position: absolute; font-size: 11.5px; color: var(--fg3); font-style: italic; }
@@ -445,12 +456,12 @@ button:disabled { cursor: default; }
 .options-title .sub.err { color: var(--danger); }
 /* a previewed option: ghost bars (outlined, in the lane's colour) over the dimmed real ones */
 .has-ghost .bar:not(.ghost) { opacity: .28; }
-.has-ghost .end-label { opacity: .5; }
+.has-ghost .end-tag { opacity: .5; }
 .bar.ghost { border: 2px dashed; box-shadow: none; opacity: 1; pointer-events: none; z-index: 2; }
 .delta.ghost-delta { opacity: .9; }
 .k-ghost { width: 18px; height: 9px; border: 2px dashed var(--fg3); border-radius: 3px; box-sizing: border-box; }
 /* until the chart knows its width, nothing animates: the first fitted render snaps into place */
-.board-wrap.unmeasured .bar, .board-wrap.unmeasured .baseline, .board-wrap.unmeasured .deadline, .board-wrap.unmeasured .end-label, .board-wrap.unmeasured .delta { transition: none; }
+.board-wrap.unmeasured .bar, .board-wrap.unmeasured .baseline, .board-wrap.unmeasured .deadline, .board-wrap.unmeasured .end-tag, .board-wrap.unmeasured .delta { transition: none; }
 /* bar edges: drag to change the effort; the diamond: drag to move the deadline */
 .bar-edge { position: absolute; top: 0; bottom: 0; right: 0; width: 9px; cursor: ew-resize; border-radius: 0 5px 5px 0; }
 .bar:hover .bar-edge, .bar.resizing .bar-edge { background: rgba(255, 255, 255, .28); box-shadow: inset -2px 0 0 rgba(255, 255, 255, .55); }
@@ -459,34 +470,53 @@ button:disabled { cursor: default; }
 .bars .deadline { cursor: ew-resize; }
 .board-wrap.is-resizing, .board-wrap.is-resizing * { cursor: ew-resize !important; }
 /* while a bar is being resized everything re-plans under the pointer: no easing, or it lags behind */
-.board-wrap.is-resizing .bar, .board-wrap.is-resizing .bars, .board-wrap.is-resizing .baseline, .board-wrap.is-resizing .deadline, .board-wrap.is-resizing .end-label, .board-wrap.is-resizing .delta, .board-wrap.is-resizing .late-zone { transition: none; }
+.board-wrap.is-resizing .bar, .board-wrap.is-resizing .bars, .board-wrap.is-resizing .baseline, .board-wrap.is-resizing .deadline, .board-wrap.is-resizing .end-tag, .board-wrap.is-resizing .delta, .board-wrap.is-resizing .late-zone { transition: none; }
 .board-wrap.is-resizing .row:not(.sel) { pointer-events: none; }
-/* The selected item's details: one wide panel under the chart, in the page flow. On a page that scrolls it sticks to the
-   bottom of the window while the chart is in view (its own space stays reserved below the chart, so nothing is ever out
-   of reach); no row moves, no scrolling is done for the user. */
-.details-dock { position: sticky; bottom: var(--safe-bottom, 0px); z-index: 25; margin: 10px 20px 0; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); padding: 8px 14px 10px; font-size: 13px; box-shadow: inset 3px 0 0 var(--accent), 0 -6px 18px rgba(0, 0, 0, .18); }
-.details-dock.is-done { box-shadow: inset 3px 0 0 var(--ok), 0 -6px 18px rgba(0, 0, 0, .18); }
-.details-dock .insp-head { margin-bottom: 4px; gap: 10px; }
-.insp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin: 0 0 8px; color: var(--fg2); font-size: 12.5px; }
+/* The dock: the plan's options on the left (always), the selected item on the right. In the page flow under the
+   chart, and sticky to the bottom of the window while the page scrolls; no scrolling is done for the user. */
+.dock { position: sticky; bottom: var(--safe-bottom, 0px); z-index: 25; margin: 10px 20px 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); box-shadow: 0 -6px 18px rgba(0, 0, 0, .18); font-size: 13px; }
+.dock-options { padding: 8px 12px 10px; border-right: 1px solid var(--border); min-width: 0; }
+.dock-item { padding: 8px 14px 10px; min-width: 0; border-radius: 0 var(--radius) var(--radius) 0; }
+.dock-item:has(.item-panel) { box-shadow: inset 3px 0 0 var(--accent); }
+.dock-item:has(.item-panel.is-done) { box-shadow: inset 3px 0 0 var(--ok); }
+.item-hint { margin: 0; padding-top: 4px; color: var(--fg3); font-size: 12.5px; line-height: 1.45; }
+/* the options, compact inside the dock */
+.dock .options { padding: 0; }
+.dock .options-title { margin: 0 0 6px; }
+.dock .option-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.dock .option { padding: 7px 10px 8px; gap: 2px; }
+.dock .opt-title { font-size: 13px; }
+.dock .opt-effect { font-size: 12px; margin: 0; }
+/* the selected item, compact */
+.item-panel .insp-head { margin-bottom: 3px; gap: 8px; }
+.item-panel .insp-head h3 { font-size: 14px; }
+.insp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin: 0 0 6px; color: var(--fg2); font-size: 12.5px; }
 .insp-meta .sep { color: var(--fg3); }
 .insp-meta .k { color: var(--fg3); margin-right: 1px; }
+.item-panel .insp-why { border-top: none; padding-top: 0; margin: 0 0 6px; }
+.item-panel .insp-why h4, .item-panel .insp-fields h4 { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--fg2); margin-bottom: 3px; }
+.item-panel .insp-why li { margin: 1px 0; }
+.item-panel .insp-fields { border-top: 1px solid var(--border); padding-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; }
+.item-panel .insp-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.item-panel .insp-row .k { flex: none; width: 104px; color: var(--fg3); font-size: 12px; }
+.item-panel .insp-row.note { grid-column: 1 / -1; }
+.item-panel .insp-row > :not(.k) { flex: 1 1 auto; min-width: 0; }
+.item-panel .insp-row input { width: 100%; height: var(--h-small); font-size: 12.5px; }
+.item-panel .date-field .date-btn { height: var(--h-small); font-size: 12.5px; padding: 0 8px; }
+.item-panel .deps { min-width: 0; }
 /* on the dock's own background, hovers need a step up, not the same grey */
-.details-dock .btn.ghost { border-color: var(--border); }
-.details-dock .btn.ghost:hover, .details-dock .btn.ghost:focus-visible { background: var(--bg3); border-color: var(--border2); color: var(--fg); }
-.details-dock .icon-btn:hover, .details-dock .icon-btn:focus-visible { background: var(--bg3); color: var(--fg); }
-.details-dock .insp-head .pill.done { flex: none; }
-.details-dock .insp-head h3 { font-size: 14px; }
-.dock-body { display: grid; grid-template-columns: minmax(280px, 1.6fr) minmax(300px, 1fr); gap: 6px 28px; }
-.details-dock .insp-why, .details-dock .insp-fields { border-top: none; padding-top: 0; margin: 0; }
-.details-dock .insp-why h4, .details-dock .insp-fields h4 { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--fg2); }
-.details-dock .insp-fields { gap: 6px; }
-.details-dock .insp-row { grid-template-columns: 110px 1fr; }
+.dock .btn.ghost { border-color: var(--border); }
+.dock .btn.ghost:hover, .dock .btn.ghost:focus-visible { background: var(--bg3); border-color: var(--border2); color: var(--fg); }
+.dock .icon-btn:hover, .dock .icon-btn:focus-visible { background: var(--bg3); color: var(--fg); }
+.item-panel .insp-head .pill.done { flex: none; }
 @media (max-width: 900px) {
-  .dock-body { grid-template-columns: 1fr; }
-  .details-dock .insp-fields { border-top: 1px solid var(--border); padding-top: 8px; }
+  .dock { grid-template-columns: 1fr; position: static; }
+  .dock-options { border-right: none; border-bottom: 1px solid var(--border); }
+  .item-panel .insp-fields { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .details-dock { margin: 8px 12px 0; position: static; }
+  .dock { margin: 8px 12px 0; }
+  .dock .option-rail { grid-template-columns: 1fr; }
 }
 /* done items: quiet, struck through, and out of the schedule */
 .row.done .cell-input { text-decoration: line-through; color: var(--fg3); }
@@ -516,7 +546,6 @@ button:disabled { cursor: default; }
   .options { padding-left: 12px; padding-right: 12px; }
   .option-rail { grid-template-columns: 1fr; }
   .intro { margin: 10px 12px 0; }
-  .details-dock .insp-row { grid-template-columns: 90px 1fr; }
 }
 
 /* ── phones (iOS): no zoom when a field gets focus ─────── */

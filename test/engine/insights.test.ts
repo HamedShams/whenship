@@ -88,8 +88,8 @@ describe('report', () => {
   });
 });
 
-describe('large plans', () => {
-  // 200 items, 5 teams, 60% dated: the size limit for suggestions.
+describe('full plans', () => {
+  // 25 items (the most a plan holds), 5 teams, 60% dated.
   const big = (n: number) => {
     const r = rng(7);
     const lanes = ['A', 'B', 'C', 'D', 'E'].map((name) => ({ name, size: 1 + Math.floor(r() * 3), availability: 60 + Math.floor(r() * 40) }));
@@ -101,22 +101,21 @@ describe('large plans', () => {
     return plan({ start: '2026-10-05', lanes, items });
   };
 
-  it('schedules and explains 200 items with many small blockers without crashing', () => {
-    const p = big(200);
+  it('schedules and explains a full plan with many small blockers without crashing', () => {
+    const p = big(25);
     const s = schedule(p);
     expect(s.items.every((r) => r.status === 'scheduled')).toBe(true);
     expect(s.items.filter((r) => r.driver?.kind === 'capacity').every((r) => typeof r.driver!.item === 'string')).toBe(true);
   });
 
-  it('finds suggestions for 200 items fast enough for a live UI', () => {
-    const p = big(200);
+  it('finds suggestions for a full plan fast enough for a live UI', () => {
+    const p = big(25);
     const t0 = performance.now();
     const tips = findInsights(p);
     const ms = performance.now() - t0;
     expect(tips.length).toBeGreaterThan(0);
     for (const t of tips) expect(t.deltas.met).toBeGreaterThanOrEqual(0);
-    // ~0.4 s on a laptop, up to ~2 s on shared CI runners. Before the binary search this took over a minute, so the
-    // bound guards against that kind of regression without flaking on a slow machine.
-    expect(ms).toBeLessThan(8000);
+    // well under 0.1 s on a laptop at this size; the bound only guards against an order-of-magnitude regression
+    expect(ms).toBeLessThan(4000);
   });
 });

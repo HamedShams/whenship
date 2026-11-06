@@ -52,7 +52,7 @@ describe('app (web and widget share it)', () => {
     // an item without a deadline shows its plain delivery date
     expect(root.querySelector('.row:nth-child(1) .status .pill')).toBeNull();
     expect(text(root, '.row:nth-child(1) .status')).toMatch(/^\d{1,2} [A-Z][a-z]{2}$/);
-    expect([...root.querySelectorAll('.list-head span')].map((x) => x.textContent)).toEqual(['#', 'Item', 'Effort', 'Due', 'Finish', '']);
+    expect([...root.querySelectorAll('.list-head span')].map((x) => x.textContent)).toEqual(['#', 'Item', 'Effort', 'Due', 'Expected delivery', '']);
     expect(changes).toHaveLength(1); // the host hears about the initial plan (the widget syncs it)
   });
 
@@ -129,18 +129,18 @@ describe('people, deleting and the details pane', () => {
     expect(document.querySelector('.dialog.confirm')).toBeNull();
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
     await act(() => (root.querySelector('.row .status') as HTMLElement).click()); // its details are open…
-    expect(root.querySelector('.details-dock')).not.toBeNull();
+    expect(root.querySelector('.item-panel')).not.toBeNull();
     await act(() => firstDelete().click());
     await act(() => (document.querySelector('.dialog.confirm .btn.danger') as HTMLButtonElement).click());
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(6);
     expect(text(root, '.row')).not.toMatch(/Quick fix for Acme/);
-    expect(root.querySelector('.details-dock')).toBeNull(); // …and close with it
+    expect(root.querySelector('.item-panel')).toBeNull(); // …and close with it
   });
 
   it('the details dock under the chart, with no move or delete buttons', async () => {
     const { root } = mount();
     await act(() => (root.querySelector('.row .status') as HTMLElement).click());
-    const details = root.querySelector('.board-wrap + .details-dock')!; // docked right under the chart
+    const details = root.querySelector('.board-wrap + .dock .item-panel')!; // in the dock right under the chart
     expect(details.textContent).toMatch(/Why these dates/);
     expect(details.textContent).not.toMatch(/Move to top|Move to bottom|Delete item/);
   });
@@ -149,8 +149,9 @@ describe('people, deleting and the details pane', () => {
     const { root } = mount();
     await act(() => button(root, 'Export').click());
     const items = [...document.querySelectorAll('.menu button')].map((b) => b.textContent);
-    expect(items.join('|')).not.toMatch(/yaml/i);
+    expect(items.join('|')).not.toMatch(/yaml|calendar|vector/i); // the menu stays short: no YAML, no .ics, no .svg (the code keeps them)
     expect(items[0]).toMatch(/^Save plan\.json/);
+    expect(items.map((t) => t?.replace(/\..*$/, '').replace(/one row.*$/, '')).slice(1, 3)).toEqual(['Excel', 'CSV']); // CSV right under Excel
   });
 });
 
@@ -256,7 +257,7 @@ describe('the item list', () => {
   it('values are gone from the details pane, and the toolbox holds the top bar and the setup row', async () => {
     const { root } = mount();
     await act(() => (root.querySelector('.row .status') as HTMLElement).click());
-    expect(root.querySelector('.details-dock')!.textContent).not.toMatch(/Value/);
+    expect(root.querySelector('.item-panel')!.textContent).not.toMatch(/Value/);
     expect(root.querySelector('.toolbar > .topbar')).not.toBeNull();
     expect(root.querySelector('.toolbar > .setup')).not.toBeNull();
   });
@@ -283,7 +284,7 @@ describe('timeline details', () => {
     await act(() => void row.dispatchEvent(new Event('change', { bubbles: true })));
     const bars = root.querySelector('.bars')!;
     const diamond = parseFloat((bars.querySelector('.deadline') as HTMLElement).style.left);
-    const label = parseFloat((bars.querySelector('.end-label') as HTMLElement).style.left);
+    const label = parseFloat((bars.querySelector('.end-tag') as HTMLElement).style.left);
     expect(label).toBeGreaterThan(diamond + 6);
   });
 
@@ -304,7 +305,7 @@ describe('timeline details', () => {
     const { root } = mount();
     const last = [...root.querySelectorAll('.row:not(.draft)')].at(-1)!; // "Research for Helix" waits for the client
     await act(() => (last.querySelector('.status') as HTMLElement).click());
-    const field = () => root.querySelector('.details-dock .date-field')!;
+    const field = () => root.querySelector('.item-panel .date-field')!;
     expect(field().textContent).toMatch(/\w{3} \d+ \w{3}/);
     await act(() => (field().querySelector('[aria-label^="Clear"]') as HTMLButtonElement).click());
     expect(field().textContent).toBe('any time');
@@ -316,9 +317,9 @@ describe('the item inspector and day chips', () => {
     const { root } = mount();
     const rows = [...root.querySelectorAll('.row:not(.draft)')];
     await act(() => (rows[2]!.querySelector('.status') as HTMLElement).click()); // Research for Brightside
-    const insp = () => root.querySelector('.details-dock')!;
+    const insp = () => root.querySelector('.item-panel')!;
     expect(insp().querySelector('h3')!.textContent).toBe('Research for Brightside');
-    expect(insp().querySelector('.insp-meta')!.textContent).toMatch(/^Finish.*·.*chance on time·Due .*·Sara 5d·.*→/); // the facts, one line
+    expect(insp().querySelector('.insp-meta')!.textContent).toMatch(/^Delivery.*·.*chance on time·Due .*·Sara 5d·.*→/); // the facts, one line
     expect(insp().querySelector('select[multiple]')).toBeNull();
     const add = insp().querySelector('select.add-dep') as HTMLSelectElement;
     add.value = 'quick-fix-for-acme';
@@ -327,7 +328,7 @@ describe('the item inspector and day chips', () => {
     await act(() => (insp().querySelector('.dep-chip button') as HTMLButtonElement).click());
     expect(insp().querySelector('.dep-chip')).toBeNull();
     await act(() => (insp().querySelector('[aria-label="Close details"]') as HTMLButtonElement).click());
-    expect(root.querySelector('.details-dock')).toBeNull();
+    expect(root.querySelector('.item-panel')).toBeNull();
   });
 
   it('working-day chips show two letters', () => {
@@ -559,9 +560,9 @@ describe('clean drags, sticky headers, chart key, copy link and asking Claude', 
 
   it('one quiet legend under the chart: the marks, then the tips; with a lens on, the baseline and the way back', async () => {
     const { root } = mount();
-    const legend = root.querySelector('.options + .legend')!; // under the options rail, which sits under the chart
+    const legend = root.querySelector('.dock + .legend')!; // under the dock (options and the selected item), which sits under the chart
     expect(root.querySelector('.legend')).toBe(legend);
-    expect(root.querySelector('.board-wrap + .options')).not.toBeNull(); // the chart keeps the focus: options come after it
+    expect(root.querySelector('.board-wrap + .dock .options')).not.toBeNull(); // the chart keeps the focus: options come after it
     expect(legend.textContent).toMatch(/deadline: on time, tight, late/);
     expect(legend.querySelector('.legend-tips')).toBeNull(); // the tips are behind a toggle (open only on a first visit)
     await act(() => button(legend, 'Tips').click());
@@ -604,14 +605,14 @@ describe('clean drags, sticky headers, chart key, copy link and asking Claude', 
   it('"Ask Claude for better options" is a button in the options title, only where the chat can be asked; it sends the current plan', async () => {
     const { root } = mount();
     expect(root.querySelector('.ask-claude')).toBeNull(); // the website has no chat
-    expect(root.querySelectorAll('.option')).toHaveLength(3); // and the rail never has a fourth card
+    expect(root.querySelectorAll('.option')).toHaveLength(2); // and the rail never has a third card (it shares the dock with the selected item)
     document.body.innerHTML = '';
     const askClaude = vi.fn(async () => true);
     const asked = mount({ mode: 'widget', canAskClaude: () => true, askClaude });
     await act(() => button(asked.root, 'Safe bet').click());
     const ask = asked.root.querySelector('.options-title .ask-claude')!;
     expect(ask.querySelector('button')!.textContent).toMatch(/Ask Claude for better options/);
-    expect(asked.root.querySelectorAll('.option')).toHaveLength(3); // the button takes no card
+    expect(asked.root.querySelectorAll('.option')).toHaveLength(2); // the button takes no card
     await act(() => (ask.querySelector('button') as HTMLButtonElement).click());
     await act(() => new Promise((r) => setTimeout(r, 0)));
     expect(askClaude).toHaveBeenCalledWith(expect.objectContaining({ title: 'Client deliverables' }), 'safe');
@@ -894,15 +895,14 @@ describe('the view travels: zoom in links and images, and what opens last is on 
       await act(() => button(document as unknown as Element, label).click());
       await act(() => new Promise((r) => setTimeout(r, 0)));
     };
+    const { buildExport } = await import('../../src/ui/exporters');
     await exportAs('Copy link');
     expect(copy.mock.calls[0]![0]).not.toMatch(/&z=/);
-    await exportAs('Vector image');
-    const fitted = save.mock.calls[0]![0].data as string;
+    const fitted = (await buildExport('svg', sample(), 'planned', false, 'fit')).data as string; // the vector image is off the menu, still exportable
     await setZoom(root, 'month');
     await exportAs('Copy link');
     expect(copy.mock.calls[1]![0]).toMatch(/&z=month$/);
-    await exportAs('Vector image');
-    const months = save.mock.calls[1]![0].data as string;
+    const months = (await buildExport('svg', sample(), 'planned', false, 'month')).data as string;
     const width = (svg: string) => Number(/width="(\d+)"/.exec(svg)![1]);
     expect(width(months)).toBeLessThan(width(fitted)); // 4 px a day instead of fitted to ~1100 px
   });

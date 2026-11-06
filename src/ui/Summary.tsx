@@ -76,8 +76,8 @@ const KIND_LABEL: Record<Option['kind'], string> = {
 /** Hovering (or focusing) a card for this long previews it on the chart; a quick pass over the rail changes nothing. */
 const PREVIEW_DELAY = 280;
 
-/** Never more than this many cards: inside Claude, its ideas take the place of the engine's lowest-ranked ones. */
-export const MAX_OPTIONS = 3;
+/** Never more than this many cards (they share the dock with the selected item): inside Claude, its ideas take the place of the engine's lowest-ranked ones. */
+export const MAX_OPTIONS = 2;
 
 /**
  * The options rail, under the chart so the timeline keeps the focus: at most three cards, each one exact re-plan.
@@ -110,7 +110,6 @@ export function Options({
     return () => clearTimeout(t);
   }, [asked]);
   const shown = options.slice(0, MAX_OPTIONS);
-  if (!shown.length && !onAskClaude) return null;
   const enter = (o: Option) => {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => onPreview(o), PREVIEW_DELAY);
@@ -128,7 +127,7 @@ export function Options({
     <section class="options" aria-label="Options">
       <h3 class="options-title">
         Options
-        <span class="sub">{shown.length ? 'hover one to preview it on the chart, Apply to keep it' : 'nothing to fix as planned'}</span>
+        <span class="sub">{shown.length ? 'hover one to see it on the chart, Apply to keep it' : 'nothing to fix: every deadline holds as planned'}</span>
         {onAskClaude && (
           <span class="ask-claude">
             <button

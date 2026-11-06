@@ -39,7 +39,7 @@ describe('the options rail', () => {
   it('sits under the chart; hovering a card previews it as a ghost on the chart, leaving clears it', async () => {
     const { root } = mount();
     await settle();
-    expect(root.querySelector('.board-wrap + .options, .board-wrap + .details-dock + .options')).not.toBeNull();
+    expect(root.querySelector('.board-wrap + .dock .options')).not.toBeNull(); // in the dock, right under the chart
     const card = root.querySelector('.option')!;
     expect(card.textContent).toMatch(/Quick fix for Acme/);
     act(() => void card.dispatchEvent(new PointerEvent('pointerenter')));
@@ -65,56 +65,77 @@ describe('the options rail', () => {
     expect(names(root)[0]).toBe('Appeal for Northwind');
   });
 
-  it("never shows more than three cards: Claude's take the place of the engine's lowest-ranked ones", async () => {
-    const { root } = mount({
+  it("never shows more than two cards: Claude's take the place of the engine's lowest-ranked ones", async () => {
+    const { root } = mount({ claudeOptions: [{ title: 'Appeal first', changes: [{ op: 'move', item: 'Appeal for Northwind', to: 0 }] }] });
+    await settle();
+    const kinds = [...root.querySelectorAll('.option .opt-kind')].map((k) => k.textContent!.trim());
+    expect(root.querySelectorAll('.option')).toHaveLength(2);
+    expect(kinds[0]).toBe("Claude's option");
+    expect(kinds[1]).not.toBe("Claude's option"); // the engine's best one stays
+    document.body.innerHTML = '';
+    const two = mount({
       claudeOptions: [
         { title: 'Appeal first', changes: [{ op: 'move', item: 'Appeal for Northwind', to: 0 }] },
         { title: 'A later Kestrel date', changes: [{ op: 'setDeadline', item: 'Appeal for Kestrel', date: '2026-12-01' }] },
       ],
     });
     await settle();
-    const kinds = [...root.querySelectorAll('.option .opt-kind')].map((k) => k.textContent!.trim());
-    expect(root.querySelectorAll('.option')).toHaveLength(3);
-    expect(kinds.slice(0, 2)).toEqual(["Claude's option", "Claude's option"]);
-    expect(kinds[2]).not.toBe("Claude's option"); // the engine's best one stays
+    expect([...two.root.querySelectorAll('.option .opt-kind')].map((k) => k.textContent!.trim())).toEqual(["Claude's option", "Claude's option"]);
   });
 });
 
-describe('the details dock', () => {
-  it('opens under the chart when a row is clicked; no row moves and nothing covers the chart; Esc closes it', async () => {
+describe('the dock: options on the left, the selected item on the right', () => {
+  it('is there with nothing selected (options and a hint); a click fills the right column; no row moves; Esc clears it', async () => {
     const { root } = mount();
+    const dock = root.querySelector('.board-wrap + .dock')!;
+    expect(dock.querySelector('.dock-options .options')).not.toBeNull();
+    expect(dock.querySelector('.dock-item .item-hint')!.textContent).toMatch(/Click a row/);
     const r = rows(root);
     const barsOf = (id: string) => root.querySelector(`.bars[data-item="${id}"]`) as HTMLElement;
     await act(() => (r[2]!.querySelector('.status') as HTMLElement).click());
-    const dock = root.querySelector('.board-wrap + .details-dock')!;
-    expect(dock.querySelector('h3')!.textContent).toBe('Research for Brightside');
-    expect(dock.querySelector('.dock-body')!.children).toHaveLength(2); // why · settings, side by side; the facts are one line above
-    expect(dock.querySelector('.insp-meta')!.textContent).toMatch(/Finish.*chance on time.*Due .*Sara 5d.*→/);
+    const panel = dock.querySelector('.dock-item .item-panel')!;
+    expect(panel.querySelector('h3')!.textContent).toBe('Research for Brightside');
+    expect(panel.querySelector('.insp-meta')!.textContent).toMatch(/Delivery.*chance on time.*Due .*Sara 5d.*→/);
+    expect(dock.querySelectorAll('.option').length).toBeLessThanOrEqual(2); // the options stay, two at most, beside the item
     const css = readFileSync('src/ui/styles.css', 'utf8');
-    expect(css).toMatch(/\n\.details-dock \{ position: sticky; bottom: var\(--safe-bottom, 0px\); z-index: 25;/); // sticks to the window's bottom while the chart is in view
+    expect(css).toMatch(/\n\.dock \{ position: sticky; bottom: var\(--safe-bottom, 0px\); z-index: 25;/); // sticks to the window's bottom while the chart is in view
     expect(r[3]!.style.top).toBe(`${3 * ROW}px`); // the rows below stay where they were
     expect(barsOf(r[3]!.dataset.item!).style.top).toBe(r[3]!.style.top);
     expect((root.querySelector('.row.sel') as HTMLElement).dataset.item).toBe('research-for-brightside');
     expect((root.querySelector('.bars.sel') as HTMLElement).dataset.item).toBe('research-for-brightside');
     expect(root.querySelector('aside.details, .row-details-slot, .details-gap')).toBeNull();
     await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
-    expect(root.querySelector('.details-dock')).toBeNull();
+    expect(root.querySelector('.item-panel')).toBeNull();
+    expect(root.querySelector('.dock .item-hint')).not.toBeNull(); // the dock stays, with its hint
+  });
+
+  it('the note keeps its spaces as typed (it is not re-validated on every keystroke)', async () => {
+    const { root, changes } = mount();
+    await act(() => (rows(root)[0]!.querySelector('.status') as HTMLElement).click());
+    const note = root.querySelector('.item-panel .insp-row.note input') as HTMLInputElement;
+    note.value = 'call Acme ';
+    await act(() => void note.dispatchEvent(new Event('input', { bubbles: true })));
+    expect(note.value).toBe('call Acme ');
+    expect((changes.at(-1) as { items: { note?: string }[] }).items[0]!.note).toBe('call Acme ');
+    note.value = '';
+    await act(() => void note.dispatchEvent(new Event('input', { bubbles: true })));
+    expect((changes.at(-1) as { items: { note?: string }[] }).items[0]!.note).toBeUndefined();
   });
 
   it('marks an item done from its details: it leaves the schedule, and comes back', async () => {
     const { root } = mount();
     await act(() => (rows(root)[0]!.querySelector('.status') as HTMLElement).click());
-    await act(() => ([...root.querySelectorAll('.details-dock button')].find((b) => b.textContent?.includes('Mark done')) as HTMLButtonElement).click());
+    await act(() => ([...root.querySelectorAll('.item-panel button')].find((b) => b.textContent?.includes('Mark done')) as HTMLButtonElement).click());
     expect(rows(root)[0]!.classList.contains('done')).toBe(true);
     expect(rows(root)[0]!.querySelector('.pill.done')!.textContent).toBe('done');
     expect(root.querySelector('.bars.done .done-bar')).not.toBeNull();
     // the state is a badge, the way back is a button that says what it does
-    expect(root.querySelector('.details-dock .insp-head .pill.done')!.textContent).toBe('done');
-    const reopen = [...root.querySelectorAll('.details-dock button')].find((b) => b.textContent?.includes('Reopen')) as HTMLButtonElement;
+    expect(root.querySelector('.item-panel .insp-head .pill.done')!.textContent).toBe('done');
+    const reopen = [...root.querySelectorAll('.item-panel button')].find((b) => b.textContent?.includes('Reopen')) as HTMLButtonElement;
     expect(reopen.getAttribute('aria-pressed')).toBe('true');
     await act(() => reopen.click());
     expect(rows(root)[0]!.classList.contains('done')).toBe(false);
-    expect(root.querySelector('.details-dock .insp-head .pill.done')).toBeNull();
+    expect(root.querySelector('.item-panel .insp-head .pill.done')).toBeNull();
   });
 });
 
@@ -228,7 +249,7 @@ describe('effort for one person', () => {
 
   it('is a number typed straight into the row, no "who" step; the header says Effort', async () => {
     const { root, changes } = mount({ initialPlan: solo() });
-    expect([...root.querySelectorAll('.list-head span')].map((x) => x.textContent)).toEqual(['#', 'Item', 'Effort', 'Due', 'Finish', '']);
+    expect([...root.querySelectorAll('.list-head span')].map((x) => x.textContent)).toEqual(['#', 'Item', 'Effort', 'Due', 'Expected delivery', '']);
     expect(root.querySelector('.who-cell')).toBeNull();
     const cell = (i: number) => rows(root)[i]!.querySelector('.days-cell input') as HTMLInputElement;
     expect(cell(0).value).toBe('3');
@@ -325,7 +346,7 @@ describe('the chart leaves room for the last finish label, and the tips fold awa
     const { root } = mount({ initialPlan: long, initialZoom: 'month' }); // 4 px a day: ~120 px months, full names
     expect([...root.querySelectorAll('.months .month')].slice(0, 2).map((m) => m.textContent)).toEqual(['Oct', 'Nov']);
     const months = [...root.querySelectorAll('.months .month')] as HTMLElement[];
-    expect(months.every((m) => parseFloat(m.style.width) >= 34)).toBe(true);
+    expect(months.slice(0, 6).every((m) => parseFloat(m.style.width) >= 34)).toBe(true); // (the last block can be a sliver: the calendar ends mid-month)
   });
 
   it('the calendar runs on past the last day by the label room (scale and timeline are one width), so the last date never scrolls', () => {
@@ -360,5 +381,53 @@ describe('the chart leaves room for the last finish label, and the tips fold awa
     const first = mount({ intro: true });
     expect(first.root.querySelector('.legend-tips')).not.toBeNull();
     expect([...first.root.querySelectorAll('.legend button')].map((b) => b.textContent)).toContain('Hide tips');
+  });
+});
+
+describe('round six: Enter in effort, the who cell, the item cap, the export menu, the image', () => {
+  const solo = () => validatePlan({ start: today, lanes: ['Me'], items: [{ name: 'Draft', who: 'Me', days: 3 }, { name: 'Review', who: 'Me', days: 2 }] }, { today }).plan;
+
+  it('Enter in an effort cell goes to the next row, then to the empty row, like Enter in a name', async () => {
+    const { root } = mount({ initialPlan: solo() });
+    const cells = () => [...root.querySelectorAll('.row .days-cell input')] as HTMLInputElement[];
+    cells()[0]!.focus();
+    await act(() => void cells()[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(document.activeElement).toBe(cells()[1]);
+    await act(() => void cells()[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(document.activeElement).toBe(root.querySelector('.row.draft .days-cell input'));
+  });
+
+  it("the who cell always shows everyone's avatar, the name for one person, and the days as a pill", () => {
+    const { root } = mount();
+    const cell = (id: string) => root.querySelector(`.row[data-item="${id}"] .who-cell`)!;
+    const one = cell('appeal-for-northwind');
+    expect(one.querySelectorAll('.avatar')).toHaveLength(1);
+    expect(one.querySelector('.who-name')!.textContent).toBe('Sara');
+    expect(one.querySelector('.who-days')!.textContent).toBe('4d');
+    const two = cell('revise-lumen-proposal'); // Martin 1d, then Sara 3d
+    expect(two.querySelectorAll('.who-people.who-stack .avatar')).toHaveLength(2); // both, always
+    expect(two.querySelector('.who-name')).toBeNull();
+    expect(two.querySelector('.who-handoff')).not.toBeNull();
+    expect(two.querySelector('.who-days')!.textContent).toBe('4d'); // everyone's days together
+    expect(two.getAttribute('title')).toMatch(/Martin 1d \+ Sara 3d after Martin/); // the whole story on hover
+  });
+
+  it('a plan holds 25 items: the empty row then says so, and nothing more is created', async () => {
+    const items = Array.from({ length: 25 }, (_, i) => ({ name: `Item ${i + 1}`, who: 'Me', days: 1 }));
+    const { root } = mount({ initialPlan: validatePlan({ start: today, lanes: ['Me'], items }, { today }).plan });
+    expect(rows(root)).toHaveLength(25);
+    expect(root.querySelector('.row.draft.full .full-note')!.textContent).toMatch(/This plan is full \(25 items\)/);
+    expect(root.querySelector('.row.draft .cell-input')).toBeNull();
+    const v = validatePlan({ lanes: ['Me'], items: [...items, { name: 'One more', who: 'Me', days: 1 }] }, { today });
+    expect(v.plan.items).toHaveLength(25);
+    expect(v.errors.map((e) => e.message)).toEqual(['only the first 25 items are used: a plan is one screen, bigger work is several plans']);
+  });
+
+  it('the image export carries the list columns, the key and the today line', async () => {
+    const { buildExport } = await import('../../src/ui/exporters');
+    const svg = (await buildExport('svg', sample(), 'planned', false, 'fit', today)).data as string;
+    for (const t of ['>Item<', '>Effort<', '>Due<', '>Expected delivery<', 'deadline: on time, tight, late', 'past its deadline', '>today<', 'Sara 1d']) expect(svg, t).toContain(t);
+    expect(svg).toMatch(/<pattern id="late"/); // the part of a bar past its deadline is hatched, as on screen
+    expect(svg).toMatch(/stroke="#4f46e5" stroke-width="2"/); // the today line
   });
 });

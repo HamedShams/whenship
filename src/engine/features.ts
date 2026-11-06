@@ -14,6 +14,10 @@ export interface Features {
   itemValue: boolean;
   /** Undo and redo buttons in the top bar. While off, ⌘/Ctrl Z and ⇧⌘Z (Ctrl Y) still undo and redo. */
   undoButtons: boolean;
+  /** The .ics calendar export in the Export menu (the code stays; the menu stays short). */
+  exportIcs: boolean;
+  /** The .svg vector image in the Export menu (PNG stays; the SVG renderer still draws the PNG). */
+  exportSvg: boolean;
 }
 
 export const FEATURES: Readonly<Features> = {
@@ -21,4 +25,6 @@ export const FEATURES: Readonly<Features> = {
   yamlExport: false,
   itemValue: false,
   undoButtons: false,
+  exportIcs: false,
+  exportSvg: false,
 };

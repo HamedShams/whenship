@@ -39,6 +39,8 @@ interface Props {
   onExport: (k: ExportKind) => void;
   onCopyLink: () => void;
   onOpen?: () => void;
+  /** The logo is the way back to the home page (the website). */
+  onHome?: (() => void) | undefined;
   extra?: ComponentChildren;
   /** No items yet: show only the title and Open. */
   empty?: boolean;
@@ -50,12 +52,18 @@ export function Header(p: Props) {
   const menu = useAnchor<'export' | 'info'>();
   return (
     <header class="topbar">
-      <span class="brand" title="whenship: when will it ship, honestly?">
-        <Logo size={26} />
-      </span>
+      {p.onHome ? (
+        <button class="brand" aria-label="whenship: the home page" data-tip="Home: examples and other ways to start. Your plan is kept." onClick={p.onHome}>
+          <Logo size={26} />
+        </button>
+      ) : (
+        <span class="brand" data-tip="whenship: when will it ship, honestly?">
+          <Logo size={26} />
+        </span>
+      )}
       {/* The plan's own name, like a document title: editable in place, with a caption saying where it lives. */}
       <div class="doc-title">
-        <label class="title-wrap" title="Rename this plan">
+        <label class="title-wrap" data-tip="Rename this plan">
           <input
             class="title-input"
             value={p.plan.title}
@@ -75,13 +83,13 @@ export function Header(p: Props) {
         <>
           <div class="seg" role="group" aria-label="Forecast lens">
             {LENSES.map((l) => (
-              <button key={l.id} aria-pressed={p.lens === l.id} aria-label={`${l.label} (${l.short})`} title={l.blurb} onClick={() => p.onLens(l.id)}>
+              <button key={l.id} aria-pressed={p.lens === l.id} aria-label={`${l.label} (${l.short})`} data-tip={l.blurb} onClick={() => p.onLens(l.id)}>
                 {l.label}
                 <small>{l.short}</small>
               </button>
             ))}
           </div>
-          <button class="icon-btn" aria-label="How the forecast lenses work" title="How the lenses work" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'info')}>
+          <button class="icon-btn" aria-label="How the forecast lenses work" data-tip="How the lenses work" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'info')}>
             <Icon.info />
           </button>
           <span style={{ width: '6px' }} />
@@ -89,21 +97,21 @@ export function Header(p: Props) {
       )}
       {FEATURES.undoButtons && (
         <>
-          <button class="icon-btn" aria-label="Undo" title="Undo (Ctrl/⌘ Z)" disabled={!p.canUndo} onClick={p.onUndo}>
+          <button class="icon-btn" aria-label="Undo" data-tip="Undo (Ctrl/⌘ Z)" disabled={!p.canUndo} onClick={p.onUndo}>
             <Icon.undo />
           </button>
-          <button class="icon-btn" aria-label="Redo" title="Redo (Ctrl/⌘ Shift Z)" disabled={!p.canRedo} onClick={p.onRedo}>
+          <button class="icon-btn" aria-label="Redo" data-tip="Redo (Ctrl/⌘ Shift Z)" disabled={!p.canRedo} onClick={p.onRedo}>
             <Icon.redo />
           </button>
         </>
       )}
       {p.onOpen && (
-        <button class="btn" onClick={p.onOpen} title="Open a plan file or paste a list / table">
+        <button class="btn" onClick={p.onOpen} data-tip="Open a plan file or paste a list / table">
           <Icon.open /> Open
         </button>
       )}
       {!p.empty && (
-        <button class="btn primary" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'export')} aria-haspopup="menu" title="Save, export or copy a link to this plan">
+        <button class="btn primary" onClick={(e) => menu.open(e.currentTarget as HTMLElement, 'export')} aria-haspopup="menu" data-tip="Save, export or copy a link to this plan">
           <Icon.download /> Export
         </button>
       )}
@@ -128,7 +136,7 @@ export function Header(p: Props) {
             <button
               role="menuitem"
               class="menu-link"
-              title="Copy a link that contains the whole plan (nothing is uploaded)"
+              data-tip="Copy a link that contains the whole plan (nothing is uploaded)"
               onClick={() => {
                 menu.close();
                 p.onCopyLink();

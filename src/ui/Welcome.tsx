@@ -11,7 +11,20 @@ export type OpenTab = 'paste' | 'examples' | 'file';
  * Bringing a plan in: paste anything, pick an example, or open a file. One dialog for the first visit's intro strip,
  * the Open button and the empty state.
  */
-export function OpenDialog({ today, onLoad, onClose, tab: initial = 'paste' }: { today: string; onLoad: (p: NormalizedPlan, note?: string) => void; onClose: () => void; tab?: OpenTab }) {
+export function OpenDialog({
+  today,
+  onLoad,
+  onClose,
+  tab: initial = 'paste',
+  tabs: shown,
+}: {
+  today: string;
+  onLoad: (p: NormalizedPlan, note?: string) => void;
+  onClose: () => void;
+  tab?: OpenTab;
+  /** The tabs on offer (all three unless told otherwise: the home page has its own examples). */
+  tabs?: OpenTab[];
+}) {
   const [tab, setTab] = useState<OpenTab>(initial);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -24,11 +37,13 @@ export function OpenDialog({ today, onLoad, onClose, tab: initial = 'paste' }: {
     onLoad(parsed.plan, parsed.errors.length ? `${parsed.errors.length} value(s) could not be read and were skipped` : undefined);
     onClose();
   };
-  const tabs: [OpenTab, string][] = [
-    ['paste', 'Paste'],
-    ['examples', 'Examples'],
-    ['file', 'Open a file'],
-  ];
+  const tabs = (
+    [
+      ['paste', 'Paste'],
+      ['examples', 'Examples'],
+      ['file', 'Open a file'],
+    ] as [OpenTab, string][]
+  ).filter(([t]) => !shown || shown.includes(t));
   return (
     <div class="dialog-back" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div class="dialog open-dialog" role="dialog" aria-label="Open a plan">
@@ -125,7 +140,7 @@ export function IntroStrip({ onOpen, onBlank, onDismiss, leaving }: { onOpen: (t
           More examples
         </button>
       </span>
-      <button class="icon-btn intro-close" aria-label="Dismiss" title="Keep this example and hide this note" onClick={onDismiss}>
+      <button class="icon-btn intro-close" aria-label="Dismiss" data-tip="Keep this example and hide this note" onClick={onDismiss}>
         <Icon.close />
       </button>
     </div>

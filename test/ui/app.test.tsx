@@ -90,9 +90,9 @@ describe('app (web and widget share it)', () => {
   it('turning a working day off moves dates', async () => {
     const { root } = mount();
     const before = text(root, '.headline');
-    await act(() => (root.querySelector('[title^="Friday"]') as HTMLButtonElement).click());
+    await act(() => (root.querySelector('[data-tip^="Friday"]') as HTMLButtonElement).click());
     expect(text(root, '.headline')).not.toBe(before);
-    expect(root.querySelector('[title^="Friday"]')!.getAttribute('aria-pressed')).toBe('false');
+    expect(root.querySelector('[data-tip^="Friday"]')!.getAttribute('aria-pressed')).toBe('false');
   });
 });
 
@@ -140,11 +140,11 @@ describe('people, deleting and the details pane', () => {
   it("an item's settings open from its name, with no move or delete buttons; why its date, from the date", async () => {
     const { root } = mount();
     await act(() => (root.querySelector('.row .cell-input') as HTMLElement).click());
-    const details = root.querySelector('.popover.item-pop .item-panel')!; // under the row, opened from the item's name
-    expect(details.textContent).toMatch(/Can't start before.*Starts after.*Note.*Mark done/);
+    const details = root.querySelector('.docked.item-pop .item-panel')!; // docked under the row, opened from the item's name
+    expect(details.textContent).toMatch(/Can't start before.*Starts after.*Note.*Mark as done.*Done$/);
     expect(details.textContent).not.toMatch(/Move to top|Move to bottom|Delete item|Why this date/);
     await act(() => (root.querySelector('.row button.status') as HTMLElement).click());
-    expect(root.querySelector('.popover.why-pop')!.textContent).toMatch(/^Why this date/);
+    expect(root.querySelector('.docked.why-pop')!.textContent).toMatch(/^Why this date/);
   });
 
   it('the export menu saves JSON and offers no YAML', async () => {
@@ -186,7 +186,7 @@ describe('the item list', () => {
   it('an item that someone without time works on is marked blocked, with the reason beside its row', () => {
     const plan = validatePlan({ start: today, lanes: ['Sara', { name: 'Kim', availability: 0 }], items: [{ name: 'Fine', who: 'Sara', days: 2 }, { name: 'Stuck', who: 'Kim', days: 2 }] }, { today }).plan;
     const { root } = mount({}, plan);
-    expect(realRows(root)[1]!.querySelector('.pill.blocked')!.getAttribute('title')).toMatch(/Kim has no available time/);
+    expect(realRows(root)[1]!.querySelector('.pill.blocked')!.getAttribute('data-tip')).toMatch(/Kim has no available time/);
     expect(root.querySelector('.empty-bar')!.textContent).toMatch(/^⛔ Kim has no available time/);
   });
 
@@ -235,7 +235,9 @@ describe('the item list', () => {
     await act(() => (root.querySelector('.row.draft .who-cell') as HTMLButtonElement).click());
     await act(() => new Promise((r) => setTimeout(r, 0)));
     const pop = document.querySelector('.who-pop')!;
-    expect(pop.getAttribute('aria-label')).toBe('Who works on New item');
+    expect(pop.getAttribute('aria-label')).toBe('Who works on this item');
+    expect(pop.querySelector('h4')!.textContent).toBe('Who works on this item'); // the row above says which
+    expect(pop.querySelector('select.add-who option')!.textContent).toBe('+ Assign to…');
     const add = pop.querySelector('select.add-who') as HTMLSelectElement;
     add.value = 'martin';
     await act(() => void add.dispatchEvent(new Event('change', { bubbles: true })));
@@ -358,7 +360,7 @@ describe('dates in another year, and the plan name', () => {
     const due = row.querySelector('.due-cell .date-y')!;
     expect(due.textContent).toBe('14 Jan’27');
     expect(due.querySelector('.yr')!.textContent).toBe('’27');
-    expect(due.getAttribute('title')).toBe('14 Jan 2027');
+    expect(due.getAttribute('data-tip')).toBe('14 Jan 2027');
     expect(row.querySelector('.due-cell small')).toBeNull(); // no second line
   });
 
@@ -601,9 +603,9 @@ describe('clean drags, sticky headers, chart key, copy link and asking Claude', 
     await act(() => button(root, '+ holidays').click());
     expect(document.querySelector('.popover.holiday-pop')).not.toBeNull();
     await act(() => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
-    // the who editor widens only when an item has both a team and a hand-off (two extra columns)
+    // the who editor is docked under its row: as narrow as one person needs, wider only for a hand-off or a team
     await act(() => (root.querySelector('.row:nth-child(2) .who-cell') as HTMLButtonElement).click());
-    expect(document.querySelector('.popover.who-pop')!.classList.contains('wide')).toBe(false);
+    expect([...document.querySelector('.docked.who-pop')!.classList].filter((c) => c === 'multi' || c === 'team')).toEqual([]);
   });
 
   it('"Ask Claude for better options" is a button in the options title, only where the chat can be asked; it sends the current plan', async () => {
@@ -701,7 +703,7 @@ describe('dragging feels like one piece', () => {
 
 describe('undo and redo', () => {
   const key = (init: KeyboardEventInit, target: EventTarget = window) => act(() => void target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init })));
-  const saturday = (root: Element) => root.querySelector('.daychip[title^="Saturday"]') as HTMLButtonElement;
+  const saturday = (root: Element) => root.querySelector('.daychip[data-tip^="Saturday"]') as HTMLButtonElement;
 
   it('shortcuts (⌘Z, ⇧⌘Z, Ctrl Y) step through the history; the buttons are switched off for a cleaner top bar', async () => {
     const { root } = mount();
@@ -782,7 +784,7 @@ describe('the setup bar', () => {
   it('the last working day cannot be switched off', async () => {
     const { root } = mount();
     const chips = () => [...root.querySelectorAll('.daychip')] as HTMLButtonElement[];
-    for (const c of chips()) if (c.getAttribute('aria-pressed') === 'true' && c.title.startsWith('Monday') === false) await act(() => c.click());
+    for (const c of chips()) if (c.getAttribute('aria-pressed') === 'true' && c.getAttribute('data-tip')!.startsWith('Monday') === false) await act(() => c.click());
     expect(chips().filter((c) => c.getAttribute('aria-pressed') === 'true').map((c) => c.textContent)).toEqual(['Mo']);
     await act(() => chips()[0]!.click());
     expect(chips()[0]!.getAttribute('aria-pressed')).toBe('true');
@@ -808,7 +810,7 @@ describe('the setup bar', () => {
     expect(root.querySelector('[data-lane="martin"]')).toBeNull();
     expect(document.querySelector('.popover')).toBeNull();
     expect(root.querySelectorAll('.row:not(.draft)')).toHaveLength(7);
-    expect(root.querySelector('.who-cell[title*="Martin"]')).toBeNull(); // gone from every item it was on
+    expect(root.querySelector('.who-cell[data-tip*="Martin"]')).toBeNull(); // gone from every item it was on
   });
 });
 
@@ -871,8 +873,8 @@ describe('the who editor with teams and hand-offs', () => {
     const { root, last } = squads();
     const row = [...root.querySelectorAll('.list .row')].find((r) => (r.querySelector('.cell-input') as HTMLInputElement | null)?.value === 'Subscriptions MVP')!;
     await act(() => (row.querySelector('.who-cell') as HTMLButtonElement).click());
-    const pop = document.querySelector('.popover.who-pop')!;
-    expect(pop.classList.contains('wide')).toBe(true);
+    const pop = document.querySelector('.docked.who-pop')!;
+    expect(['multi', 'team'].every((c) => pop.classList.contains(c))).toBe(true); // a hand-off and a team: two more columns
     expect([...pop.querySelectorAll('.who-head .col-h')].map((c) => c.textContent)).toEqual(['Days', 'People', 'Starts']);
     await set(pop.querySelector('[aria-label="Back-end: working days"]') as HTMLInputElement, '12');
     await set(pop.querySelector('[aria-label="Back-end: people at once"]') as HTMLInputElement, '3');

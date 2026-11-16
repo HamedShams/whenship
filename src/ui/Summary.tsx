@@ -24,7 +24,7 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
           {analysis.current.endDate && (
             <>
               {' · '}
-              <button class={cx('link-btn chain-link', chainOn && 'on')} aria-pressed={chainOn} onClick={onChain} title="Highlight the chain of work and busy people that sets the end date">
+              <button class={cx('link-btn chain-link', chainOn && 'on')} aria-pressed={chainOn} onClick={onChain} data-tip="Highlight the chain of work and busy people that sets the end date">
                 {chainOn ? 'hide the chain' : 'what sets the end date?'}
               </button>
             </>
@@ -40,7 +40,7 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
           )}
         </span>
         <span class="spacer" />
-        <label class="zoom" title={ZOOMS.find(([z]) => z === zoom)?.[2]}>
+        <label class="zoom" data-tip={ZOOMS.find(([z]) => z === zoom)?.[2]}>
           <span class="label">Zoom</span>
           <select class="zoom-select" aria-label="Timeline zoom" value={zoom} onChange={(e) => onZoom(toZoom((e.currentTarget as HTMLSelectElement).value) ?? 'fit')}>
             {ZOOMS.map(([z, label]) => (
@@ -137,7 +137,7 @@ export function Options({
               class="btn small"
               disabled={asked === 'sending'}
               onClick={() => void ask()}
-              title="Posts a request to the chat. Claude sees this chart as it is now and tries what this list can't: moving work between people, splitting or cutting items, combinations. Its ideas come back here as cards, checked by the engine."
+              data-tip="Posts a request to the chat. Claude sees this chart as it is now and tries what this list can't: moving work between people, splitting or cutting items, combinations. Its ideas come back here as cards, checked by the engine."
             >
               <Icon.spark /> {asked === 'sending' ? 'Asking Claude…' : 'Ask Claude for better options'}
             </button>
@@ -171,7 +171,7 @@ export function Options({
                   leave();
                   onApply(o);
                 }}
-                title="Apply this change (you can undo it)"
+                data-tip="Apply this change (you can undo it)"
               >
                 Apply
               </button>

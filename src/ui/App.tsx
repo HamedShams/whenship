@@ -15,7 +15,7 @@ import { Setup } from './Setup';
 import { usePlanHistory } from './state';
 import { Headline, MAX_OPTIONS, Options, type Option } from './Summary';
 import { EmptyState, IntroStrip, OpenDialog, TextDialog, type OpenTab } from './Welcome';
-import { useDebounced } from './lib';
+import { installTips, useDebounced } from './lib';
 
 /** What differs between the website, the offline file and the Claude widget. */
 export interface Host {
@@ -63,6 +63,10 @@ export interface AppProps {
   claudeOptions?: ClaudeOption[];
   /** One line under the plan name (where it lives, or whether Claude has the latest edits). */
   caption?: string;
+  /** The item whose name gets the cursor when the app opens (a plan just started from scratch). */
+  initialFocus?: string;
+  /** The logo goes back to the home page (the website only). */
+  onHome?: () => void;
 }
 
 /** Everything the schedule and its suggestions depend on: the plan without its name and the items' notes. */
@@ -80,7 +84,7 @@ export function App(props: AppProps) {
   const [chainOn, setChainOn] = useState(false);
   const [dialog, setDialog] = useState<null | { kind: 'open'; tab: OpenTab } | { kind: 'text'; title: string; note: string; text: string }>(null);
   const [toast, setToast] = useState<string | null>(props.notice ?? null);
-  const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(props.initialFocus ?? null);
   // the intro strip: shown on a first visit, collapses (then goes) after the first edit or a dismissal
   const [intro, setIntro] = useState<'on' | 'leaving' | 'off'>(props.intro ? 'on' : 'off');
   const [previewOpt, setPreviewOpt] = useState<Option | null>(null);
@@ -99,6 +103,8 @@ export function App(props: AppProps) {
     ro.observe(bar);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => installTips(), []);
 
   useEffect(() => {
     if (props.externalPlan) h.reset(props.externalPlan);
@@ -247,6 +253,7 @@ export function App(props: AppProps) {
           onExport={doExport}
           onCopyLink={copyLink}
           onOpen={() => openDialog('paste')}
+          onHome={props.onHome}
           extra={props.headerExtra}
           empty={empty}
           caption={props.caption ?? (host.mode === 'widget' ? 'Plan · your edits reach Claude automatically' : 'Plan · saved in this browser')}

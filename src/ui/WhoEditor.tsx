@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'preact/hooks';
 import { applyChanges } from '../engine/changes';
 import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan, NormalizedWork } from '../engine/types';
-import { Popover } from './Popover';
 import { Icon } from './lib';
 
 /** Two-letter badge for a person or team: "Sara" → "SA", "Back-end" → "BE", "Person 7" → "P7". */
@@ -22,8 +21,21 @@ export function Avatar({ name, color }: { name: string; color: string }) {
   );
 }
 
-/** Everyone who works on one item, in one place: effort, people at once, hand-offs, add and remove. */
-export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor: HTMLElement; plan: NormalizedPlan; itemId: string; onClose: () => void; onCommit: (p: NormalizedPlan, key?: string) => void }) {
+/**
+ * How much room the editor needs for an item: one person takes a name and a number; a hand-off adds the "Starts"
+ * column; a team adds "People".
+ */
+export function whoShape(plan: NormalizedPlan, itemId: string): { multi: boolean; team: boolean } {
+  const work = plan.items.find((x) => x.id === itemId)?.work ?? [];
+  return { multi: work.length > 1, team: work.some((w) => plan.lanes.find((l) => l.id === w.lane)?.kind === 'team') };
+}
+
+/**
+ * Everyone who works on one item, in one place: effort, people at once, hand-offs, add and remove. It is the body of
+ * the popup docked under the item's row (opened from its Effort cell); it grows downwards as people are added and
+ * never scrolls inside.
+ */
+export function WhoEditor({ plan, itemId, onClose, onCommit }: { plan: NormalizedPlan; itemId: string; onClose: () => void; onCommit: (p: NormalizedPlan, key?: string) => void }) {
   const it = plan.items.find((x) => x.id === itemId);
   const lastAdded = useRef<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -69,9 +81,8 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
   const cols = `minmax(0, 1fr) 58px${anyTeam ? ' 82px' : ''}${multi ? ' 128px' : ''} 26px`;
 
   return (
-    <Popover anchor={anchor} onClose={onClose} label={`Who works on ${it.name}`} className={anyTeam && multi ? 'who-pop wide' : 'who-pop'}>
-      <div ref={boxRef}>
-        <h4>Who works on "{it.name}"</h4>
+      <div ref={boxRef} class="who">
+        <h4>Who works on this item</h4>
         {it.work.length === 0 && <p class="note">{plan.lanes.length ? 'Nobody yet. Add a person or team below.' : 'Add a person or team in the bar above first.'}</p>}
         {it.work.length > 0 && (
           <div class="who-list">
@@ -79,7 +90,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
               <span />
               <span class="col-h">Days</span>
               {anyTeam && (
-                <span class="col-h" title="Of a team, how many people can work on this item at the same time (the team's size at most)">
+                <span class="col-h" data-tip="Of a team, how many people can work on this item at the same time (the team's size at most)">
                   People
                 </span>
               )}
@@ -91,7 +102,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
               const name = lane?.name ?? w.lane;
               return (
                 <div key={w.lane} class="who-row" style={{ gridTemplateColumns: cols }}>
-                  <span class="who-person" title={name}>
+                  <span class="who-person" data-tip={name}>
                     <Avatar name={name} color={lane?.color ?? '#868e96'} />
                     <span>{name}</span>
                   </span>
@@ -107,7 +118,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
                   />
                   {anyTeam &&
                     (lane?.kind === 'team' ? (
-                      <span class="at-once" title={`Up to ${cap(lane)} of ${name} can work on this at the same time`}>
+                      <span class="at-once" data-tip={`Up to ${cap(lane)} of ${name} can work on this at the same time`}>
                         <input
                           type="number"
                           min="1"
@@ -139,7 +150,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
                   <button
                     class="icon-btn"
                     aria-label={`Remove ${name} from this item`}
-                    title="Remove"
+                    data-tip="Remove"
                     onClick={() => setWork(it.work.filter((x) => x.lane !== w.lane).map((x) => (x.after === w.lane ? { ...x, after: undefined } : x)))}
                   >
                     <Icon.close />
@@ -162,7 +173,7 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
                 setWork([...it.work, { lane, days: 1, maxPeople: 1 }]);
               }}
             >
-              <option value="">+ Add {it.work.length ? 'someone else' : 'a person or team'}…</option>
+              <option value="">+ Assign to…</option>
               {free.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -172,11 +183,10 @@ export function WhoEditor({ anchor, plan, itemId, onClose, onCommit }: { anchor:
           ) : (
             <span />
           )}
-          <button class="btn small primary" onClick={onClose}>
+          <button class="btn primary" onClick={onClose}>
             Done
           </button>
         </div>
       </div>
-    </Popover>
   );
 }

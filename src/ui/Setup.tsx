@@ -49,20 +49,20 @@ export function Setup({ plan, onCommit }: { plan: NormalizedPlan; onCommit: (p: 
         <DateButton class="chip" value={plan.start} label="Plan start date" placeholder="" format={(d) => formatDayLong(d)} onChange={(d) => d && commit([{ op: 'setStart', date: d }])} />
       </div>
       <div class="setup-group" role="group" aria-label="Working days">
-        <span class="label" title={off.length ? `Days off: ${off.map((d) => NAME[d]).join(', ')}` : 'Every day is a working day'}>Working days</span>
+        <span class="label" data-tip={off.length ? `Days off: ${off.map((d) => NAME[d]).join(', ')}` : 'Every day is a working day'}>Working days</span>
         {WEEKDAYS.map((d) => (
-          <button key={d} class="daychip" aria-pressed={plan.calendar.workdays.includes(d)} title={`${NAME[d]}: ${plan.calendar.workdays.includes(d) ? 'working day' : 'day off'} (click to change)`} onClick={() => toggleDay(d)}>
+          <button key={d} class="daychip" aria-pressed={plan.calendar.workdays.includes(d)} aria-label={NAME[d]} data-tip={`${NAME[d]}: ${plan.calendar.workdays.includes(d) ? 'working day' : 'day off'} (click to change)`} onClick={() => toggleDay(d)}>
             {SHORT[d]}
           </button>
         ))}
-        <button class="chip" onClick={(e) => pop.open(e.currentTarget as HTMLElement, '__holidays')} title="Holidays and other days off for everyone">
+        <button class="chip" onClick={(e) => pop.open(e.currentTarget as HTMLElement, '__holidays')} data-tip="Holidays and other days off for everyone">
           {plan.calendar.holidays.length ? `${plan.calendar.holidays.length} holiday${plan.calendar.holidays.length === 1 ? '' : 's'}` : '+ holidays'}
         </button>
       </div>
       <div class="setup-group" role="group" aria-label="People and teams" ref={peopleRef}>
         <span class="label">People</span>
         {plan.lanes.map((l) => (
-          <button key={l.id} class="chip" data-lane={l.id} onClick={(e) => pop.open(e.currentTarget as HTMLElement, l.id)} title="Edit name, team size and availability">
+          <button key={l.id} class="chip" data-lane={l.id} onClick={(e) => pop.open(e.currentTarget as HTMLElement, l.id)} data-tip="Edit name, team size and availability">
             <span class="dot" style={{ background: l.color }} />
             {l.name}
             {l.kind === 'team' && <span class="muted">×{trim(l.size)}</span>}
@@ -221,7 +221,7 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
       <div class="actions">
         <button
           class="btn small ghost"
-          title={usedBy ? `Removes ${lane.name}'s parts from ${usedBy} item${usedBy === 1 ? '' : 's'}` : ''}
+          data-tip={usedBy ? `Removes ${lane.name}'s parts from ${usedBy} item${usedBy === 1 ? '' : 's'}` : ''}
           onClick={() => {
             const next = {
               ...plan,

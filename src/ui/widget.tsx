@@ -212,7 +212,7 @@ function Card({ plan, lens }: { plan: NormalizedPlan; lens: LensId }) {
       <div class="mini" aria-hidden="true">
         {rows.map((r) => (
           <div key={r.id} class="mini-row">
-            <span class="mini-name" title={r.name}>{r.name}</span>
+            <span class="mini-name" data-tip={r.name}>{r.name}</span>
             <div class="mini-track">
               {r.parts
                 .filter((p) => p.start !== undefined && p.end !== undefined)
@@ -306,7 +306,7 @@ function draw() {
             claudeOptions={state.claudeOptions}
             caption={CAPTIONS[state.sync]}
             headerExtra={
-              <button class="btn" title="Back to the summary card" onClick={() => void closeFull()}>
+              <button class="btn" data-tip="Back to the summary card" onClick={() => void closeFull()}>
                 Done
               </button>
             }

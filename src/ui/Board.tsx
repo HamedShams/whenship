@@ -10,11 +10,13 @@ import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
 import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { ItemPanel, WhyDate } from './Details';
-import { Popover, useAnchor } from './Popover';
-import { Avatar, WhoEditor } from './WhoEditor';
+import { Docked, useAnchor } from './Popover';
+import { Avatar, WhoEditor, whoShape } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
+/** The height of the chart's own header (column titles and the calendar scale): rows start right under it. */
+export const HEAD = 53;
 /** Room for a note drawn in place of a bar ("add effort to schedule this"). */
 const NOTE_W = 170;
 /** Room after the last day for its finish label ("ends 19 Mar 2027" and a ±days badge beside it): the calendar runs on under it, so the chart looks full. */
@@ -334,9 +336,31 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const dragged = (id: string) => wrapRef.current?.querySelectorAll<HTMLElement>(`[data-item="${CSS.escape(id)}"]`) ?? [];
   const slotOf = (d: Drag, dy: number) => Math.max(0, Math.min(plan.items.length - 1, Math.round(d.from + dy / ROW)));
   const rowTop = (i: number) => i * ROW;
+  /** Where the chart's visible part ends: the top of the dock when it's stuck to the window's bottom, else the window's. */
+  const visibleBottom = (top: number) => {
+    const dock = document.querySelector('.dock');
+    const dockTop = dock && getComputedStyle(dock).position === 'sticky' ? dock.getBoundingClientRect().top : 0;
+    return dockTop > top ? Math.min(window.innerHeight, dockTop) : window.innerHeight;
+  };
   // A dragged row stays inside the list: it stops at the first and the last place instead of sliding under the chart's
   // header or past the last row.
   const dragTop = (d: Drag, dy: number) => Math.max(0, Math.min(rowTop(plan.items.length - 1), rowTop(d.from) + dy));
+  // Where the dragged row is drawn: at `dragTop`, but never under the chart's header or the dock. The page scrolls to
+  // bring its place into view (below); until it has, and wherever it can't, the row waits at the edge of what is
+  // visible, whole, instead of sliding out of sight.
+  const shownTop = useRef(0);
+  const placeDragged = (d: Drag, dy: number) => {
+    let top = dragTop(d, dy);
+    const head = wrapRef.current?.querySelector('.board-head')?.getBoundingClientRect();
+    const rows = wrapRef.current?.querySelector('.list .rows')?.getBoundingClientRect();
+    if (head && rows) {
+      const lo = head.bottom - rows.top;
+      const hi = Math.max(lo, visibleBottom(head.bottom) - rows.top - ROW);
+      top = Math.max(0, Math.min(rowTop(plan.items.length - 1), Math.max(lo, Math.min(hi, top))));
+    }
+    shownTop.current = top;
+    for (const el of dragged(d.id)) el.style.top = `${top}px`;
+  };
   /** Anything in progress (a drag, a resize, a moved deadline, a press on a bar). */
   const busy = () => !!(dragRef.current || resizeRef.current || dlRef.current || pressed.current);
   // Capturing the pointer keeps moves coming when it leaves the window; the drag works without it (see below).
@@ -352,7 +376,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     hover(null);
     dragRef.current = d;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${dragTop(d, dy)}px`;
+    placeDragged(d, dy);
     setDrag(d);
   };
   // A press while something is still in progress means its release never arrived (it happened outside the window, or
@@ -467,7 +491,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (!d) return;
     const dy = lastY.current + pageY() - d.startY;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${dragTop(d, dy)}px`;
+    placeDragged(d, dy);
     const over = slotOf(d, dy);
     if (over !== d.over) {
       dragRef.current = { ...d, over };
@@ -476,12 +500,6 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   };
   const followRef = useRef(followDrag);
   followRef.current = followDrag;
-  /** Where the chart's visible part ends: the top of the dock when it's stuck to the window's bottom, else the window's. */
-  const visibleBottom = (top: number) => {
-    const dock = document.querySelector('.dock');
-    const dockTop = dock && getComputedStyle(dock).position === 'sticky' ? dock.getBoundingClientRect().top : 0;
-    return dockTop > top ? Math.min(window.innerHeight, dockTop) : window.innerHeight;
-  };
   // While a row is dragged the page scrolls by itself (as in any sortable list): to keep the dragged row whole when
   // it is cut off by the chart's header or the dock, and, with the pointer near either edge, to bring in the rows still
   // out of sight there. It never scrolls past the list. The page scrolling for any other reason (a wheel) keeps the
@@ -606,7 +624,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-handle="${id}"]`)?.focus());
   };
 
-  const topOf = (id: string, i: number) => (drag && drag.id === id ? dragTop(drag, dyRef.current) : rowTop(i));
+  const topOf = (id: string, i: number) => (drag && drag.id === id ? shownTop.current : rowTop(i));
   const year = dayParts(plan.start).year;
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
@@ -632,24 +650,44 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const full = plan.items.length >= LIMITS.items;
 
   const whyLines = why.key ? explain(analysis.current, why.key) : [];
-  // The item's settings open under its row and are as wide as the list from the name to the row's end, so they read
-  // as the row opened up (measured from the row itself; the stylesheet's width stands in before there is a layout).
-  const panelBox = (() => {
-    const input = panel.el;
-    const row = input?.closest<HTMLElement>('.row');
-    if (!input || !row) return { gap: 8, width: undefined, clipped: false };
-    const a = input.getBoundingClientRect();
-    const b = (row.querySelector('.row-del') ?? row).getBoundingClientRect();
-    const width = Math.round(b.right - a.left);
-    return { gap: Math.max(2, Math.round(row.getBoundingClientRect().bottom - a.bottom) + 1), width: width > 200 ? Math.max(300, width) : undefined, clipped: input.scrollWidth > input.clientWidth + 1 || window.innerWidth <= 560 }; // on a phone the settings may cover their row: they always say whose they are
-  })();
-  // Closing the settings from inside them (Escape, Close) hands the focus back to the name they opened from.
+  // What a row opens is docked under it, inside the chart: its top comes from the row's place in the list (so it is
+  // right under its row whatever the row is doing at that moment, and travels with it), its sides from the list's
+  // columns: the settings run from the name to the row's end; the who editor from the Effort column to the row's end
+  // (from the name once a hand-off needs the "Starts" column; a team's "People" column may take it past the list); why
+  // a date is what it is sits under that date, ending where the row ends.
+  const dockTop = (id: string) => HEAD + rowTop((slot.get(id) ?? 0) + 1);
+  const dockBox = (id: string, kind: 'panel' | 'who' | 'why'): { left?: number; width?: number; clipped: boolean } => {
+    const wrap = wrapRef.current;
+    const row = wrap?.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(id)}"]`);
+    const name = row?.querySelector<HTMLElement>('.cell-input');
+    if (!wrap || !row || !name) return { clipped: false };
+    const w = wrap.getBoundingClientRect();
+    const nameLeft = name.getBoundingClientRect().left - w.left;
+    const right = (row.querySelector('.row-del') ?? row).getBoundingClientRect().right - w.left;
+    const clipped = name.scrollWidth > name.clientWidth + 1 || window.innerWidth <= 560; // on a phone the settings always say whose they are
+    if (right - nameLeft < 200) return { clipped }; // no layout to measure: the stylesheet's own sizes
+    const fit = (left: number, width: number) => ({ left: Math.max(8, Math.min(left, w.width - width - 8)), width: Math.min(width, w.width - 16), clipped });
+    if (kind === 'panel') return fit(nameLeft, Math.max(300, right - nameLeft));
+    if (kind === 'why') return fit(right - 300, 300);
+    const shape = whoShape(plan, id);
+    const cell = row.querySelector<HTMLElement>('[data-who]');
+    const cellLeft = cell ? cell.getBoundingClientRect().left - w.left : nameLeft;
+    if (!shape.multi && !shape.team && right - cellLeft >= 260) return fit(cellLeft, right - cellLeft);
+    return fit(nameLeft, Math.max(shape.multi && shape.team ? 500 : 0, right - nameLeft));
+  };
+  // Closing the settings from inside them (Escape, Done) hands the focus back to the name they opened from.
   const closePanel = useCallback(() => {
     const input = panel.el;
     const inside = !!document.activeElement?.closest('.item-pop');
     panel.close();
     if (inside) input?.focus({ preventScroll: true });
   }, [panel.el, panel.close]);
+  // an item that is gone (deleted, undone) takes whatever it had open with it
+  useEffect(() => {
+    if (why.key && !slot.has(why.key)) why.close();
+    if (panel.key && !slot.has(panel.key)) panel.close();
+    if (who.key && !slot.has(who.key)) who.close();
+  });
 
   const height = (order.length + 1) * ROW; // + the empty row for a new item
   // one person, no team: effort is a number in the row, the person is implied
@@ -669,9 +707,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         <div class="list-head">
           <span>#</span>
           <span>Item</span>
-          <span title="Working days of effort, per person">Effort</span>
-          <span title="Calculated from the effort, the order and who is free: when it will be finished">Expected delivery</span>
-          <span title="When it is wanted: you set this">Deadline</span>
+          <span data-tip="Working days of effort, per person">Effort</span>
+          <span data-tip="Calculated from the effort, the order and who is free: when it will be finished">Expected delivery</span>
+          <span data-tip="When it is wanted: you set this">Deadline</span>
           <span />
         </div>
         <div class="tl-clip" ref={clipRef}>
@@ -734,7 +772,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     class="handle"
                     data-handle={it.id}
                     aria-label={`#${i + 1} ${it.name}. Drag to reprioritize, or use the arrow keys.`}
-                    title="Drag to reprioritize (or use ↑/↓)"
+                    data-tip="Drag to reprioritize (or use ↑/↓)"
                     onPointerDown={(e) => onDown(e as unknown as PointerEvent, it.id, plan.items.indexOf(it))}
                     onKeyDown={(e) => onKeyMove(e as unknown as KeyboardEvent, it.id, plan.items.indexOf(it))}
                   >
@@ -744,7 +782,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   <input
                     class="cell-input"
                     value={it.name}
-                    title={it.name}
+                    data-tip={it.name}
                     aria-label="Item name"
                     ref={(el) => {
                       if (el) nameRefs.current.set(it.id, el);
@@ -805,7 +843,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                       onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
                     />
                   </div>
-                  <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
+                  <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} data-tip="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
                     <Icon.trash />
                   </button>
                 </div>
@@ -877,7 +915,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             {offDays.map((s) => (
               <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
             ))}
-            {todayX !== null && <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />}
+            {todayX !== null && <div class="today" data-tip="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />}
             {/* a line under every third row, carried across from the list, so the eye can follow a row to its bar */}
             {Array.from({ length: Math.floor(order.length / 3) }, (_, k) => (
               <div key={k} class="hline" style={{ top: `${(k + 1) * 3 * ROW - 1}px` }} />
@@ -929,27 +967,21 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           }}
         />
       )}
-      {why.el && why.key && whyLines.length > 0 && (
-        <Popover anchor={why.el} onClose={why.close} label="Why this date" className="why-pop" fit="shift" focus={false}>
-          <WhyDate lines={whyLines} blocked={analysis.current.byId.get(why.key)?.status === 'blocked'} />
-        </Popover>
+      {why.key && slot.has(why.key) && whyLines.length > 0 && (
+        <Docked anchor={why.el} top={dockTop(why.key)} {...dockBox(why.key, 'why')} onClose={why.close} label="Why this date" className="why-pop">
+          <WhyDate lines={whyLines} blocked={analysis.current.byId.get(why.key)?.status === 'blocked'} onClose={why.close} />
+        </Docked>
       )}
-      {panel.el && panel.key && (
-        <Popover anchor={panel.el} onClose={closePanel} label="The item's settings" className="item-pop" fit="shift" focus={false} gap={panelBox.gap} width={panelBox.width}>
-          <ItemPanel
-            plan={plan}
-            schedule={analysis.current}
-            id={panel.key}
-            fullName={panelBox.clipped}
-            showWho={!solo}
-            onCommit={onCommit}
-            onEditWho={(el) => who.open(el, panel.key!)}
-            onClose={closePanel}
-          />
-        </Popover>
+      {panel.key && slot.has(panel.key) && (
+        <Docked anchor={panel.el} top={dockTop(panel.key)} {...dockBox(panel.key, 'panel')} onClose={closePanel} label="The item's settings" className="item-pop">
+          <ItemPanel plan={plan} schedule={analysis.current} id={panel.key} fullName={dockBox(panel.key, 'panel').clipped} onCommit={onCommit} onClose={closePanel} />
+        </Docked>
       )}
-      {/* after the item's settings: opened from there, the editor sits on top of them */}
-      {who.el && who.key && <WhoEditor anchor={who.el} plan={plan} itemId={who.key} onClose={who.close} onCommit={onCommit} />}
+      {who.key && slot.has(who.key) && (
+        <Docked anchor={who.el} top={dockTop(who.key)} {...dockBox(who.key, 'who')} onClose={who.close} label="Who works on this item" className={cx('who-pop', whoShape(plan, who.key).multi && 'multi', whoShape(plan, who.key).team && 'team')}>
+          <WhoEditor plan={plan} itemId={who.key} onClose={who.close} onCommit={onCommit} />
+        </Docked>
+      )}
     </div>
   );
 }
@@ -1022,12 +1054,12 @@ function BarRow(props: {
       {props.lensActive && plannedR?.startDate && plannedR.endDate && (
         <div
           class="baseline"
-          title={`Your estimate (as planned): ${formatDay(plannedR.startDate, props.year)} → ${formatDay(plannedR.endDate, props.year)}`}
+          data-tip={`Your estimate (as planned): ${formatDay(plannedR.startDate, props.year)} → ${formatDay(plannedR.endDate, props.year)}`}
           style={{ left: `${x(plannedR.startDate) + 1}px`, width: `${Math.max(4, x(plannedR.endDate) - x(plannedR.startDate) + ppd - 2)}px`, top: `${ROW - 6}px` }}
         />
       )}
       {late && r.endDate && it.deadline && (
-        <div class="late-zone" title="Past the deadline" style={{ left: `${dueEnd}px`, width: `${Math.max(2, endX - dueEnd)}px`, top: '3px', height: `${ROW - 6}px` }} />
+        <div class="late-zone" data-tip="Past the deadline" style={{ left: `${dueEnd}px`, width: `${Math.max(2, endX - dueEnd)}px`, top: '3px', height: `${ROW - 6}px` }} />
       )}
       {parts.map((p, k) => {
         const s = props.shown.calendar.dateAt(p.start!);
@@ -1041,12 +1073,12 @@ function BarRow(props: {
           <div
             key={p.lane}
             class={cx('bar', props.chain && 'chain', rs && 'resizing')}
-            title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}. Drag the right edge to change the effort.`}
+            data-tip={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}. Drag the right edge to change the effort.`}
             style={{ left: `${left}px`, width: `${drawnW}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
           >
             {lateFrom < width && <span class="bar-late" style={{ left: `${lateFrom}px` }} />}
             {rs && <span class="bar-days">{fmtDays(rs.days)}</span>}
-            <span class="bar-edge" onPointerDown={(ev) => props.onEdgeDown(ev as unknown as PointerEvent, p.lane)} title="Drag to change the effort" />
+            <span class="bar-edge" onPointerDown={(ev) => props.onEdgeDown(ev as unknown as PointerEvent, p.lane)} data-tip="Drag to change the effort" />
           </div>
         );
       })}
@@ -1064,7 +1096,7 @@ function BarRow(props: {
       {it.deadline && (
         <div
           class="deadline"
-          title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}. Drag to move it.`}
+          data-tip={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}. Drag to move it.`}
           style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }}
           onPointerDown={(ev) => props.onDiamondDown(ev as unknown as PointerEvent, it.deadline!)}
         />
@@ -1152,12 +1184,12 @@ export function Delivery(p: {
   deadline?: string | undefined;
   year: number;
 }) {
-  if (p.status === 'done') return <span class="pill done" title="Finished: it takes no more time">done</span>;
-  if (p.status === 'blocked') return <span class="pill blocked" title={p.problem}>blocked</span>;
-  if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
+  if (p.status === 'done') return <span class="pill done" data-tip="Finished: it takes no more time">done</span>;
+  if (p.status === 'blocked') return <span class="pill blocked" data-tip={p.problem}>blocked</span>;
+  if (p.status === 'empty') return <span class="pill empty" data-tip="Add who works on it and how many days">no effort</span>;
   if (!p.endDate) return <span class="done-date">—</span>;
   const date = <DueLabel iso={p.endDate} year={p.year} />;
-  if (!p.badge) return <span class="done-date" title={`Finishes ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
+  if (!p.badge) return <span class="done-date" data-tip={`Finishes ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
   const lens = lensById(p.lens);
   const tip =
     p.badge === 'late' && p.base && p.base !== 'late'
@@ -1172,7 +1204,7 @@ export function Delivery(p: {
   const due = p.deadline ? ` · deadline ${formatDay(p.deadline, p.year)}` : '';
   const pct = p.chance !== undefined ? ` · ${chanceLabel(p.chance)} chance as planned` : '';
   return (
-    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Finishes ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
+    <span class={`pill delivery ${p.badge}`} data-tip={tip + due + pct} aria-label={`Finishes ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
       {date}
     </span>
   );
@@ -1184,7 +1216,7 @@ function DueLabel({ iso, year }: { iso: string; year: number }) {
   if (y === year) return <>{formatDay(iso, year)}</>;
   // another year: "14 Jan" with a small raised "'27", on one line and in the same colour
   return (
-    <span class="date-y" title={formatDay(iso, year)}>
+    <span class="date-y" data-tip={formatDay(iso, year)}>
       {formatDay(iso, y)}
       <span class="yr">’{String(y).slice(2)}</span>
     </span>
@@ -1192,28 +1224,30 @@ function DueLabel({ iso, year }: { iso: string; year: number }) {
 }
 
 /**
- * Who works on an item, in a narrow cell: everyone's avatar, always (stacked when there are several), the name when
- * it's one person, a "→" when there's a hand-off, and the days as a pill (one person's, or everyone's together).
- * The tooltip has the whole story ("Martin 1d + Sara 3d after Martin").
+ * Who works on an item, in a narrow cell: avatars (stacked when there are several; two and "+N" from four people on),
+ * the name when it's one person, a "→" when two people hand over, and the days as a pill (one person's, or
+ * everyone's together). The days always fit: with more people it is the avatars and the arrow that give way. The hint
+ * has the whole story ("Martin 1d + Sara 3d after Martin").
  */
 function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'][number]; laneOf: (id: string) => NormalizedPlan['lanes'][number] | undefined; label: string; onOpen: (el: HTMLElement) => void }) {
   const work = item.work;
   const color = (lane: string) => laneOf(lane)?.color ?? '#868e96';
   const name = (lane: string) => laneOf(lane)?.name ?? lane;
   const one = work.length === 1 ? laneOf(work[0]!.lane) : undefined;
+  const shown = work.length > 3 ? 2 : work.length;
   return (
-    <button class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
+    <button class="who-cell" data-who={item.id} data-tip={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
       {work.length ? (
         <>
           <span class={cx('who-people', work.length > 1 && 'who-stack')}>
-            {work.slice(0, 3).map((w) => (
+            {work.slice(0, shown).map((w) => (
               <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
             ))}
-            {work.length > 3 && <span class="more">+{work.length - 3}</span>}
+            {work.length > shown && <span class="more">+{work.length - shown}</span>}
           </span>
           {work.length === 1 && <span class="who-name">{name(work[0]!.lane)}</span>}
           {one?.kind === 'team' && <span class="who-team">×{fmtSize(one.size)}</span>}
-          {work.some((w) => w.after) && (
+          {work.length === 2 && work.some((w) => w.after) && (
             <span class="who-handoff" aria-hidden="true">
               →
             </span>

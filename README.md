@@ -16,7 +16,7 @@
 
 | Where | How |
 |---|---|
-| **Web** | Open [whenship.app](https://whenship.app), the hosted copy. Your plan stays in your browser. |
+| **Web** | Open [whenship.app](https://whenship.app), the hosted copy: pick an example, paste your list, open a file or start from scratch. Your plan stays in your browser, and the next visit opens straight on it (the logo goes back to the home page). |
 | **Your computer** | `npx whenship` opens it in your browser. Nothing leaves your machine. |
 | **Offline file** | Download `whenship.html` (from any running whenship, at `/whenship.html`) and double-click it. |
 | **Claude** | Add the connector or the desktop extension ([two ways](#use-it-in-claude)) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
@@ -132,10 +132,12 @@ A small key under the chart repeats this, and hovering any mark gives its dates.
 | Change the effort | With one person in the plan, type the days into the row. With several people or a team, click the Effort cell: who does how many days, and who starts after whom. Or drag a bar's right edge. |
 | Set or move a deadline | Click the Deadline cell: a small calendar opens (you can also type a date, "7 Dec"). Or drag the ◆ on the chart. |
 | See why a date is what it is | Click the date under Expected delivery: a short note lists the reasons in plain words (who it waits for, what it starts after, how far it is from its deadline). |
-| Open an item's settings | Click its name. A panel opens under the row with everyone on the item, *can't start before*, *starts after*, a note, and **Mark done** (a finished item takes no more time, and whatever waited for it can start). |
+| Open an item's settings | Click its name: *can't start before*, *starts after*, a note (up to 120 characters), and **Mark as done** (a finished item takes no more time, and whatever waited for it can start). |
 | Try an option | The dock under the chart holds up to three options, each an exact re-plan. Hover one to see it on the chart as dashed bars, Apply to keep it, ⌘/Ctrl Z to take it back. |
 | Change the scale | The chart fits the whole plan to the width it has. The Zoom menu offers fixed day, week and month scales. |
 | See what sets the end date | Click *what sets the end date?* next to the headline: the chain of work behind the last finish lights up. |
+
+What a row opens (its settings, who works on it, why its date) is docked right under that row and stays there: it scrolls with the page, and the page makes room below the last row for it. The options dock stays on top, so near the bottom of the window you scroll to see the rest.
 
 Undo is ⌘/Ctrl Z, redo ⇧⌘Z (Ctrl Y). Export gives the plan file, Excel, CSV, an image of the chart (with the same columns and key) and a Markdown summary.
 

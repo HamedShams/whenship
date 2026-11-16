@@ -7,7 +7,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App, type Host } from '../../src/ui/App';
-import { autoScrollSpeed, monthLabel, pixelsPerDay, ROW } from '../../src/ui/Board';
+import { autoScrollSpeed, HEAD, monthLabel, pixelsPerDay, ROW } from '../../src/ui/Board';
 import { validatePlan } from '../../src/engine';
 import { dayParts, todayLocal } from '../../src/engine/dates';
 import { fitPpd } from '../../src/io/view';
@@ -105,10 +105,11 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(cell.getAttribute('aria-expanded')).toBe('false');
     await act(() => cell.click());
     expect(cell.getAttribute('aria-expanded')).toBe('true');
-    const why = root.querySelector('.popover.why-pop .why')!;
+    const why = root.querySelector('.docked.why-pop .why')!;
     expect(why.querySelector('h4')!.textContent).toBe('Why this date');
     expect(why.querySelectorAll('li').length).toBeGreaterThan(0);
-    expect(why.querySelector('input, select, button')).toBeNull(); // no settings in it
+    expect(why.querySelector('input, select')).toBeNull(); // no settings in it
+    expect([...why.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Close']); // only its own ×
     expect(document.querySelector('.item-panel')).toBeNull();
     await act(() => cell.click()); // the same date again closes it
     expect(document.querySelector('.why')).toBeNull();
@@ -120,11 +121,11 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect([name.getAttribute('aria-haspopup'), name.getAttribute('aria-expanded')]).toEqual(['dialog', 'false']);
     await act(() => name.click());
     expect(name.getAttribute('aria-expanded')).toBe('true');
-    const panel = root.querySelector('.popover.item-pop .item-panel')!;
+    const panel = root.querySelector('.docked.item-pop .item-panel')!;
     expect(dock.querySelector('.item-panel')).toBeNull(); // not in the dock
-    expect([...panel.querySelectorAll('.ip-label')].map((l) => l.textContent)).toEqual(['Who', "Can't start before", 'Starts after', 'Note']);
-    expect(panel.textContent).not.toMatch(/Delivery|chance on time|Deadline|Why this date/); // the row above has the dates
-    expect(panel.querySelector('.ip-who')!.textContent).toMatch(/Sara\s*5 days/); // everyone on it, by full name
+    expect([...panel.querySelectorAll('.ip-label')].map((l) => l.textContent)).toEqual(["Can't start before", 'Starts after', 'Note']);
+    expect(panel.textContent).not.toMatch(/Delivery|chance on time|Deadline|Why this date|Sara/); // the row above has the dates and who works on it
+    expect([...panel.querySelectorAll('.ip-foot .btn')].map((b) => [b.textContent!.trim(), b.classList.contains('primary')])).toEqual([['Mark as done', false], ['Done', true]]);
     expect(panel.querySelector('.ip-control .ip-hint')!.textContent).toMatch(/^starts \d+ \w{3}/); // what the setting leads to
     expect(panel.querySelector('.ip-name')).toBeNull(); // the row shows the whole name: it isn't repeated
     const css = readFileSync('src/ui/styles.css', 'utf8');
@@ -150,19 +151,59 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(root.querySelector('.item-panel')).toBeNull();
   });
 
-  it('the settings are as wide as the list from the name to the end of the row, and sit right under the row', async () => {
+  it('what a row opens is docked under it, inside the chart: placed from the row\'s place in the list, sized from its columns', async () => {
     const { root } = mount();
+    const wrap = root.querySelector('.board-wrap') as HTMLElement;
     const row = rows(root)[1]!;
     const name = row.querySelector('.cell-input') as HTMLInputElement;
     const rect = (el: Element, r: Partial<DOMRect>) => vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(r as DOMRect);
-    rect(row, { top: 200, bottom: 244, left: 0, right: 484 });
-    rect(name, { top: 207, bottom: 237, left: 37, right: 190 });
-    rect(row.querySelector('.row-del')!, { top: 211, bottom: 233, left: 455, right: 477 });
+    rect(wrap, { top: 100, left: 0, right: 1200, width: 1200 });
+    // the row's own box is wrong on purpose (as it is while a row is still sliding into its place): it is not what is used
+    rect(row, { top: 900, bottom: 944, left: 0, right: 484 });
+    rect(name, { top: 907, bottom: 937, left: 37, right: 190 });
+    rect(row.querySelector('.who-cell')!, { top: 907, bottom: 937, left: 195, right: 307 });
+    rect(row.querySelector('.row-del')!, { top: 911, bottom: 933, left: 455, right: 477 });
     await act(() => name.click());
-    const pop = root.querySelector('.popover.item-pop') as HTMLElement;
-    expect(pop.style.width).toBe('440px'); // 477 − 37: from the name's left edge to the delete button's right edge
-    expect(pop.style.left).toBe('37px');
-    expect(pop.style.top).toBe('245px'); // a pixel under the row
+    const pop = () => root.querySelector('.docked') as HTMLElement;
+    expect(pop().parentElement).toBe(wrap); // part of the chart: it scrolls with the page, with no script moving it
+    expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '37px', '440px']); // under the second row; name → delete
+    expect(wrap.style.minHeight).toBe(`${HEAD + 2 * ROW + 12}px`); // the chart keeps room for it under its last row
+    // a press elsewhere closes what is open; here it opens who works on it: from the Effort column to the row's end
+    const press = (el: Element) => act(() => (el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), (el as HTMLElement).click()));
+    await press(row.querySelector('.who-cell')!);
+    expect(pop().classList.contains('who-pop')).toBe(true);
+    expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '195px', '282px']);
+    // why its date: under the date, ending where the row ends
+    await press(row.querySelector('button.status')!);
+    expect(root.querySelectorAll('.docked')).toHaveLength(1); // one thing open at a time
+    expect(pop().classList.contains('why-pop')).toBe(true);
+    expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '177px', '300px']);
+    await act(() => (pop().querySelector('.why-close') as HTMLButtonElement).click());
+    expect(root.querySelector('.docked')).toBeNull();
+    expect(wrap.style.minHeight).toBe(''); // and gives the room back
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    expect(css).toMatch(/\n\.docked \{ position: absolute; z-index: 18;/); // under the chart's header (20) and the dock (25), over the rows
+    expect(css).toMatch(/\n\.board-head \{[^}]*z-index: 20;[^}]*height: 53px;/);
+    expect(HEAD).toBe(53);
+    expect(css).not.toMatch(/\.docked[^{]*\{[^}]*(max-height|overflow-y)/); // it never scrolls inside
+  });
+
+  it('what a row has open travels with it when the row moves, and goes when the item goes', async () => {
+    const { root } = mount();
+    const id = rows(root)[2]!.dataset.item!;
+    await act(() => (rows(root)[2]!.querySelector('.cell-input') as HTMLInputElement).click());
+    const pop = () => root.querySelector('.docked.item-pop') as HTMLElement | null;
+    expect(pop()!.style.top).toBe(`${HEAD + 3 * ROW}px`);
+    // the row above is finished with a key (no press outside): the list reorders under the open settings
+    const handle = root.querySelector(`[data-handle="${id}"]`) as HTMLElement;
+    await act(() => void handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })));
+    expect(names(root)[1]).toBe('Research for Brightside');
+    expect(pop()!.style.top).toBe(`${HEAD + 2 * ROW}px`); // still right under its row
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true }))); // undo puts the row back
+    expect(pop()!.style.top).toBe(`${HEAD + 3 * ROW}px`);
+    await act(() => (root.querySelector(`.row[data-item="${id}"] .row-del`) as HTMLElement).click());
+    await act(() => (document.querySelector('.dialog.confirm .btn.danger') as HTMLButtonElement).click());
+    expect(pop()).toBeNull();
   });
 
   it('a date with nothing to explain opens nothing: an item with no effort yet, a finished one', async () => {
@@ -179,29 +220,60 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(rows(root)[0]!.querySelector('button.status')).toBeNull();
   });
 
-  it('everyone on an item is listed by name in its settings, and a click there opens the editor on top; one person alone is not listed', async () => {
-    const { root } = mount();
-    await act(() => (root.querySelector('.row[data-item="revise-lumen-proposal"] .cell-input') as HTMLInputElement).click());
-    const who = root.querySelector('.item-panel .ip-who') as HTMLButtonElement;
-    expect([...who.querySelectorAll('.ip-person')].map((x) => x.textContent!.replace(/\s+/g, ' ').trim())).toEqual(['MAMartin1 day', 'SASara3 daysafter Martin']);
-    await act(() => who.click());
-    const pops = [...root.querySelectorAll('.popover')];
-    expect(pops.map((x) => x.classList.contains('who-pop'))).toEqual([false, true]); // the editor comes after the settings in the page: on top
-    await act(() => void (root.querySelector('.who-pop') as HTMLElement).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
-    expect(root.querySelector('.item-panel')).not.toBeNull(); // a press in the editor is not a press outside the settings
-    const solo = mount({ initialPlan: validatePlan({ title: 'Mine', start: '2026-11-02', lanes: [{ name: 'Me' }], items: [{ name: 'One', who: 'Me', days: 2 }] }, { today }).plan });
-    await act(() => (solo.root.querySelector('.row .cell-input') as HTMLInputElement).click());
-    expect([...solo.root.querySelectorAll('.item-panel .ip-label')].map((l) => l.textContent)).toEqual(["Can't start before", 'Starts after', 'Note']);
+  it('who works on an item opens from its Effort cell, docked like the settings; it grows as people are added and never scrolls', async () => {
+    const plan = validatePlan(
+      { start: today, lanes: ['Ana', 'Ben', 'Cy', 'Dee'], items: [{ name: 'Relay', work: [{ lane: 'Ana', days: 2 }] }, { name: 'Other', who: 'Ben', days: 1 }] },
+      { today },
+    ).plan;
+    const { root } = mount({ initialPlan: plan });
+    const cell = () => root.querySelector('.row[data-item="relay"] .who-cell') as HTMLElement;
+    await act(() => cell().click());
+    const pop = () => root.querySelector('.docked.who-pop') as HTMLElement;
+    expect(pop().querySelector('h4')!.textContent).toBe('Who works on this item'); // short: the row says which
+    expect(pop().style.top).toBe(`${HEAD + ROW}px`);
+    expect([pop().classList.contains('multi'), pop().classList.contains('team')]).toEqual([false, false]);
+    const add = async (lane: string) => {
+      const sel = pop().querySelector('select.add-who') as HTMLSelectElement;
+      expect(sel.options[0]!.textContent).toBe('+ Assign to…');
+      sel.value = lane;
+      await act(() => void sel.dispatchEvent(new Event('change', { bubbles: true })));
+    };
+    await add('ben');
+    expect(pop().classList.contains('multi')).toBe(true); // a second person: room for the "Starts" column
+    await add('cy');
+    await add('dee');
+    expect(pop().querySelectorAll('.who-row:not(.who-head)')).toHaveLength(4);
+    expect(pop().querySelector('select.add-who')).toBeNull(); // everyone is on it
+    // the cell: two faces and "+2", no arrow, and the days whole
+    expect(cell().querySelectorAll('.avatar')).toHaveLength(2);
+    expect(cell().querySelector('.more')!.textContent).toBe('+2');
+    expect(cell().querySelector('.who-handoff')).toBeNull();
+    expect(cell().querySelector('.who-days')!.textContent).toBe('5d');
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    expect(css).toMatch(/\.who-people \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/); // it is the faces that give way, never the days
+    expect(css).toMatch(/\.who-days \{ flex: none;/);
+    await act(() => ([...pop().querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Done') as HTMLButtonElement).click());
+    expect(root.querySelector('.docked')).toBeNull();
   });
 
   it('the note keeps its spaces as typed (it is not re-validated on every keystroke), and what is typed never looks like the placeholder', async () => {
     const { root, changes } = mount();
     await act(() => (rows(root)[0]!.querySelector('.cell-input') as HTMLInputElement).click());
-    const note = root.querySelector('.item-panel .ip-input') as HTMLInputElement;
+    const note = root.querySelector('.item-panel textarea.ip-input') as HTMLTextAreaElement;
+    expect([Number(note.getAttribute('rows')), note.maxLength]).toEqual([2, 120]); // two lines to write in, 120 characters
+    const count = () => root.querySelector('.item-panel .ip-count')!.textContent;
+    expect(count()).toBe('0/120');
     note.value = 'call Acme ';
     await act(() => void note.dispatchEvent(new Event('input', { bubbles: true })));
     expect(note.value).toBe('call Acme ');
+    expect(count()).toBe('10/120');
     expect((changes.at(-1) as { items: { note?: string }[] }).items[0]!.note).toBe('call Acme ');
+    note.value = 'one\ntwo'; // a note is one paragraph: a pasted line break becomes a space, and Enter adds none
+    await act(() => void note.dispatchEvent(new Event('input', { bubbles: true })));
+    expect((changes.at(-1) as { items: { note?: string }[] }).items[0]!.note).toBe('one two');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    note.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
     note.value = '';
     await act(() => void note.dispatchEvent(new Event('input', { bubbles: true })));
     expect((changes.at(-1) as { items: { note?: string }[] }).items[0]!.note).toBeUndefined();
@@ -209,6 +281,7 @@ describe('the dock holds the options; a row answers for itself', () => {
     // rule colours (a `.note` class once turned what was typed grey too).
     const css = readFileSync('src/ui/styles.css', 'utf8');
     expect(css).toMatch(/\.ip-input, \.ip-select \{[^}]*color: var\(--fg\);/);
+    expect(css).toMatch(/\.ip-count \{ font-size: 11px; color: var\(--fg3\);/); // the count is quiet
     expect(css).toMatch(/input::placeholder, textarea::placeholder \{ color: var\(--fg3\); opacity: 1; \}/);
     expect(note.closest('.note')).toBeNull();
   });
@@ -217,13 +290,13 @@ describe('the dock holds the options; a row answers for itself', () => {
     const { root } = mount();
     await act(() => (rows(root)[0]!.querySelector('.cell-input') as HTMLInputElement).click());
     const toggle = () => root.querySelector('.item-panel .done-toggle') as HTMLButtonElement;
-    expect([toggle().textContent!.trim(), toggle().getAttribute('aria-pressed')]).toEqual(['Mark done', 'false']);
+    expect([toggle().textContent!.trim(), toggle().getAttribute('aria-pressed')]).toEqual(['Mark as done', 'false']);
     await act(() => toggle().click());
     expect(rows(root)[0]!.classList.contains('done')).toBe(true);
     expect(rows(root)[0]!.querySelector('.pill.done')!.textContent).toBe('done');
     expect(root.querySelector('.bars.done .done-bar')).not.toBeNull();
     // the state is said in words, and the way back is a button that says what it does
-    expect(root.querySelector('.item-panel .ip-foot .ip-hint')!.textContent).toBe('Done: it takes no more time');
+    expect(root.querySelector('.item-panel .ip-foot .ip-hint')!.textContent).toBe('Finished: it takes no more time');
     expect([toggle().textContent!.trim(), toggle().getAttribute('aria-pressed'), toggle().classList.contains('on')]).toEqual(['Reopen', 'true', true]);
     await act(() => toggle().click());
     expect(rows(root)[0]!.classList.contains('done')).toBe(false);
@@ -347,6 +420,25 @@ describe('a drag is always the row that was pressed, and always ends', () => {
     scrollBy.mockRestore();
   });
 
+  it('a dragged row is never drawn under the chart header or the dock, even before the page has scrolled (or where it cannot)', () => {
+    const { root } = mount();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {}); // a page that does not scroll
+    const rect = (el: Element, r: Partial<DOMRect>) => vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(r as DOMRect);
+    rect(root.querySelector('.board-head')!, { top: 40, bottom: 100 });
+    rect(root.querySelector('.list .rows')!, { top: 40, bottom: 400 }); // the first row and a bit of the second are under the header
+    const row = rows(root)[4]!;
+    ptr('pointerdown', handle(root, 4), 10, 300);
+    ptr('pointermove', document.body, 10, 300 - 6 * ROW); // dragged to the very top
+    expect(row.style.top).toBe('60px'); // drawn at the header's edge (100 − 40), whole, not at 0 where it would be hidden
+    expect(root.querySelector('.row.dragging .handle')!.getAttribute('aria-label')).toMatch(/^#1 /); // and it is going to the first place
+    ptr('pointermove', document.body, 10, 300 + 20 * ROW); // and to the very bottom, with the window ending at 768
+    expect(parseFloat(row.style.top)).toBeLessThanOrEqual(768 - 40 - ROW);
+    ptr('pointermove', document.body, 10, 300 - 6 * ROW);
+    ptr('pointerup', document.body, 10, 300 - 6 * ROW);
+    expect(names(root)[0]).toBe('Appeal for Kestrel'); // dropped into the first place all the same
+    scrollBy.mockRestore();
+  });
+
   it('a move with no button down ends a drag whose release was missed: the row is dropped where it stood', () => {
     const { root } = mount();
     ptr('pointerdown', handle(root, 0), 10, 300);
@@ -388,6 +480,39 @@ describe('a drag is always the row that was pressed, and always ends', () => {
     ptr('pointerdown', edge(), 300, 60);
     ptr('pointerup', document.body, 300, 60);
     expect((root.querySelector('.row.sel') as HTMLElement).dataset.item).toBe('appeal-for-northwind');
+  });
+});
+
+describe('hints and cursors', () => {
+  it('hints are our own (a native tooltip turns the pointing hand back into an arrow on a Mac): shown after a rest, gone on a press', async () => {
+    const { root } = mount();
+    expect(root.querySelectorAll('[title]')).toHaveLength(0); // no native tooltip anywhere
+    for (const file of ['Board', 'Details', 'Header', 'Setup', 'Summary', 'WhoEditor', 'Welcome', 'Landing', 'App', 'widget']) {
+      const src = readFileSync(`src/ui/${file}.tsx`, 'utf8').replace(/<(TextDialog|ConfirmDialog)[^>]*>/gs, '');
+      expect(src.match(/[\s{]title=/g) ?? [], file).toEqual([]);
+    }
+    const handle = root.querySelector('.row .handle') as HTMLElement;
+    expect(handle.getAttribute('data-tip')).toMatch(/Drag to reprioritize/);
+    await act(() => void handle.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    expect(document.querySelector('.tip')).toBeNull(); // not at once
+    await act(() => new Promise((r) => setTimeout(r, 650)));
+    expect(document.querySelector('.tip')!.textContent).toMatch(/Drag to reprioritize/);
+    expect(document.querySelector('.tip')!.getAttribute('role')).toBe('tooltip');
+    await act(() => void window.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    expect(document.querySelector('.tip')).toBeNull();
+    // moving on to something with no hint clears a pending one
+    await act(() => void handle.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await act(() => void root.querySelector('.timeline')!.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await act(() => new Promise((r) => setTimeout(r, 650)));
+    expect(document.querySelector('.tip')).toBeNull();
+  });
+
+  it('everything that can be clicked has the pointing hand; text fields keep the text cursor', () => {
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    expect(css).toMatch(/\nbutton, select, summary, label\[for\], \[role='button'\], a\[href\] \{ cursor: pointer; \}/);
+    expect(css).toMatch(/\nbutton:disabled \{ cursor: default; \}/);
+    expect(css).toMatch(/\.date-btn \{ cursor: pointer; \}/);
+    expect(css).not.toMatch(/\.cell-input[^{]*\{[^}]*cursor: pointer/);
   });
 });
 
@@ -465,7 +590,7 @@ describe('hand-offs in the who editor', () => {
   const openWho = async (root: Element, name: string) => {
     const row = rows(root).find((r) => (r.querySelector('.cell-input') as HTMLInputElement).value === name)!;
     await act(() => (row.querySelector('.who-cell') as HTMLButtonElement).click());
-    return document.querySelector('.popover.who-pop')!;
+    return document.querySelector('.docked.who-pop')!;
   };
   const choose = (pop: Element, who: string, after: string) =>
     act(() => {
@@ -580,7 +705,7 @@ describe('Enter in effort, the who cell, the item cap, the export menu, the imag
     expect(two.querySelector('.who-name')).toBeNull();
     expect(two.querySelector('.who-handoff')).not.toBeNull();
     expect(two.querySelector('.who-days')!.textContent).toBe('4d'); // everyone's days together
-    expect(two.getAttribute('title')).toMatch(/Martin 1d \+ Sara 3d after Martin/); // the whole story on hover
+    expect(two.getAttribute('data-tip')).toMatch(/Martin 1d \+ Sara 3d after Martin/); // the whole story on hover
   });
 
   it('a plan holds 40 items: the empty row then says so, and nothing more is created', async () => {

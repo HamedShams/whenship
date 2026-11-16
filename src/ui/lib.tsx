@@ -303,3 +303,52 @@ export function DateButton(props: { value: string | undefined; onChange: (v: str
     </span>
   );
 }
+
+/**
+ * Our own hints (`data-tip` on an element), shown after a short rest of the pointer. Native tooltips (`title`) are not
+ * used anywhere: on macOS the system swaps the pointing-hand cursor back to an arrow the moment one shows, so every
+ * clickable thing with a hint stopped looking clickable after half a second.
+ */
+let tipsInstalled = false;
+export function installTips() {
+  if (tipsInstalled || typeof document === 'undefined') return;
+  tipsInstalled = true;
+  let tip: HTMLElement | null = null;
+  let target: Element | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hide = () => {
+    clearTimeout(timer);
+    target = null;
+    tip?.remove();
+    tip = null;
+  };
+  const show = (el: Element) => {
+    const text = el.getAttribute('data-tip');
+    if (!text || !el.isConnected) return;
+    tip = document.createElement('div');
+    tip.className = 'tip';
+    tip.setAttribute('role', 'tooltip');
+    tip.textContent = text;
+    document.body.appendChild(tip);
+    const a = el.getBoundingClientRect();
+    const b = tip.getBoundingClientRect();
+    const below = a.bottom + 8;
+    tip.style.left = `${Math.max(6, Math.min(a.left + a.width / 2 - b.width / 2, window.innerWidth - b.width - 6))}px`;
+    tip.style.top = `${below + b.height > window.innerHeight - 6 ? Math.max(6, a.top - b.height - 8) : below}px`;
+  };
+  document.addEventListener(
+    'pointerover',
+    (e) => {
+      if ((e as PointerEvent).pointerType === 'touch') return;
+      const el = e.target instanceof Element ? e.target.closest('[data-tip]') : null;
+      if (el === target) return;
+      hide();
+      if (!el) return;
+      target = el;
+      timer = setTimeout(() => show(el), 600);
+    },
+    true,
+  );
+  for (const type of ['pointerdown', 'keydown', 'scroll', 'wheel', 'blur']) window.addEventListener(type, hide, true);
+  document.documentElement.addEventListener('pointerleave', hide);
+}

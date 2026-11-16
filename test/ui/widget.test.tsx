@@ -29,7 +29,7 @@ async function until(check: () => unknown, ms = 3000) {
   }
 }
 const button = (root: ParentNode, label: string) => [...root.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(label));
-const saturday = (root: ParentNode) => root.querySelector<HTMLButtonElement>('.daychip[title^="Saturday"]')!;
+const saturday = (root: ParentNode) => root.querySelector<HTMLButtonElement>('.daychip[data-tip^="Saturday"]')!;
 
 /** Starts a fresh widget (a fresh module, as each chart is its own iframe) inside a test host. */
 async function start(o: Options = {}) {

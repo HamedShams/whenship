@@ -177,6 +177,25 @@ Model human attention as the constrained lane, with the review as a hand-off:
 
 Good answer shape: "Lina's review queue sets the last date, so faster drafting barely helps." Then test the real levers: more review time (`setLane` availability), a second reviewer (`addLane`), or smaller changes (`setEffort` on review).
 
+## When the chart asks you for options
+
+The chart has an "Ask Claude for better options" button. Pressing it posts a message asking for up to two better options than the engine's own list, and the chart's current plan arrives in your context. Answer like this, quickly: the user is looking at the chart, waiting.
+
+1. Think past the engine's menu: move work between people (`setEffort` to 0 on one lane and the days on another), change who waits for whom, trim a part, push a date, add a person, or combine two small moves.
+2. Check each idea with `what_if`, at most four calls in all (use `alternative` for ideas that need a whole changed plan, such as splitting an item). Keep the ones that meet more deadlines or make the plan sturdier, and note what each one costs elsewhere.
+3. Call `show_plan` with the plan **unchanged** and your best one or two ideas in `suggestions`. Each needs a short imperative title and the `changes` that make it. The chart shows at most three cards, so send two at most; an idea that needs an `alternative` plan can't be a card: describe it in one line instead, with the `what_if` numbers.
+4. Reply in at most three lines, one per option: what it changes, what it gains, what it costs. The cards carry the exact effects. Don't offer a spreadsheet, a report or a file: the chart exports itself, and the user is choosing between options, not reading a document.
+
+```jsonc
+{
+  "plan": { "title": "…the current plan, exactly as it is…", "lanes": [{ "name": "Sara" }, { "name": "Martin" }], "items": [{ "name": "Research for Helix", "who": "Sara", "days": 5 }, { "name": "Quick fix for Acme", "who": "Sara", "days": 1 }] },
+  "suggestions": [
+    { "title": "Let Martin take the Helix research", "changes": [{ "op": "setEffort", "item": "Research for Helix", "lane": "Sara", "days": 0 }, { "op": "setEffort", "item": "Research for Helix", "lane": "Martin", "days": 5 }] },
+    { "title": "Mark the Acme quick fix done", "changes": [{ "op": "setDone", "item": "Quick fix for Acme", "done": true }] }
+  ]
+}
+```
+
 ## Phrases that work
 
 - "As planned, X lands on <date>. If it runs long the way work usually does, expect <likely date>; <safe-bet date> is a date you can promise."

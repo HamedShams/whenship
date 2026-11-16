@@ -2,12 +2,14 @@
 
 **When will it ship, honestly?** A tiny planner for small teams. List the work, who does it and roughly how long it takes; whenship draws the timeline, tells you which deadlines will slip and why, and lets you drag things around until the plan works. It runs in the browser, offline, and inside Claude. It's open source: use the hosted copy at [whenship.app](https://whenship.app), or run your own with one command, as an offline file or on your own server. Every copy works the same.
 
-![A whenship plan: two people, seven client deliverables, one deadline late and four tight](docs/example.svg)
+![whenship showing a mobile app launch: four people, eight items, one deadline late and four tight, with three options under the chart](docs/screenshot.png)
+
+*The plan in the picture is [docs/example.whenship.json](docs/example.whenship.json): four people, eight items, a launch date. One promise is two days late, and the first option under the chart fixes it for free.*
 
 - **Real dates, not guesses.** A day-by-day scheduler handles priorities, part-time people, teams, hand-offs, dependencies, waiting on clients, weekends and holidays.
-- **Live what-if.** Drag an item (by its handle or its bar) to reprioritise and watch every date move before you drop. Change effort, people or working days and the whole plan updates instantly; ⌘/Ctrl Z undoes, ⇧⌘Z (Ctrl Y) redoes.
+- **Live what-if.** Drag an item up or down to reprioritise, drag a bar's edge to change its effort, drag a deadline: every date moves before you let go. ⌘/Ctrl Z undoes.
 - **Honest risk.** Every deadline gets a badge (safe, likely, tight, late) and a rough chance, from a forecast scale that never touches your own numbers.
-- **Options, not just warnings.** whenship searches reorders, deferrals, more time and extra people, and shows exactly which deadlines each one saves.
+- **Options, not just warnings.** whenship searches reorders, deferrals, more time and extra people, and shows exactly which deadlines each one saves. Hover an option to see it on the chart before you apply it.
 - **No sign-up, nothing stored.** Your plan lives in your browser, your files, or a link that carries the whole plan.
 
 ## Use it
@@ -17,18 +19,44 @@
 | **Web** | Open [whenship.app](https://whenship.app), the hosted copy. Your plan stays in your browser. |
 | **Your computer** | `npx whenship` opens it in your browser. Nothing leaves your machine. |
 | **Offline file** | Download `whenship.html` (from any running whenship, at `/whenship.html`) and double-click it. |
-| **Claude** | Add the connector (below) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
+| **Claude** | Add the connector or the desktop extension ([two ways](#use-it-in-claude)) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
 | **Your own server** | One small Node service, no database, no Docker. See [Self-host](#self-host). |
 
 The `npx whenship` commands below need the npm package, which isn't published yet. Until it is, run the same thing from a clone: `npm ci && npm run build`, then `node dist/cli.js` (add `--stdio` for the MCP server).
 
-Bring your plan in any shape: paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or a saved plan file. Export it as a plan file (JSON), Excel with a Gantt sheet, PNG or SVG (at the chart's zoom), a calendar (`.ics`), CSV or Markdown, or copy a link with the whole plan inside it. Links keep the view too: the forecast lens and the Days/Weeks/Months zoom, which the website also remembers between visits.
+**Bring your plan in any shape:** paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or open a saved plan file.
+
+**Take it out again:** a plan file (JSON), Excel with a Gantt sheet, CSV, a PNG of the chart, a Markdown summary, or a link with the whole plan inside it. Links keep the view too (the forecast lens and the zoom), and the website remembers both between visits.
 
 ## Use it in Claude
 
-whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview): Claude calls its engine for the dates and shows the interactive chart right in the conversation. Edit the chart and Claude sees your changes automatically, with no "send" button.
+whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overview): Claude calls its engine for the dates and shows the interactive chart right in the conversation. Edit the chart and Claude sees your changes automatically, with no "send" button. Then ask something like: *"Sara has these five client deliverables… will she make the deadlines?"*
 
-**Connector (claude.ai, Claude Desktop, mobile).** Settings → Connectors → Add custom connector, and enter the address of a whenship server followed by `/mcp`: `https://whenship.app/mcp` for the hosted copy, or your own (see [Self-host](#self-host)). Prefer nothing leaving your computer? Use one of the local options below.
+There are two ways to add it. Both show the same chart.
+
+### Option 1: the connector (online, nothing to install)
+
+Works in claude.ai, Claude Desktop and the mobile apps.
+
+1. In Claude, open **Settings → Connectors**.
+2. Choose **Add custom connector**.
+3. Name it `whenship` and enter the address `https://whenship.app/mcp` (or your own server's address followed by `/mcp`, see [Self-host](#self-host)).
+4. Save. In a chat, make sure whenship is switched on in the tools menu, then ask your question.
+
+On a Team or Enterprise plan, an owner adds it once for everyone under **Organization settings → Connectors**.
+
+### Option 2: the Claude Desktop extension (a file, runs on your computer)
+
+Nothing leaves your machine: the engine runs locally with Claude Desktop's built-in Node.
+
+1. Download `whenship.mcpb` from the [latest release](https://github.com/HamedShams/whenship/releases/latest).
+2. In Claude Desktop, open **Settings → Extensions**.
+3. Choose **Install extension** and pick the file (double-clicking the file also works).
+4. Confirm the install, then ask your question in a new chat.
+
+To update, install the newer file over the old one. To build the file yourself: `npm run build && npm run build:mcpb` (set `WHENSHIP_PUBLIC_URL` to choose where "Open in browser" and share links go).
+
+### Other clients
 
 **Claude Code**
 
@@ -36,15 +64,15 @@ whenship is an [MCP App](https://modelcontextprotocol.io/extensions/apps/overvie
 claude mcp add whenship -- npx -y whenship --stdio
 ```
 
-**Claude Desktop extension.** Download `whenship.mcpb` from the [latest release](https://github.com/HamedShams/whenship/releases/latest), then in Claude Desktop open Settings → Extensions → Install extension and pick the file (or double-click it). It runs on your computer with Desktop's built-in Node and shows the same interactive chart. To update, install the newer file over the old one. To build it yourself: `npm run build && npm run build:mcpb` (set `WHENSHIP_PUBLIC_URL` to choose where "Open in browser" and share links go).
-
-**Claude Desktop, Cursor, VS Code and other MCP clients (local)**
+**Cursor, VS Code and other MCP clients (local)**
 
 ```json
 { "mcpServers": { "whenship": { "command": "npx", "args": ["-y", "whenship", "--stdio"] } } }
 ```
 
-**Skills plugin (recommended with the connector).** It teaches Claude to always use the engine instead of estimating dates itself, and how to turn the results into advice:
+### Skills plugin (recommended with either option)
+
+It teaches Claude to always use the engine instead of estimating dates itself, and how to turn the results into advice:
 
 ```bash
 claude plugin marketplace add HamedShams/whenship
@@ -54,11 +82,13 @@ claude plugin marketplace add HamedShams/whenship
 claude plugin install whenship@whenship
 ```
 
-The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/SKILL.md) (workflow and plan format) and [plugin/skills/whenship-insights](plugin/skills/whenship-insights/SKILL.md) (recommendations, with worked examples for consultancies, product squads, solo founders, agencies, teams with a Sunday–Thursday week, and teams working with AI agents).
+The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/SKILL.md) (workflow and plan format) and [plugin/skills/whenship-insights](plugin/skills/whenship-insights/SKILL.md) (recommendations, with worked examples for consultancies, product squads, solo founders, agencies, teams with a Sunday–Thursday week, and teams working with AI agents). The plugin holds skills only; the chart comes from the connector or the extension.
+
+### What Claude gets
 
 Tools: `show_plan` (schedule and chart), `what_if` (compare a list of changes, or a whole alternative version of the plan), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
 
-In the chart, **Ask Claude for better options** posts a request to the chat. Claude then tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and answers with the best two or three and their exact effects.
+In the chart, **Ask Claude for better options** (a button above the options) posts a request to the chat. Claude tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and sends its best one or two back through `show_plan`: they appear in the chart as options with their exact effects, in place of the lowest-ranked built-in ones, so the chart never shows more than three. Claude's reply stays short, and nothing leaves the chart: it exports itself.
 
 ## How the forecast works
 
@@ -80,6 +110,8 @@ The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence versi
 
 ## Reading the chart
 
+The list on the left has one row per item, in priority order: `# · Item · Effort · Expected delivery · Deadline`. The expected delivery is what whenship works out from the effort, so it sits right beside it; the deadline is what you set, and comes last as the yardstick.
+
 | Mark | Meaning |
 |---|---|
 | Bar | When someone works on the item, one colour per person or team. An item with several people has one thin bar each. |
@@ -87,8 +119,25 @@ The chart's lens guide (the ⓘ next to the lenses) carries a two-sentence versi
 | Hatched stripes | The part of the work that runs past the deadline. |
 | Vertical line | Today. |
 | Thin grey line under a bar | Only with *Likely* or *Safe bet* on: your own estimate (the *As planned* dates), while the bar shows the stretched ones. Gantt tools call this the baseline. |
+| "ends 9 Dec" beside a bar | The finish date, shown for the row under the pointer, the selected row, and any row whose date is changing. |
 
-A small key under the chart repeats this, next to the tips for working with it, and hovering any mark gives its dates.
+A small key under the chart repeats this, and hovering any mark gives its dates. A line under every third row runs across the list and the chart, so a row can be followed to its bar.
+
+## Working in the chart
+
+| To | Do this |
+|---|---|
+| Add an item | Type in the empty row at the bottom. Enter moves down a row. |
+| Reprioritise | Drag a row by its ⠿ handle, or drag its bar up or down. Every date updates before you drop, and the page scrolls with you on a long list. |
+| Change the effort | With one person in the plan, type the days into the row. With several people or a team, click the Effort cell: who does how many days, and who starts after whom. Or drag a bar's right edge. |
+| Set or move a deadline | Click the Deadline cell: a small calendar opens (you can also type a date, "7 Dec"). Or drag the ◆ on the chart. |
+| See why a date is what it is | Click the date under Expected delivery: a short note lists the reasons in plain words (who it waits for, what it starts after, how far it is from its deadline). |
+| Open an item's settings | Click its name. A panel opens under the row with everyone on the item, *can't start before*, *starts after*, a note, and **Mark done** (a finished item takes no more time, and whatever waited for it can start). |
+| Try an option | The dock under the chart holds up to three options, each an exact re-plan. Hover one to see it on the chart as dashed bars, Apply to keep it, ⌘/Ctrl Z to take it back. |
+| Change the scale | The chart fits the whole plan to the width it has. The Zoom menu offers fixed day, week and month scales. |
+| See what sets the end date | Click *what sets the end date?* next to the headline: the chain of work behind the last finish lights up. |
+
+Undo is ⌘/Ctrl Z, redo ⇧⌘Z (Ctrl Y). Export gives the plan file, Excel, CSV, an image of the chart (with the same columns and key) and a Markdown summary.
 
 ## How the dates and suggestions work
 
@@ -144,6 +193,19 @@ Plans are small JSON files (`*.whenship.json`) you can keep in a repo, edit by h
 
 Items are in priority order (an item's prerequisites in `dependsOn` are worked on at its priority). `availability` is the share of someone's time for this plan, and `after` is a hand-off (Sara starts when Martin is done). Teams (`"size": 3`), people per item (`"maxPeople": 2`), `dependsOn`, `notBefore`, `calendar.workdays` and `calendar.holidays` are also supported; the full format is in the [whenship skill](plugin/skills/whenship/SKILL.md#plan-format).
 
+### Limits, and why
+
+whenship is for a plan you can see at once, so it has two deliberate ceilings. Anything over them is read, trimmed, and said so (in the chart, and in Claude's answer).
+
+| Limit | Why |
+|---|---|
+| **40 items in a plan** | About two screens. A chart is the answer to "when will it ship?" only while you can take it in; past that it is a database with bars. Bigger work is several plans: one per team, release or quarter, each saved as a file or a link. |
+| **250 working days for one part of an item** | A person-year. Nobody estimates a single task at more than that; beyond it the number is a placeholder, and the chart would be a wall. Longer work is several items, which also gives the chart something to say about the order. |
+
+Smaller ones you will not meet: 50 people or teams, 20 parts per item.
+
+**Share links** carry the whole plan after the `#` in the address (`…/#p=…`), not in a `?query`. Browsers never send the part after `#` to a server, so a shared plan still never reaches whenship.app or anyone's logs; it unpacks in the reader's browser. The lens and zoom travel with it (`&l=`, `&z=`).
+
 ## Self-host
 
 whenship is one stateless Node service: the web app at `/`, the MCP connector at `/mcp` (opened in a browser, it explains how to add it to Claude), a health check at `/healthz` and a privacy page at `/privacy`. For search engines and AI assistants it also serves `/robots.txt`, `/sitemap.xml`, `/llms.txt`, a link-preview image and an icon, all pointing at the server's own address. No database, no accounts, no Docker.
@@ -168,9 +230,9 @@ npm install
 npm run dev
 ```
 
-`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`); `npm run build:mcpb` packs the Claude Desktop extension. `npm run check` runs the type check, all unit, regression, UI, widget and connector tests with a coverage floor, and the scheduler tests in three time zones. The tests also run the built CLI (web, connector over HTTP and stdio), check what the npm package ships and the website's search tags. CI also audits dependencies and runs the built CLI on Node 20. Pushing a version tag (`vX.Y.Z`) publishes a GitHub Release with the extension attached. `server.json` is the entry for the [MCP Registry](https://registry.modelcontextprotocol.io).
+`npm run build` builds the single-file app (`dist/app.html`) and the CLI (`dist/cli.js`); `npm run build:mcpb` packs the Claude Desktop extension; `npm run docs:pictures` retakes the README screenshot and the link-preview image with headless Chrome. `npm run check` runs the type check, all unit, regression, UI, widget and connector tests with a coverage floor, and the scheduler tests in three time zones. The tests also run the built CLI (web, connector over HTTP and stdio), check what the npm package ships and the website's search tags. CI also audits dependencies and runs the built CLI on Node 20. Pushing a version tag (`vX.Y.Z`) publishes a GitHub Release with the extension attached. `server.json` is the entry for the [MCP Registry](https://registry.modelcontextprotocol.io).
 
-The code is small on purpose: `src/engine` (scheduler, forecast lens, insights; no dependencies), `src/io` (plan files, tables, links, Excel, calendar, SVG), `src/ui` (Preact app shared by the website and the Claude widget), `src/mcp` (connector and web server) and `src/cli`.
+The code is small on purpose: `src/engine` (scheduler, forecast lens, insights; no dependencies), `src/io` (plan files, tables, links, Excel, calendar, images), `src/ui` (Preact app shared by the website and the Claude widget), `src/mcp` (connector and web server) and `src/cli`.
 
 ## Background
 

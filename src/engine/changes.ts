@@ -14,6 +14,7 @@ export type Change =
   | { op: 'setWorkdays'; days: Weekday[] }
   | { op: 'addHoliday'; from: ISODate; to?: ISODate; label?: string }
   | { op: 'removeItem'; item: string }
+  | { op: 'setDone'; item: string; done: boolean }
   | { op: 'setStart'; date: ISODate };
 
 export interface ApplyResult {
@@ -111,6 +112,13 @@ export function applyChanges(base: NormalizedPlan, changes: Change[]): ApplyResu
         const id = plan.items[i]!.id;
         plan.items.splice(i, 1);
         for (const it of plan.items) it.dependsOn = it.dependsOn.filter((d) => d !== id);
+        break;
+      }
+      case 'setDone': {
+        const i = findItem(plan, c.item);
+        if (i < 0) { skip(c, `no item "${c.item}"`); break; }
+        if (c.done) plan.items[i]!.done = true;
+        else delete plan.items[i]!.done;
         break;
       }
       case 'setStart':

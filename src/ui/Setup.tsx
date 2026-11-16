@@ -114,14 +114,14 @@ function Holidays({ anchor, plan, year, onClose, onCommit }: { anchor: HTMLEleme
         </div>
       ))}
       <div class="field-row" style={{ marginTop: '8px' }}>
-        <label class="field">
+        <div class="field">
           From
-          <input type="date" value={from} onInput={(e) => setFrom((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <label class="field">
+          <DateButton class="date-box" value={from || undefined} label="Holiday from" placeholder="pick a day" format={(d) => formatDay(d, year)} onChange={(d) => setFrom(d ?? '')} />
+        </div>
+        <div class="field">
           To (optional)
-          <input type="date" value={to} onInput={(e) => setTo((e.currentTarget as HTMLInputElement).value)} />
-        </label>
+          <DateButton class="date-box" value={to || undefined} label="Holiday to" placeholder="same day" format={(d) => formatDay(d, year)} onChange={(d) => setTo(d ?? '')} />
+        </div>
       </div>
       <label class="field">
         Label (optional)
@@ -202,8 +202,8 @@ function LaneEditor({ anchor, plan, lane, year, onClose, onCommit }: { anchor: H
             </div>
           ))}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <input type="date" value={from} aria-label="Days off from" onInput={(e) => setFrom((e.currentTarget as HTMLInputElement).value)} />
-            <input type="date" value={to} aria-label="Days off to" onInput={(e) => setTo((e.currentTarget as HTMLInputElement).value)} />
+            <DateButton class="date-box" value={from || undefined} label="Days off from" placeholder="from" format={(d) => formatDay(d)} onChange={(d) => setFrom(d ?? '')} />
+            <DateButton class="date-box" value={to || undefined} label="Days off to" placeholder="to" format={(d) => formatDay(d)} onChange={(d) => setTo(d ?? '')} />
             <button
               class="btn small"
               disabled={!from}

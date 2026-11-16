@@ -1,5 +1,7 @@
-import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { render, type ComponentChildren } from 'preact';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { dayParts, formatDayLong, monthName, parseLooseDate, toISO, todayLocal, weekdayIndex } from '../engine/dates';
+import { Popover } from './Popover';
 
 export const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(' ');
 
@@ -98,6 +100,8 @@ export const Icon = {
   chain: () => <I><path d="M4 12h4" /><path d="M16 12h4" /><rect x="8" y="9" width="8" height="6" rx="2" /></I>,
   open: () => <I><path d="M4 20h16" /><path d="M12 4v11" /><path d="m7 9 5-5 5 5" /></I>,
   pencil: () => <I><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></I>,
+  check: () => <I><path d="m5 12 5 5L20 7" /></I>,
+  paste: () => <I><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" /><path d="M9 13h6" /><path d="M9 17h4" /></I>,
 };
 
 export const Logo = ({ size = 22 }: { size?: number }) => (
@@ -111,23 +115,191 @@ export const Logo = ({ size = 22 }: { size?: number }) => (
 );
 
 /** A compact date ("14 Oct") that opens the native date picker; the real input sits invisibly on top. */
-export function DateButton(props: { value: string | undefined; onChange: (v: string | null) => void; label: string; placeholder: string; format: (iso: string) => ComponentChildren; class?: string }) {
+/**
+ * Renders its children at the end of the page instead of where it sits (a small root of its own; `preact/compat` has
+ * a portal, but importing it changes how every `onChange` in the app behaves). For popovers opened from inside a
+ * stacking layer (the sticky list, the dock) that must not slide under another one.
+ */
+function Portal({ children }: { children: ComponentChildren }) {
+  const host = useRef<HTMLDivElement | null>(null);
+  if (!host.current) host.current = document.createElement('div');
+  useLayoutEffect(() => {
+    const el = host.current!;
+    document.body.appendChild(el);
+    return () => {
+      render(null, el);
+      el.remove();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    render(<>{children}</>, host.current!);
+  });
+  return null;
+}
+
+const DOW2 = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+/**
+ * A month to pick a day from: Monday first, today and the chosen day marked, arrow keys move between days, and a field
+ * that takes a typed date ("7 Dec", "2026-12-07"). Used by `DateButton` wherever there's a mouse.
+ */
+function Calendar({ value, onPick, onClear }: { value: string | undefined; onPick: (iso: string) => void; onClear?: (() => void) | undefined }) {
+  const today = todayLocal();
+  const shown = dayParts(value ?? today);
+  const [ym, setYm] = useState({ y: shown.year, m: shown.month });
+  const [text, setText] = useState('');
+  const [bad, setBad] = useState(false);
+  const first = Date.UTC(ym.y, ym.m, 1) / 86_400_000;
+  const gridStart = first - weekdayIndex(first); // the Monday on or before the 1st
+  const move = (n: number) =>
+    setYm(({ y, m }) => {
+      const d = new Date(Date.UTC(y, m + n, 1));
+      return { y: d.getUTCFullYear(), m: d.getUTCMonth() };
+    });
+  const onKeys = (e: KeyboardEvent) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+    if (!step) return;
+    const days = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.cal-day')];
+    const next = days[days.indexOf(document.activeElement as HTMLElement) + step];
+    if (next) {
+      e.preventDefault();
+      next.focus();
+    }
+  };
   return (
-    <span class={cx('date-btn', !props.value && 'empty', props.class)}>
+    <div class="cal">
+      <div class="cal-head">
+        <button class="icon-btn" aria-label="Previous month" onClick={() => move(-1)}>
+          ‹
+        </button>
+        <b>
+          {monthName(ym.m)} {ym.y}
+        </b>
+        <button class="icon-btn" aria-label="Next month" onClick={() => move(1)}>
+          ›
+        </button>
+      </div>
+      <div class="cal-grid" onKeyDown={onKeys}>
+        {DOW2.map((d) => (
+          <span key={d} class="cal-dow" aria-hidden="true">
+            {d}
+          </span>
+        ))}
+        {Array.from({ length: 42 }, (_, i) => {
+          const iso = toISO(gridStart + i);
+          const p = dayParts(iso);
+          return (
+            <button key={iso} class={cx('cal-day', p.month !== ym.m && 'out', iso === value && 'sel', iso === today && 'is-today')} aria-label={formatDayLong(iso)} aria-pressed={iso === value} onClick={() => onPick(iso)}>
+              {p.day}
+            </button>
+          );
+        })}
+      </div>
+      <form
+        class="cal-foot"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const iso = parseLooseDate(text, today);
+          if (iso) onPick(iso);
+          else setBad(true);
+        }}
+      >
+        <input
+          class={cx('cal-text', bad && 'bad')}
+          value={text}
+          placeholder="or type: 7 Dec"
+          aria-label="Type a date and press Enter"
+          onInput={(e) => {
+            setText((e.currentTarget as HTMLInputElement).value);
+            setBad(false);
+          }}
+        />
+        <button type="button" class="btn small ghost" onClick={() => onPick(today)}>
+          Today
+        </button>
+        {onClear && value && (
+          <button type="button" class="btn small ghost" onClick={onClear}>
+            Clear
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
+
+/**
+ * A date shown as text that opens a picker. With a mouse it's our own calendar popover: it closes on a click
+ * anywhere else, opens above when there's no room below, and looks the same in every browser (the system pickers
+ * don't: Safari's stays open when the chart is clicked, and doesn't open at all near the bottom of the window).
+ * Under a finger it's the system's picker, which is better there. Keyboard: Tab to it and type the date, or press
+ * Enter for the calendar. `clearable` adds "Clear" (`onChange(null)`).
+ */
+export function DateButton(props: { value: string | undefined; onChange: (v: string | null) => void; label: string; placeholder: string; format: (iso: string) => ComponentChildren; class?: string; clearable?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const native = typeof matchMedia === 'function' && !!matchMedia('(pointer: coarse)').matches;
+  // a date field fires both `input` and `change` for one pick: tell the owner once
+  const last = useRef(props.value ?? '');
+  last.current = props.value ?? '';
+  const emit = (v: string) => {
+    if (v === last.current) return;
+    last.current = v;
+    props.onChange(v || null);
+  };
+  return (
+    <span
+      ref={ref}
+      class={cx('date-btn', !props.value && 'empty', open && 'open', native && 'native', props.class)}
+      onClick={() => {
+        if (!native) setOpen(true);
+      }}
+    >
       <span aria-hidden="true">{props.value ? props.format(props.value) : props.placeholder}</span>
       <input
         type="date"
         value={props.value ?? ''}
         aria-label={props.label}
         onClick={(e) => {
+          if (!native) return;
           try {
             (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
           } catch {
             /* picker not available: the input still accepts typing */
           }
         }}
-        onChange={(e) => props.onChange((e.currentTarget as HTMLInputElement).value || null)}
+        onKeyDown={(e) => {
+          if (!native && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        onInput={(e) => emit((e.currentTarget as HTMLInputElement).value)}
+        onChange={(e) => emit((e.currentTarget as HTMLInputElement).value)}
       />
+      {/* At the page's root, not inside the row: the list and the dock are stacking layers of their own, and a calendar
+          opened from one of them would slide under the other. */}
+      {open && ref.current && (
+        <Portal>
+        <Popover anchor={ref.current} onClose={close} label={props.label} className="date-pop" fit="shift" focus={props.value ? '.cal-day.sel' : '.cal-day.is-today'}>
+          <Calendar
+            value={props.value}
+            onPick={(iso) => {
+              props.onChange(iso);
+              close();
+            }}
+            onClear={
+              props.clearable
+                ? () => {
+                    props.onChange(null);
+                    close();
+                  }
+                : undefined
+            }
+          />
+        </Popover>
+        </Portal>
+      )}
     </span>
   );
 }

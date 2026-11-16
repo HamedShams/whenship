@@ -54,7 +54,7 @@ export function parsePlanText(text: string, today: string): ParsedText {
  */
 export function encodeShareFragment(plan: NormalizedPlan, lens?: LensId, zoom?: Zoom | null): string {
   const data = compressToEncodedURIComponent(JSON.stringify(compactPlan(plan)));
-  return `p=${data}${lens && lens !== 'planned' ? `&l=${lens}` : ''}${zoom ? `&z=${zoom}` : ''}`;
+  return `p=${data}${lens && lens !== 'planned' ? `&l=${lens}` : ''}${zoom && zoom !== 'fit' ? `&z=${zoom}` : ''}`;
 }
 
 export function shareUrl(base: string, plan: NormalizedPlan, lens?: LensId, zoom?: Zoom | null): string {

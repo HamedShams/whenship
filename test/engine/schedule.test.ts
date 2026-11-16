@@ -158,10 +158,11 @@ describe('scheduler: calendars', () => {
   });
 
   it('plans far beyond the old 240-day horizon', () => {
-    const p = plan({ lanes: ['Me'], items: [{ name: 'Huge', who: 'Me', days: 400 }] });
+    // a part is at most a person-year (250 working days); longer work is several items
+    const p = plan({ lanes: ['Me'], items: [{ name: 'Huge', who: 'Me', days: 200 }, { name: 'Huger', who: 'Me', days: 200 }] });
     const s = schedule(p);
-    expect(s.byId.get('huge')!.end).toBe(399);
-    expect(s.byId.get('huge')!.endDate).toBe('2028-04-05'); // 80 weeks of Mon–Fri from Thu 24 Sep 2026
+    expect(s.byId.get('huger')!.end).toBe(399);
+    expect(s.byId.get('huger')!.endDate).toBe('2028-04-05'); // 80 weeks of Mon–Fri from Thu 24 Sep 2026
   });
 });
 

@@ -6,7 +6,7 @@ import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { createHttpServer } from '../../src/mcp/http';
+import { createHttpServer, withBoot } from '../../src/mcp/http';
 import { compare, UI_URI } from '../../src/mcp/server';
 import { decodeShareLink } from '../../src/io/format';
 import { applyChanges } from '../../src/engine';
@@ -82,10 +82,13 @@ describe('MCP connector', () => {
     expect(client.getInstructions()).toMatch(/likely 1\.6×, safe bet 3\.1×/);
   });
 
-  it('gives the model instructions to use the engine instead of its own math', () => {
+  it('tells the model what the engine is authoritative for, without telling it how to behave', () => {
     const instructions = client.getInstructions() ?? '';
-    expect(instructions).toMatch(/Do not work out dates/);
-    expect(instructions).toMatch(/Never inflate/);
+    expect(instructions).toMatch(/authoritative answer/);
+    expect(instructions).toMatch(/stays as given/);
+    expect(instructions).toMatch(/suggestions/);
+    expect(instructions).toMatch(/no need of a separate spreadsheet, report, document or file/); // the chart exports itself
+    expect(instructions).not.toMatch(/\b(do not|never|you must|always)\b/i); // descriptive, as the directory review wants
   });
 
   it('show_plan returns a complete text answer plus the plan for the chart', async () => {
@@ -241,6 +244,8 @@ describe('web server', () => {
     const html = await (await fetch(`${base}/`)).text();
     expect(html).toContain(`<link rel="canonical" href="${base}/">`);
     expect(html).toContain(`<meta property="og:image" content="${base}/og.png">`);
+    expect(html).not.toMatch(/<link rel="icon" href="data:/); // the website's icon is the PNG file: search engines can't use a data: URI
+    expect(html).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${base}/icon.png">`);
     expect(await (await fetch(`${base}/robots.txt`)).text()).toContain(`Sitemap: ${base}/sitemap.xml`);
     expect(await (await fetch(`${base}/sitemap.xml`)).text()).toContain(`<loc>${base}/privacy</loc>`);
     expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no images
@@ -250,6 +255,10 @@ describe('web server', () => {
     expect(llms).toContain(`\`${base}/mcp\``);
     const res = await client.readResource({ uri: UI_URI });
     expect((res.contents[0] as { text: string }).text).not.toContain('og:image');
+    // the inline (data:) icon stays for the widget and the offline file; the website drops it in favour of the PNG, which search engines can fetch
+    const withIcon = '<!doctype html><html><head><link rel="icon" href="data:image/svg+xml,x" /><!--WHENSHIP_BOOT--></head></html>';
+    expect(withBoot(withIcon, { mode: 'web', publicUrl: 'https://x.test/' })).not.toContain('href="data:');
+    expect(withBoot(withIcon, { mode: 'widget' })).toContain('href="data:image/svg+xml,x"');
   });
   it('serves the link-preview image and the icon, and escapes an address taken from request headers', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -318,7 +327,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
   it('prints its version and help, and refuses bad options with a clear message', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
     expect(run('--version').stdout.trim()).toBe(pkg.version);
-    expect(run('-h').stdout).toMatch(/^whenship [\d.]+: when will it ship, honestly\?[\s\S]*--stdio/);
+    expect(run('-h').stdout).toMatch(/^whenship [\w.-]+: when will it ship, honestly\?[\s\S]*--stdio/);
     const unknown = run('--nope');
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toMatch(/^Unknown option: --nope/);
@@ -338,7 +347,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
         });
         proc.on('exit', () => reject(new Error(`exited early: ${out}`)));
       });
-      expect(out).toMatch(/^whenship [\d.]+\n/); // the banner goes to stdout, not stderr
+      expect(out).toMatch(/^whenship [\w.-]+\n/); // the banner goes to stdout, not stderr
       const html = await (await fetch(at)).text();
       expect(html).toContain(`<meta property="og:image" content="${at}og.png">`);
       expect(html).toContain('<meta name="author" content="Seyed Hamed Shams"');

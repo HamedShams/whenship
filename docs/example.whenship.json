@@ -1,0 +1,20 @@
+{
+  "title": "Mobile app launch",
+  "start": "2026-11-16",
+  "lanes": [
+    { "name": "Maya" },
+    { "name": "Leo" },
+    { "name": "Priya" },
+    { "name": "Sam", "availability": 50 }
+  ],
+  "items": [
+    { "name": "Sign-up & onboarding", "work": [{ "lane": "Maya", "days": 3 }, { "lane": "Priya", "days": 4, "after": "Maya" }], "deadline": "2026-12-04" },
+    { "name": "Apple Pay checkout", "work": [{ "lane": "Leo", "days": 5 }, { "lane": "Priya", "days": 3, "after": "Leo" }], "deadline": "2026-11-25", "note": "Promised to the pilot customer" },
+    { "name": "Push notifications", "work": [{ "lane": "Leo", "days": 2 }, { "lane": "Priya", "days": 2, "after": "Leo" }], "deadline": "2026-12-18" },
+    { "name": "Offline mode", "work": [{ "lane": "Leo", "days": 3 }, { "lane": "Priya", "days": 5 }], "deadline": "2026-12-11" },
+    { "name": "Beta with 50 testers", "work": [{ "lane": "Sam", "days": 3 }], "notBefore": "2026-11-30", "dependsOn": ["Sign-up & onboarding"], "deadline": "2026-12-11", "note": "The TestFlight build goes out on 30 Nov" },
+    { "name": "App Store page", "work": [{ "lane": "Maya", "days": 3 }], "deadline": "2026-12-14" },
+    { "name": "Fixes from the beta", "work": [{ "lane": "Leo", "days": 2 }, { "lane": "Priya", "days": 3 }], "dependsOn": ["Beta with 50 testers"], "deadline": "2026-12-17" },
+    { "name": "Launch checklist", "work": [{ "lane": "Sam", "days": 1 }], "dependsOn": ["Fixes from the beta"], "deadline": "2026-12-18" }
+  ]
+}

@@ -49,6 +49,8 @@ export interface Item {
   /** Waiting on something external: cannot start before this date. */
   notBefore?: ISODate;
   note?: string;
+  /** Finished: it takes no more time, and anything waiting for it can start. */
+  done?: boolean;
 }
 
 export interface Calendar {

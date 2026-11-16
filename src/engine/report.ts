@@ -65,7 +65,7 @@ export function renderReport(plan: NormalizedPlan, options: ReportOptions = {}):
     const o = a.outlook.get(r.id);
     const b = a.status.get(r.id);
     const status =
-      r.status === 'blocked' ? `⛔ ${r.problem}` : r.status === 'empty' ? 'no effort yet' : o && b ? statusText(b, o.chance, r.slack) : '—';
+      r.status === 'blocked' ? `⛔ ${r.problem}` : r.status === 'done' ? '✓ done' : r.status === 'empty' ? 'no effort yet' : o && b ? statusText(b, o.chance, r.slack) : '—';
     const cells = [
       String(i + 1),
       it.name.replace(/\|/g, '/'),
@@ -99,6 +99,8 @@ export function renderReport(plan: NormalizedPlan, options: ReportOptions = {}):
     for (const s of insights) lines.push(`- ${s.title} → ${s.effect}.`);
     lines.push('');
   }
+  const done = a.current.items.filter((r) => r.status === 'done').length;
+  if (done) lines.push(`${done} item${done === 1 ? ' is' : 's are'} done and take${done === 1 ? 's' : ''} no more time.`, '');
   const blocked = a.current.items.filter((r) => r.status === 'blocked');
   if (blocked.length) {
     lines.push('**Needs attention:**');

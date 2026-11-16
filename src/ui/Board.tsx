@@ -1,20 +1,28 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Analysis } from '../engine/analysis';
-import { applyChanges, moveItem } from '../engine/changes';
-import { dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
-import { badgeLabel, chanceLabel } from '../engine/analysis';
+import { applyChanges, moveItem, type Change } from '../engine/changes';
+import { addDays, dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
+import { badgeLabel, chanceLabel, explain } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
-import { ZOOM_PPD, type Zoom } from '../io/view';
+import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
+import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
-import { useAnchor } from './Popover';
+import { ItemPanel, WhyDate } from './Details';
+import { Popover, useAnchor } from './Popover';
 import { Avatar, WhoEditor } from './WhoEditor';
 import { cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
 /** Room for a note drawn in place of a bar ("add effort to schedule this"). */
 const NOTE_W = 170;
+/** Room after the last day for its finish label ("ends 19 Mar 2027" and a ±days badge beside it): the calendar runs on under it, so the chart looks full. */
+export const LABEL_ROOM = 150;
+/** About how wide a finish label is ("ends 19 Mar 2027"): a deadline diamond inside that stretch pushes the label past itself. */
+const TAG_W = 96;
+/** The chart never draws more calendar than this (the engine's own horizon plus the label room at a pixel a day). */
+const MAX_DRAWN_DAYS = 1100 + LABEL_ROOM;
 const BADGE_VAR: Record<Badge, string> = { safe: 'var(--ok)', likely: 'var(--ok)', tight: 'var(--warn)', late: 'var(--danger)', unknown: 'var(--fg3)' };
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -28,10 +36,11 @@ interface Props {
   onCommit: (plan: NormalizedPlan, mergeKey?: string) => void;
   focusId: string | null;
   onFocused: () => void;
-  /** How much of the calendar each day gets (see `autoZoom`). */
+  /** How much of the calendar each day gets: a fixed scale, or `fit` (the whole plan in the width at hand). */
   zoom: Zoom;
+  /** A plan to show as a ghost over the current one: an option being previewed. */
+  preview?: NormalizedPlan | null;
 }
-
 
 /** The calendar days the chart covers: plan start → the last finish or deadline, plus a few days. */
 export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: string, extra?: Schedule | null) {
@@ -46,22 +55,76 @@ export function timelineSpan(plan: NormalizedPlan, analysis: Analysis, today: st
   for (const it of plan.items) bump(it.deadline);
   const t = parseISO(today);
   if (t !== null && t > start && t < start + 400) end = Math.max(end, t);
-  end = Math.min(end + 6, start + 1100);
+  end = Math.min(end, start + 1100);
   return { start, end, span: end - start + 1 };
 }
 
-/** Days for short plans, weeks for a few months, months beyond that. */
-export function autoZoom(span: number): Zoom {
+/**
+ * A month block's label for the width it has: "Jan 2027" → "Jan ’27" → "Jan" (or "’27" where the year says more than
+ * the name) → "J" → nothing. `year` is set only where the year changes from the plan's own.
+ */
+export function monthLabel(width: number, name: string, year: number | null): string {
+  const yy = year === null ? '' : `’${String(year).slice(2)}`;
+  if (width >= 72) return year === null ? name : `${name} ${year}`;
+  if (width >= 46) return year === null ? name : `${name} ${yy}`;
+  if (width >= 28) return year === null ? name : yy;
+  if (width >= 12) return name[0]!;
+  return '';
+}
+
+/** The fastest the page scrolls under a dragged row: pixels a frame. */
+const SCROLL_MAX = 22;
+
+/**
+ * How far to scroll the page this frame while a row is dragged near the top or bottom of the chart's visible part
+ * (pixels; 0 when the pointer is clear of both edges). It speeds up the closer the pointer gets to the edge.
+ */
+export function autoScrollSpeed(y: number, top: number, bottom: number, zone = 64, max = SCROLL_MAX): number {
+  if (y < top + zone) return -Math.min(max, Math.max(1, Math.ceil(((top + zone - y) / zone) * max)));
+  if (y > bottom - zone) return Math.min(max, Math.max(1, Math.ceil(((y - (bottom - zone)) / zone) * max)));
+  return 0;
+}
+
+/** The fixed scale a plan of this length reads best at (used by `fit` while the chart's width is unknown). */
+export function autoZoom(span: number): Exclude<Zoom, 'fit'> {
   return span <= 75 ? 'day' : span <= 260 ? 'week' : 'month';
+}
+
+/** Pixels per day: `fit` sizes days to the width at hand (a fixed scale by plan length until it's measured). */
+export function pixelsPerDay(zoom: Zoom, span: number, width: number): number {
+  if (zoom !== 'fit') return ZOOM_PPD[zoom];
+  return width > 0 ? fitPpd(span, width) : ZOOM_PPD[autoZoom(span)];
 }
 
 interface Drag {
   id: string;
   from: number;
   over: number;
+  /** Where the press was, in page coordinates (the page may scroll under a drag). */
   startY: number;
   /** Started from the bar in the timeline (not the row's handle). */
   byBar?: boolean;
+}
+/** Dragging a bar's right edge changes the item's effort for that lane. */
+interface Resize {
+  id: string;
+  lane: string;
+  startX: number;
+  days0: number;
+  /** Person-days one working day of this lane is worth for this item (people at once × availability). */
+  perDay: number;
+  /** The effort the plan is re-planned with: half-day steps. */
+  days: number;
+  /** The bar's width when the drag began, and how far the pointer has moved: the bar itself follows the pointer. */
+  width0: number;
+  dx: number;
+}
+/** Dragging a deadline diamond moves the deadline. */
+interface DeadlineDrag {
+  id: string;
+  startX: number;
+  date0: string;
+  date: string;
 }
 
 /**
@@ -75,11 +138,19 @@ function startDragging(wrap: HTMLElement | null) {
   wrap?.focus({ preventScroll: true });
 }
 
-export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom }: Props) {
+const snapHalf = (n: number) => Math.round(n * 2) / 2;
+
+export function Board({ plan, analysis, selected, highlight, today, onSelect, onCommit, focusId, onFocused, zoom, preview: previewPlan }: Props) {
   const factor = lensById(analysis.lens).factor;
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [resize, setResize] = useState<Resize | null>(null);
+  const [dlDrag, setDlDrag] = useState<DeadlineDrag | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const who = useAnchor<string>();
+  // Two things open from a row, each from the cell it belongs to: why its date is what it is (from the date), and
+  // the item's own settings (from its name).
+  const why = useAnchor<string>();
+  const panel = useAnchor<string>();
   const [draft, setDraft] = useState('');
   const draftRef = useRef<HTMLInputElement>(null);
   const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
@@ -87,9 +158,17 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const wrapRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef<HTMLDivElement>(null);
+  const clipRef = useRef<HTMLDivElement>(null);
   // The latest drag and pointer offset, for handlers that run between renders.
   const dragRef = useRef<Drag | null>(null);
+  const resizeRef = useRef<Resize | null>(null);
+  const dlRef = useRef<DeadlineDrag | null>(null);
   const dyRef = useRef(0);
+  // A press on a bar that hasn't moved yet. What it becomes depends on which way it goes: up or down reorders the
+  // item, sideways from the bar's right edge changes its effort, and no movement at all is a click.
+  const pressed = useRef<{ id: string; index: number; x: number; y: number; edge?: { lane: string; width: number } } | null>(null);
+  const lastY = useRef(0); // the pointer's last position in the window, for scrolling while it rests near an edge
+  const pageY = () => window.scrollY || 0;
   const followScroll = () => {
     if (boardRef.current && scaleRef.current) scaleRef.current.style.transform = `translateX(${-boardRef.current.scrollLeft}px)`;
   };
@@ -100,20 +179,62 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (b && Math.abs(e.deltaX) > Math.abs(e.deltaY)) b.scrollLeft += e.deltaX;
   };
 
-  // live preview while dragging: same engine, new order
-  const preview = useMemo(() => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : null), [plan, drag?.id, drag?.over, drag?.from, factor]);
+  // The width the timeline has, so `fit` can size days to it. The first render can't know it (nothing is laid out
+  // yet) and draws at a fixed scale; the first measured render draws at the fitted one without animating the step.
+  const [clipW, setClipW] = useState(0);
+  const [fresh, setFresh] = useState(true);
+  useLayoutEffect(() => {
+    const el = clipRef.current;
+    if (!el) return;
+    // whole pixels, rounded down: a chart half a pixel wider than its box makes Safari show a scrollbar for it
+    const measure = () => setClipW(Math.floor(el.getBoundingClientRect().width));
+    measure();
+    const raf = el.getBoundingClientRect().width ? 0 : requestAnimationFrame(measure); // not laid out yet: once more after the first frame
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    if (clipW > 0 && fresh) setFresh(false); // after the first measured paint: transitions from here on
+  }, [clipW]);
+
+  // live edits that re-plan before they're committed: a drag's new order, a bar's new effort, a moved deadline
+  const liveChanges = useMemo<Change[] | null>(() => {
+    if (resize) return [{ op: 'setEffort', item: resize.id, lane: resize.lane, days: resize.days }];
+    if (dlDrag) return [{ op: 'setDeadline', item: dlDrag.id, date: dlDrag.date }];
+    return null;
+  }, [resize?.id, resize?.lane, resize?.days, dlDrag?.id, dlDrag?.date]);
+  const livePlan = useMemo(() => (liveChanges ? applyChanges(plan, liveChanges).plan : null), [plan, liveChanges]);
+  const preview = useMemo(
+    () => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : livePlan ? schedule(livePlan, { factor }) : null),
+    [plan, drag?.id, drag?.over, drag?.from, livePlan, factor],
+  );
+  // an option being previewed: its schedule is drawn as a ghost over the real bars (rows stay put)
+  const ghost = useMemo(() => (previewPlan && !preview ? schedule(previewPlan, { factor }) : null), [previewPlan, preview, factor]);
   const shown: Schedule = preview ?? analysis.current;
+  const shownPlan = livePlan ?? plan;
   const order = useMemo(() => (drag ? moveItem(plan, drag.id, drag.over).items : plan.items), [plan, drag?.id, drag?.over]);
   // Rows are absolutely positioned, so they stay in the plan's DOM order and only their `top` follows the preview order:
   // moving DOM nodes mid-drag could drop the pointer capture and strand the drag.
   const slot = useMemo(() => new Map(order.map((it, i) => [it.id, i])), [order]);
 
-  // timeline geometry (calendar days, so dates line up with real weeks)
+  // Timeline geometry (calendar days, so dates line up with real weeks). The scale comes from the plan as it is; a
+  // preview or ghost that runs past its end only widens the chart. So nothing rescales under the pointer while a bar
+  // is being resized, a row dragged or an option previewed; the chart re-fits once the change is real.
   const geo = useMemo(() => {
-    const { start, end, span } = timelineSpan(plan, analysis, today, preview);
-    const ppd = ZOOM_PPD[zoom];
-    return { start, end, span, ppd, width: span * ppd };
-  }, [plan, analysis, preview, today, zoom]);
+    const own = timelineSpan(plan, analysis, today, null);
+    const full = timelineSpan(plan, analysis, today, preview ?? ghost);
+    // one day of slack: the label room is rounded up to whole days below, and that must never push the chart past its box
+    const ppd = pixelsPerDay(zoom, own.span + 1, Math.max(0, clipW - LABEL_ROOM));
+    // The calendar drawn: at least the plan plus room for its last label; under `fit` it runs to the right edge of the
+    // width at hand, so the chart is never followed by a blank strip.
+    const least = full.span + Math.ceil(LABEL_ROOM / ppd);
+    const span = Math.min(MAX_DRAWN_DAYS, zoom === 'fit' && clipW > 0 ? Math.max(least, Math.floor(clipW / ppd)) : least);
+    return { start: full.start, end: full.start + span - 1, span, ppd, width: Math.ceil(span * ppd) }; // a whole number of pixels, never past the box
+  }, [plan, analysis, preview, ghost, today, zoom, clipW]);
   const x = (iso: string) => (parseISO(iso)! - geo.start) * geo.ppd;
 
   const offDays = useMemo(() => {
@@ -140,7 +261,10 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     for (let d = geo.start; d <= geo.end; ) {
       const p = dayParts(toISO(d));
       const next = Math.min(geo.end + 1, Date.UTC(p.year, p.month + 1, 1) / 86_400_000);
-      months.push({ left: (d - geo.start) * geo.ppd, width: (next - d) * geo.ppd, label: `${monthName(p.month)}${p.year !== planYear ? ` ${p.year}` : ''}` });
+      // a month too narrow for its name shows its initial (a pixel a day fits a year in a laptop's width)
+      // the year is named where it changes: on January, or on the first block when the chart starts in another year
+      const showYear = p.year !== planYear && (p.month === 0 || d === geo.start);
+      months.push({ left: (d - geo.start) * geo.ppd, width: (next - d) * geo.ppd, label: monthLabel((next - d) * geo.ppd, monthName(p.month), showYear ? p.year : null) });
       d = next;
     }
     const work = new Set(plan.calendar.workdays);
@@ -150,11 +274,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     for (let d = geo.start; d <= geo.end; d++) {
       const p = dayParts(toISO(d));
       if (byDay) ticks.push({ d, label: String(p.day), dow: DOW[p.weekday]!, off: !work.has((['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const)[p.weekday]!) });
-      else if (p.weekday === 0 && (t === null || Math.abs(d - t) * geo.ppd >= 22)) ticks.push({ d, label: String(p.day) });
+      // zoomed far out, every other week keeps the labels apart; narrower still, the month blocks are the scale
+      else if (p.weekday === 0 && geo.ppd >= 2 && (geo.ppd >= 4 || Math.floor(d / 7) % 2 === 0) && (t === null || Math.abs(d - t) * geo.ppd >= 22)) ticks.push({ d, label: String(p.day) });
     }
     return { months, ticks, byDay };
   }, [geo, plan.start, plan.calendar.workdays, today]);
-
 
   // keyboard focus for a freshly added item
   const nameRefs = useRef(new Map<string, HTMLInputElement>());
@@ -202,13 +326,19 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   }, [openWhoFor, order]);
 
   const laneOf = (id: string) => plan.lanes.find((l) => l.id === id);
-  const commitChange = (changes: Parameters<typeof applyChanges>[1], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
+  const commitChange = (changes: Change[], key?: string) => onCommit(applyChanges(plan, changes).plan, key);
 
   // ── drag handlers ──
   // The dragged row and its bars follow the pointer directly (no re-render per move); the board re-renders only when
   // the row crosses into another slot, which also re-plans the live preview.
   const dragged = (id: string) => wrapRef.current?.querySelectorAll<HTMLElement>(`[data-item="${CSS.escape(id)}"]`) ?? [];
   const slotOf = (d: Drag, dy: number) => Math.max(0, Math.min(plan.items.length - 1, Math.round(d.from + dy / ROW)));
+  const rowTop = (i: number) => i * ROW;
+  // A dragged row stays inside the list: it stops at the first and the last place instead of sliding under the chart's
+  // header or past the last row.
+  const dragTop = (d: Drag, dy: number) => Math.max(0, Math.min(rowTop(plan.items.length - 1), rowTop(d.from) + dy));
+  /** Anything in progress (a drag, a resize, a moved deadline, a press on a bar). */
+  const busy = () => !!(dragRef.current || resizeRef.current || dlRef.current || pressed.current);
   // Capturing the pointer keeps moves coming when it leaves the window; the drag works without it (see below).
   const capture = (e: PointerEvent) => {
     try {
@@ -222,65 +352,223 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     hover(null);
     dragRef.current = d;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    for (const el of dragged(d.id)) el.style.top = `${dragTop(d, dy)}px`;
     setDrag(d);
+  };
+  // A press while something is still in progress means its release never arrived (it happened outside the window, or
+  // the system took the pointer): that is finished first, and this press is not a new grab.
+  const stale = () => {
+    if (!busy()) return false;
+    onUp();
+    return true;
   };
   const onDown = (e: PointerEvent, id: string, index: number) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    if (stale()) return;
     capture(e);
-    begin({ id, from: index, over: index, startY: e.clientY }, 0);
+    lastY.current = e.clientY;
+    begin({ id, from: index, over: index, startY: e.clientY + pageY() }, 0);
   };
   // Bars: a press that moves up or down drags the item (like its handle); a press without moving selects it.
-  const pressed = useRef<{ id: string; index: number; x: number; y: number } | null>(null);
   const onBarDown = (e: PointerEvent, id: string, index: number) => {
     if (e.button !== 0) return;
     e.preventDefault(); // no text selection across the rows it passes
+    if (stale()) return;
     pressed.current = { id, index, x: e.clientX, y: e.clientY };
     capture(e);
   };
+  // A bar's right edge: dragging it sideways changes the effort of that part, half a day at a time. On a short bar the
+  // edge is most of the bar, so a press there that goes up or down still reorders the item, like the rest of the bar.
+  const onEdgeDown = (e: PointerEvent, id: string, lane: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (stale()) return;
+    const index = plan.items.findIndex((x) => x.id === id);
+    if (index < 0) return;
+    capture(e);
+    const bar = (e.currentTarget as HTMLElement).parentElement;
+    pressed.current = { id, index, x: e.clientX, y: e.clientY, edge: { lane, width: (bar && (parseFloat(bar.style.width) || bar.offsetWidth)) || 4 } };
+  };
+  const beginResize = (p: NonNullable<typeof pressed.current>) => {
+    const part = plan.items[p.index]?.work.find((w) => w.lane === p.edge!.lane);
+    const l = laneOf(p.edge!.lane);
+    if (!part || !l) return false;
+    startDragging(wrapRef.current);
+    const perDay = Math.max(0.1, (Math.min(part.maxPeople, Math.max(l.size, 0.1)) * l.availability) / 100);
+    const r: Resize = { id: p.id, lane: p.edge!.lane, startX: p.x, days0: part.days, perDay, days: part.days, width0: p.edge!.width, dx: 0 };
+    resizeRef.current = r;
+    setResize(r);
+    return true;
+  };
+  // The deadline diamond: drag it to another day.
+  const onDiamondDown = (e: PointerEvent, id: string, date: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (stale()) return;
+    startDragging(wrapRef.current);
+    capture(e);
+    const d: DeadlineDrag = { id, startX: e.clientX, date0: date, date };
+    dlRef.current = d;
+    setDlDrag(d);
+  };
   const onMove = (e: PointerEvent) => {
-    const p = pressed.current;
-    if (p && !dragRef.current) {
-      if (Math.abs(e.clientY - p.y) > 4) {
-        pressed.current = null;
-        const d: Drag = { id: p.id, from: p.index, over: p.index, startY: p.y, byBar: true };
-        const dy = e.clientY - p.y;
-        begin({ ...d, over: slotOf(d, dy) }, dy);
+    // No button is down, yet something is in progress: the release was missed. It ends where it stood, so a row never
+    // goes on following a pointer that has let go of it.
+    if (e.buttons === 0 && busy()) return onUp();
+    const rs = resizeRef.current;
+    if (rs) {
+      // a day of sideways movement is a day of the calendar; working days are what effort is counted in
+      const dx = e.clientX - rs.startX;
+      const calDays = dx / geo.ppd;
+      const workDays = calDays * (plan.calendar.workdays.length / 7);
+      const days = Math.min(LIMITS.maxDays, Math.max(0.5, snapHalf(rs.days0 + workDays * rs.perDay)));
+      resizeRef.current = { ...rs, days, dx };
+      setResize(resizeRef.current);
+      return;
+    }
+    const dd = dlRef.current;
+    if (dd) {
+      const date = addDays(dd.date0, Math.round((e.clientX - dd.startX) / geo.ppd));
+      if (date !== dd.date) {
+        dlRef.current = { ...dd, date };
+        setDlDrag(dlRef.current);
       }
       return;
     }
+    const p = pressed.current;
+    if (p && !dragRef.current) {
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      if (Math.abs(dy) > 4 && Math.abs(dy) >= Math.abs(dx)) {
+        // an up-or-down pull reorders
+        pressed.current = null;
+        lastY.current = e.clientY;
+        const d: Drag = { id: p.id, from: p.index, over: p.index, startY: p.y + pageY(), byBar: true };
+        begin({ ...d, over: slotOf(d, dy) }, dy);
+      } else if (p.edge && Math.abs(dx) > 2) {
+        // a sideways pull on the edge changes the effort
+        pressed.current = null;
+        if (beginResize(p)) onMove(e);
+      } else if (!p.edge && Math.abs(dx) > 8) {
+        pressed.current = null; // a sideways pull on a bar's body is neither a reorder nor a click (its edge changes the effort)
+      }
+      return;
+    }
+    if (!dragRef.current) return;
+    lastY.current = e.clientY;
+    followDrag();
+  };
+  // The dragged row follows the pointer in page coordinates: the pointer moving, or the page scrolling under it.
+  const followDrag = () => {
     const d = dragRef.current;
     if (!d) return;
-    const dy = e.clientY - d.startY;
+    const dy = lastY.current + pageY() - d.startY;
     dyRef.current = dy;
-    for (const el of dragged(d.id)) el.style.top = `${d.from * ROW + dy}px`;
+    for (const el of dragged(d.id)) el.style.top = `${dragTop(d, dy)}px`;
     const over = slotOf(d, dy);
     if (over !== d.over) {
       dragRef.current = { ...d, over };
       setDrag(dragRef.current);
     }
   };
+  const followRef = useRef(followDrag);
+  followRef.current = followDrag;
+  /** Where the chart's visible part ends: the top of the dock when it's stuck to the window's bottom, else the window's. */
+  const visibleBottom = (top: number) => {
+    const dock = document.querySelector('.dock');
+    const dockTop = dock && getComputedStyle(dock).position === 'sticky' ? dock.getBoundingClientRect().top : 0;
+    return dockTop > top ? Math.min(window.innerHeight, dockTop) : window.innerHeight;
+  };
+  // While a row is dragged the page scrolls by itself (as in any sortable list): to keep the dragged row whole when
+  // it is cut off by the chart's header or the dock, and, with the pointer near either edge, to bring in the rows still
+  // out of sight there. It never scrolls past the list. The page scrolling for any other reason (a wheel) keeps the
+  // row under the pointer too.
+  useEffect(() => {
+    if (!drag) return;
+    let raf = 0;
+    const step = () => {
+      raf = requestAnimationFrame(step);
+      const d = dragRef.current;
+      const wrap = wrapRef.current;
+      const head = wrap?.querySelector('.board-head')?.getBoundingClientRect();
+      const rows = wrap?.querySelector('.list .rows')?.getBoundingClientRect();
+      if (!head || !rows || !d) return;
+      const top = head.bottom;
+      const bottom = visibleBottom(top);
+      const rowTopNow = rows.top + dragTop(d, dyRef.current);
+      const last = rows.top + rowTop(plan.items.length); // the end of the last item's row
+      let v = 0;
+      if (rowTopNow < top - 0.5) v = -Math.min(SCROLL_MAX, Math.ceil(top - rowTopNow));
+      else if (rowTopNow + ROW > bottom + 0.5 && bottom - top >= ROW) v = Math.min(SCROLL_MAX, Math.ceil(rowTopNow + ROW - bottom));
+      else {
+        v = autoScrollSpeed(lastY.current, top, bottom);
+        if ((v < 0 && rows.top >= top - 0.5) || (v > 0 && last <= bottom + 0.5)) v = 0;
+      }
+      if (!v) return;
+      window.scrollBy({ top: v, behavior: 'instant' });
+      followRef.current();
+    };
+    raf = requestAnimationFrame(step);
+    const onScroll = () => followRef.current();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [!!drag]);
   const onUp = (e?: PointerEvent) => {
-    const p = pressed.current;
-    if (p) {
-      pressed.current = null;
-      const still = !!e && Math.abs(e.clientX - p.x) < 5 && Math.abs(e.clientY - p.y) < 5;
-      if (still) onSelect(selected === p.id ? null : p.id);
+    const rs = resizeRef.current;
+    if (rs) {
+      resizeRef.current = null;
+      setResize(null);
+      if (rs.days !== rs.days0) commitChange([{ op: 'setEffort', item: rs.id, lane: rs.lane, days: rs.days }]);
       return;
     }
+    const dd = dlRef.current;
+    if (dd) {
+      dlRef.current = null;
+      setDlDrag(null);
+      if (dd.date !== dd.date0) commitChange([{ op: 'setDeadline', item: dd.id, date: dd.date }]);
+      else if (e) onSelect(selected === dd.id ? null : dd.id); // a click on the diamond
+      return;
+    }
+    const p = pressed.current;
+    pressed.current = null;
     const d = dragRef.current;
-    if (!d) return;
+    if (!d) {
+      // a press on a bar that never moved: a click
+      if (p && e && Math.abs(e.clientX - p.x) < 5 && Math.abs(e.clientY - p.y) < 5) onSelect(selected === p.id ? null : p.id);
+      return;
+    }
     dragRef.current = null;
-    for (const el of dragged(d.id)) el.style.top = `${d.over * ROW}px`; // drop into the slot
-    if (d.over !== d.from) onCommit(moveItem(plan, d.id, d.over));
-    setDrag(null);
+    try {
+      for (const el of dragged(d.id)) el.style.top = `${rowTop(d.over)}px`; // drop into the slot
+      if (d.over !== d.from) onCommit(moveItem(plan, d.id, d.over));
+    } finally {
+      setDrag(null); // whatever happens, the drag is over: the list never stays in a previewed order
+    }
+    // A row dropped while still cut off (the page hadn't finished scrolling) is shown whole at once: under the chart's
+    // header at the top, above the dock at the bottom. At once, not gliding: a page still moving after a drop puts
+    // the next press on the wrong row.
+    const row = wrapRef.current?.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(d.id)}"]`)?.getBoundingClientRect();
+    const head = wrapRef.current?.querySelector('.board-head')?.getBoundingClientRect();
+    if (!row || !head) return;
+    const bottom = visibleBottom(head.bottom);
+    if (row.top < head.bottom - 0.5) window.scrollBy({ top: row.top - head.bottom, behavior: 'instant' });
+    else if (row.bottom > bottom + 0.5 && bottom - head.bottom >= ROW) window.scrollBy({ top: row.bottom - bottom, behavior: 'instant' });
   };
   const onCancel = () => {
     pressed.current = null;
+    resizeRef.current = null;
+    dlRef.current = null;
+    setResize(null);
+    setDlDrag(null);
     const d = dragRef.current;
     dragRef.current = null;
-    if (d) for (const el of dragged(d.id)) el.style.top = `${d.from * ROW}px`;
+    if (d) for (const el of dragged(d.id)) el.style.top = `${rowTop(d.from)}px`;
     setDrag(null);
   };
   // Moves and releases are followed on the whole window, so a drag always ends, even if the pointer is let go outside
@@ -318,13 +606,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-handle="${id}"]`)?.focus());
   };
 
-  const topOf = (id: string, i: number) => (drag && drag.id === id ? drag.from * ROW + dyRef.current : i * ROW);
+  const topOf = (id: string, i: number) => (drag && drag.id === id ? dragTop(drag, dyRef.current) : rowTop(i));
   const year = dayParts(plan.start).year;
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
 
   /** The always-there empty row at the bottom turns into a real item as soon as something is typed or picked. */
   const createItem = (fields: Partial<NormalizedPlan['items'][number]>) => {
+    if (plan.items.length >= LIMITS.items) return '';
     const next = { ...plan, items: [...plan.items, { id: '', name: 'New item', work: [], dependsOn: [], ...fields }] };
     const clean = applyChanges(next as NormalizedPlan, []).plan;
     onCommit(clean);
@@ -335,14 +624,42 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (next) nameRefs.current.get(next.id)?.focus();
     else draftRef.current?.focus();
   };
+  // Enter in an effort cell goes to the next row's, like Enter in a name
+  const focusDays = (index: number) => {
+    const next = order[index];
+    wrapRef.current?.querySelector<HTMLInputElement>(next ? `.row[data-item="${CSS.escape(next.id)}"] .days-cell input` : '.row.draft .days-cell input')?.focus();
+  };
+  const full = plan.items.length >= LIMITS.items;
+
+  const whyLines = why.key ? explain(analysis.current, why.key) : [];
+  // The item's settings open under its row and are as wide as the list from the name to the row's end, so they read
+  // as the row opened up (measured from the row itself; the stylesheet's width stands in before there is a layout).
+  const panelBox = (() => {
+    const input = panel.el;
+    const row = input?.closest<HTMLElement>('.row');
+    if (!input || !row) return { gap: 8, width: undefined, clipped: false };
+    const a = input.getBoundingClientRect();
+    const b = (row.querySelector('.row-del') ?? row).getBoundingClientRect();
+    const width = Math.round(b.right - a.left);
+    return { gap: Math.max(2, Math.round(row.getBoundingClientRect().bottom - a.bottom) + 1), width: width > 200 ? Math.max(300, width) : undefined, clipped: input.scrollWidth > input.clientWidth + 1 || window.innerWidth <= 560 }; // on a phone the settings may cover their row: they always say whose they are
+  })();
+  // Closing the settings from inside them (Escape, Close) hands the focus back to the name they opened from.
+  const closePanel = useCallback(() => {
+    const input = panel.el;
+    const inside = !!document.activeElement?.closest('.item-pop');
+    panel.close();
+    if (inside) input?.focus({ preventScroll: true });
+  }, [panel.el, panel.close]);
 
   const height = (order.length + 1) * ROW; // + the empty row for a new item
+  // one person, no team: effort is a number in the row, the person is implied
+  const solo = plan.lanes.length === 1 && plan.lanes[0]!.kind !== 'team' ? plan.lanes[0]! : null;
 
   return (
     <div
       ref={wrapRef}
       tabIndex={-1}
-      class={cx('board-wrap', drag && 'is-dragging')}
+      class={cx('board-wrap', drag && 'is-dragging', resize && 'is-resizing', dlDrag && 'is-resizing', ghost && 'has-ghost', fresh && 'unmeasured')}
       onPointerLeave={() => hover(null)}
       onDragStart={(e) => e.preventDefault()} // no native drag of selected text or images (Safari)
     >
@@ -352,17 +669,17 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         <div class="list-head">
           <span>#</span>
           <span>Item</span>
-          <span>Who</span>
-          <span>Deadline</span>
-          <span>Expected delivery</span>
+          <span title="Working days of effort, per person">Effort</span>
+          <span title="Calculated from the effort, the order and who is free: when it will be finished">Expected delivery</span>
+          <span title="When it is wanted: you set this">Deadline</span>
           <span />
         </div>
-        <div class="tl-clip">
+        <div class="tl-clip" ref={clipRef}>
           <div ref={scaleRef} class="tl-head" style={{ width: `${geo.width}px` }}>
             <div class="months">
               {scale.months.map((m) => (
-                <div key={m.left} class="month" style={{ left: `${m.left}px`, width: `${m.width}px` }}>
-                  {m.width >= 34 ? m.label : ''}
+                <div key={m.left} class={cx('month', m.width < 46 && 'tight')} style={{ left: `${m.left}px`, width: `${m.width}px` }}>
+                  {m.label}
                 </div>
               ))}
             </div>
@@ -397,17 +714,19 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
               const r = shown.byId.get(it.id)!;
               const o = analysis.outlook.get(it.id);
               const isDragged = drag?.id === it.id;
-              const whoText = describeWork(plan, it.id);
+              const shownIt = shownPlan.items.find((x) => x.id === it.id) ?? it;
+              const whoText = describeWork(shownPlan, it.id);
+              const delivery = <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={shownIt.deadline} year={year} />;
               return (
                 <div
                   key={it.id}
                   role="listitem"
                   data-item={it.id}
-                  class={cx('row', selected === it.id && 'sel', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
+                  class={cx('row', selected === it.id && 'sel', it.done && 'done', (i + 1) % 3 === 0 && 'g3', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
                   style={{ top: `${topOf(it.id, i)}px` }}
                   onPointerEnter={() => hover(it.id)}
                   onClick={(e) => {
-                    if ((e.target as HTMLElement).closest('input, button, select')) return;
+                    if ((e.target as HTMLElement).closest('input, button, select, .date-btn')) return;
                     onSelect(selected === it.id ? null : it.id);
                   }}
                 >
@@ -434,26 +753,57 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                       const name = (e.currentTarget as HTMLInputElement).value;
                       onCommit({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, name } : x)) }, `name:${it.id}`);
                     }}
+                    aria-haspopup="dialog"
+                    aria-expanded={panel.key === it.id}
+                    onClick={(e) => {
+                      onSelect(it.id);
+                      panel.open(e.currentTarget as HTMLElement, it.id);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
+                        panel.close();
                         focusName(i + 1);
+                      } else if ((e.key === 'ArrowDown' && e.altKey) || (e.key === 'Tab' && !e.shiftKey && panel.key === it.id)) {
+                        // into the item's settings: Alt ↓ opens them, Tab goes on into them once they're open
+                        e.preventDefault();
+                        if (panel.key !== it.id) panel.open(e.currentTarget as HTMLElement, it.id);
+                        requestAnimationFrame(() => wrapRef.current?.querySelector<HTMLElement>('.item-pop button, .item-pop input, .item-pop select')?.focus());
                       }
                     }}
                     onFocus={() => onSelect(it.id)}
                   />
-                  <WhoCell item={it} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  {solo ? (
+                    <DaysCell item={shownIt} lane={solo} onFocus={() => onSelect(it.id)} onEnter={() => focusDays(i + 1)} onChange={(days) => commitChange([{ op: 'setEffort', item: it.id, lane: solo.id, days }], `days:${it.id}`)} />
+                  ) : (
+                    <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                  )}
+                  {r.status === 'scheduled' || r.status === 'blocked' ? (
+                    <button
+                      class={cx('status', why.key === it.id && 'open')}
+                      aria-label={`${it.name}: why this date`}
+                      aria-expanded={why.key === it.id}
+                      onClick={(e) => {
+                        if (why.key === it.id) return why.close();
+                        onSelect(it.id);
+                        why.open(e.currentTarget as HTMLElement, it.id);
+                      }}
+                    >
+                      {delivery}
+                    </button>
+                  ) : (
+                    // nothing to explain (no effort yet, or done): the pill says it all
+                    <span class="status">{delivery}</span>
+                  )}
                   <div class="due-cell">
                     <DateButton
-                      value={it.deadline}
+                      value={shownIt.deadline}
                       label={`Deadline for ${it.name}`}
                       placeholder="+ date"
+                      clearable
                       format={(d) => <DueLabel iso={d} year={year} />}
                       onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
                     />
-                  </div>
-                  <div class="status">
-                    <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={it.deadline} year={year} />
                   </div>
                   <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} title="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
                     <Icon.trash />
@@ -461,7 +811,15 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 </div>
               );
             })}
-            <div class="row draft" style={{ top: `${order.length * ROW}px` }}>
+            {full ? (
+              <div class="row draft full" style={{ top: `${rowTop(order.length)}px` }}>
+                <span class="handle" aria-hidden="true">
+                  <Icon.plus />
+                </span>
+                <span class="full-note">This plan is full ({LIMITS.items} items). Split it into two plans, or delete what's finished.</span>
+              </div>
+            ) : (
+            <div class="row draft" style={{ top: `${rowTop(order.length)}px` }}>
               <span class="handle" aria-hidden="true">
                 <Icon.plus />
               </span>
@@ -482,9 +840,20 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   setFocusReq({ id, mode: 'end' });
                 }}
               />
-              <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
-                <span class="who-empty">+ who</span>
-              </button>
+              {solo ? (
+                <DaysCell
+                  item={null}
+                  lane={solo}
+                  onChange={(days) => {
+                    if (days > 0) setFocusReq({ id: createItem({ work: [{ lane: solo.id, days, maxPeople: 1 }] }), mode: 'select' });
+                  }}
+                />
+              ) : (
+                <button class="who-cell" aria-label="New item: choose who works on it" onClick={() => setOpenWhoFor(createItem({}))}>
+                  <span class="who-empty">+ who</span>
+                </button>
+              )}
+              <span class="status" aria-hidden="true" />
               <div class="due-cell">
                 <DateButton
                   value={undefined}
@@ -498,6 +867,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 />
               </div>
             </div>
+            )}
           </div>
         </div>
 
@@ -507,17 +877,20 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             {offDays.map((s) => (
               <div key={s.from} class="offday" style={{ left: `${(s.from - geo.start) * geo.ppd}px`, width: `${s.len * geo.ppd}px` }} />
             ))}
-            {todayX !== null && (
-              <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />
-            )}
+            {todayX !== null && <div class="today" title="Today" style={{ left: `${todayX + geo.ppd / 2}px` }} />}
+            {/* a line under every third row, carried across from the list, so the eye can follow a row to its bar */}
+            {Array.from({ length: Math.floor(order.length / 3) }, (_, k) => (
+              <div key={k} class="hline" style={{ top: `${(k + 1) * 3 * ROW - 1}px` }} />
+            ))}
           </div>
           <div class="rows" style={{ height: `${height}px` }}>
             {plan.items.map((it) => (
               <BarRow
                 key={it.id}
-                it={it}
+                it={shownPlan.items.find((x) => x.id === it.id) ?? it}
                 top={topOf(it.id, slot.get(it.id)!)}
                 shown={shown}
+                ghost={ghost}
                 base={analysis.current}
                 planned={analysis.planned}
                 analysis={analysis}
@@ -528,11 +901,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 laneColor={(id) => laneOf(id)?.color ?? '#4c6ef5'}
                 dragging={!!drag}
                 isDragged={drag?.id === it.id}
+                resizing={resize?.id === it.id ? resize : null}
                 dim={!!highlight && !highlight.has(it.id)}
                 chain={!!highlight && highlight.has(it.id)}
                 year={year}
                 sel={selected === it.id}
                 onPointerDown={(e) => onBarDown(e, it.id, plan.items.indexOf(it))}
+                onEdgeDown={(e, lane) => onEdgeDown(e, it.id, lane)}
+                onDiamondDown={(e, date) => onDiamondDown(e, it.id, date)}
                 onHover={() => hover(it.id)}
               />
             ))}
@@ -553,6 +929,26 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           }}
         />
       )}
+      {why.el && why.key && whyLines.length > 0 && (
+        <Popover anchor={why.el} onClose={why.close} label="Why this date" className="why-pop" fit="shift" focus={false}>
+          <WhyDate lines={whyLines} blocked={analysis.current.byId.get(why.key)?.status === 'blocked'} />
+        </Popover>
+      )}
+      {panel.el && panel.key && (
+        <Popover anchor={panel.el} onClose={closePanel} label="The item's settings" className="item-pop" fit="shift" focus={false} gap={panelBox.gap} width={panelBox.width}>
+          <ItemPanel
+            plan={plan}
+            schedule={analysis.current}
+            id={panel.key}
+            fullName={panelBox.clipped}
+            showWho={!solo}
+            onCommit={onCommit}
+            onEditWho={(el) => who.open(el, panel.key!)}
+            onClose={closePanel}
+          />
+        </Popover>
+      )}
+      {/* after the item's settings: opened from there, the editor sits on top of them */}
       {who.el && who.key && <WhoEditor anchor={who.el} plan={plan} itemId={who.key} onClose={who.close} onCommit={onCommit} />}
     </div>
   );
@@ -562,6 +958,7 @@ function BarRow(props: {
   it: NormalizedPlan['items'][number];
   top: number;
   shown: Schedule;
+  ghost: Schedule | null;
   base: Schedule;
   planned: Schedule;
   analysis: Analysis;
@@ -573,11 +970,14 @@ function BarRow(props: {
   laneColor: (id: string) => string;
   dragging: boolean;
   isDragged: boolean;
+  resizing: Resize | null;
   dim: boolean;
   chain: boolean;
   year: number;
   sel: boolean;
   onPointerDown: (e: PointerEvent) => void;
+  onEdgeDown: (e: PointerEvent, lane: string) => void;
+  onDiamondDown: (e: PointerEvent, date: string) => void;
   onHover: () => void;
 }) {
   const { it, shown, x, ppd } = props;
@@ -589,11 +989,15 @@ function BarRow(props: {
   const h = n > 1 ? Math.max(6, Math.floor(inner / n) - 1) : inner;
   const plannedR = props.planned.byId.get(it.id);
   const baseR = props.base.byId.get(it.id);
-  const delta = props.dragging && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
+  const live = props.dragging || !!props.resizing || props.shown !== props.base;
+  const delta = live && baseR?.end !== undefined && r.end !== undefined ? r.end - baseR.end : 0;
   const endX = r.endDate ? x(r.endDate) + ppd : 0;
   // keep the finish-date label clear of a deadline diamond that sits just after the bar
   const diamondX = it.deadline ? x(it.deadline) + ppd / 2 : null;
-  const labelX = diamondX !== null && diamondX > endX - 8 && diamondX < endX + 56 ? diamondX + 10 : endX + 8;
+  let labelX = diamondX !== null && diamondX > endX - 8 && diamondX < endX + 8 + TAG_W ? diamondX + 10 : endX + 8;
+  // while its edge is dragged the bar runs ahead of the plan (it follows the pointer; the plan moves in half days): the label stays clear of it
+  const resized = props.resizing ? parts.find((q) => q.lane === props.resizing!.lane) : undefined;
+  if (resized && props.resizing) labelX = Math.max(labelX, x(shown.calendar.dateAt(resized.start!)) + 1 + Math.max(4, props.resizing.width0 + props.resizing.dx) + 8);
   const late = it.deadline && r.endDate && r.endDate > it.deadline;
   const dueEnd = it.deadline ? x(it.deadline) + ppd : 0;
   // a note in place of the bar ("add effort…") moves past the deadline diamond and the today line instead of running over them
@@ -601,10 +1005,15 @@ function BarRow(props: {
   for (const mark of [diamondX, props.todayLine].filter((m): m is number => m !== null).sort((a, b) => a - b)) {
     if (mark > noteX - 10 && mark < noteX + NOTE_W) noteX = mark + 12;
   }
+  // the previewed option, drawn over the real bars
+  const g = props.ghost?.byId.get(it.id);
+  const gParts = g?.parts.filter((p) => p.start !== undefined && p.end !== undefined) ?? [];
+  const gDelta = g && r.end !== undefined && g.end !== undefined ? g.end - r.end : null;
+  const gEndX = g?.endDate ? x(g.endDate) + ppd : null;
   return (
     <div
       data-item={it.id}
-      class={cx('bars', props.dim && 'dim', props.sel && 'sel', props.isDragged && 'dragging')}
+      class={cx('bars', props.dim && 'dim', props.sel && 'sel', props.isDragged && 'dragging', it.done && 'done')}
       style={{ top: `${props.top}px` }}
       onPointerDown={(e) => props.onPointerDown(e as unknown as PointerEvent)}
       onPointerEnter={props.onHover}
@@ -626,28 +1035,54 @@ function BarRow(props: {
         const left = x(s) + 1;
         const width = Math.max(4, x(e) - x(s) + ppd - 2);
         const lateFrom = late ? Math.max(0, dueEnd - left) : width;
+        const rs = props.resizing && props.resizing.lane === p.lane ? props.resizing : null;
+        const drawnW = rs ? Math.max(4, rs.width0 + rs.dx) : width; // under the pointer the bar moves with it, not in half-day steps
         return (
           <div
             key={p.lane}
-            class={cx('bar', props.chain && 'chain')}
-            title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}`}
-            style={{ left: `${left}px`, width: `${width}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
+            class={cx('bar', props.chain && 'chain', rs && 'resizing')}
+            title={`${it.name}: ${formatDay(s, props.year)} → ${formatDay(e, props.year)}. Drag the right edge to change the effort.`}
+            style={{ left: `${left}px`, width: `${drawnW}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, background: props.laneColor(p.lane) }}
           >
             {lateFrom < width && <span class="bar-late" style={{ left: `${lateFrom}px` }} />}
+            {rs && <span class="bar-days">{fmtDays(rs.days)}</span>}
+            <span class="bar-edge" onPointerDown={(ev) => props.onEdgeDown(ev as unknown as PointerEvent, p.lane)} title="Drag to change the effort" />
           </div>
         );
       })}
+      {gParts.map((p, k) => {
+        const s = props.ghost!.calendar.dateAt(p.start!);
+        const e = props.ghost!.calendar.dateAt(p.end!);
+        return (
+          <div
+            key={`g-${p.lane}`}
+            class="bar ghost"
+            style={{ left: `${x(s) + 1}px`, width: `${Math.max(4, x(e) - x(s) + ppd - 2)}px`, top: `${7 + k * (h + 1)}px`, height: `${h}px`, borderColor: props.laneColor(p.lane), background: `color-mix(in srgb, ${props.laneColor(p.lane)} 22%, transparent)` }}
+          />
+        );
+      })}
       {it.deadline && (
-        <div class="deadline" title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}`} style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }} />
+        <div
+          class="deadline"
+          title={`Deadline ${formatDay(it.deadline, props.year)}${o ? ` · ${badgeLabel(o)}` : ''}. Drag to move it.`}
+          style={{ left: `${x(it.deadline) + ppd / 2}px`, top: `${ROW / 2 - 7}px`, background: o ? BADGE_VAR[o] : 'var(--fg3)' }}
+          onPointerDown={(ev) => props.onDiamondDown(ev as unknown as PointerEvent, it.deadline!)}
+        />
       )}
       {r.endDate && (
-        <span class={cx('end-label', late && 'late')} style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
-          {formatDay(r.endDate, props.year)}
+        <span class={cx('end-tag', delta !== 0 && 'live')} style={{ left: `${labelX}px`, top: `${ROW / 2 - 8}px` }}>
+          <span class={cx('end-label', late && 'late')}>ends {formatDay(r.endDate, props.year)}</span>
+          {delta !== 0 && <span class={cx('delta', delta < 0 ? 'up' : 'down')}>{delta > 0 ? `+${delta}d` : `${delta}d`}</span>}
         </span>
       )}
-      {delta !== 0 && r.endDate && (
-        <span class={cx('delta', delta < 0 ? 'up' : 'down')} style={{ left: `${labelX + 48}px`, top: `${ROW / 2 - 8}px` }}>
-          {delta > 0 ? `+${delta}d` : `${delta}d`}
+      {gDelta !== null && gDelta !== 0 && gEndX !== null && (
+        <span class={cx('delta', 'ghost-delta', gDelta < 0 ? 'up' : 'down')} style={{ left: `${gEndX + 8}px`, top: `${ROW / 2 - 8}px` }}>
+          {gDelta > 0 ? `+${gDelta}d` : `${gDelta}d`}
+        </span>
+      )}
+      {r.status === 'done' && (
+        <span class="empty-bar done-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px` }}>
+          <Icon.check /> done
         </span>
       )}
       {r.status === 'empty' && <span class="empty-bar" style={{ left: `${noteX}px`, top: `${ROW / 2 - 9}px` }}>add effort to schedule this</span>}
@@ -657,12 +1092,17 @@ function BarRow(props: {
 }
 
 /**
- * One quiet block under the chart, out of the way: what the marks mean, then how to work with the chart. Diamonds are the
- * usual Gantt milestone marker; here each one is an item's deadline, coloured like its delivery date. With a lens on,
- * bars are stretched and a thin baseline keeps the user's own estimate.
+ * One quiet line under the chart: what the marks mean, and a "Tips" toggle for how to work with the chart (open on a
+ * first visit, since the intro is the one time it's read; closed after that, the tooltips on the chart carry the rest).
+ * Diamonds are the usual Gantt milestone marker; here each one is an item's deadline, coloured like its delivery date.
+ * With a lens on, bars are stretched and a thin baseline keeps the user's own estimate.
  */
-export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => void }) {
+export function Legend({ lens, onPlanned, tipsOpen }: { lens: LensId; onPlanned: () => void; tipsOpen?: boolean }) {
   const l = lensById(lens);
+  const [tips, setTips] = useState(!!tipsOpen);
+  useEffect(() => {
+    if (tipsOpen) setTips(true);
+  }, [tipsOpen]);
   return (
     <div class="legend" aria-label="Chart key and tips">
       <span>
@@ -685,7 +1125,14 @@ export function Legend({ lens, onPlanned }: { lens: LensId; onPlanned: () => voi
           </button>
         </span>
       )}
-      <span class="legend-tips">Drag ⠿ or a bar to reprioritize · click any value to edit · click a row to see why it lands when it does</span>
+      <button class="link-btn tips-toggle" aria-expanded={tips} onClick={() => setTips((v) => !v)}>
+        {tips ? 'Hide tips' : 'Tips'}
+      </button>
+      {tips && (
+        <span class="legend-tips">
+          Drag ⠿ or a bar up or down to reprioritize · drag a bar's right edge to change its effort · drag a diamond to move a deadline · click an item's name for its settings (what it waits for, a note, done) · click an expected delivery date to see why it lands there · hover an option to preview it as dashed bars
+        </span>
+      )}
     </div>
   );
 }
@@ -705,11 +1152,12 @@ export function Delivery(p: {
   deadline?: string | undefined;
   year: number;
 }) {
+  if (p.status === 'done') return <span class="pill done" title="Finished: it takes no more time">done</span>;
   if (p.status === 'blocked') return <span class="pill blocked" title={p.problem}>blocked</span>;
   if (p.status === 'empty') return <span class="pill empty" title="Add who works on it and how many days">no effort</span>;
   if (!p.endDate) return <span class="done-date">—</span>;
   const date = <DueLabel iso={p.endDate} year={p.year} />;
-  if (!p.badge) return <span class="done-date" title={`Expected delivery ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
+  if (!p.badge) return <span class="done-date" title={`Finishes ${formatDay(p.endDate, p.year)} · no deadline`}>{date}</span>;
   const lens = lensById(p.lens);
   const tip =
     p.badge === 'late' && p.base && p.base !== 'late'
@@ -724,12 +1172,11 @@ export function Delivery(p: {
   const due = p.deadline ? ` · deadline ${formatDay(p.deadline, p.year)}` : '';
   const pct = p.chance !== undefined ? ` · ${chanceLabel(p.chance)} chance as planned` : '';
   return (
-    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Expected delivery ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
+    <span class={`pill delivery ${p.badge}`} title={tip + due + pct} aria-label={`Finishes ${formatDay(p.endDate, p.year)}: ${badgeLabel(p.badge)}${due}`}>
       {date}
     </span>
   );
 }
-
 
 /** A deadline in a narrow cell: "21 Oct", or "19 Feb" over a small "2027" when it isn't the plan's year. */
 function DueLabel({ iso, year }: { iso: string; year: number }) {
@@ -745,48 +1192,71 @@ function DueLabel({ iso, year }: { iso: string; year: number }) {
 }
 
 /**
- * Who works on an item, in a narrow cell: one person with name and days; two with avatar + days each (or stacked
- * avatars if they don't fit, measured after layout); three or more as stacked avatars and the total days.
+ * Who works on an item, in a narrow cell: everyone's avatar, always (stacked when there are several), the name when
+ * it's one person, a "→" when there's a hand-off, and the days as a pill (one person's, or everyone's together).
+ * The tooltip has the whole story ("Martin 1d + Sara 3d after Martin").
  */
 function WhoCell({ item, laneOf, label, onOpen }: { item: NormalizedPlan['items'][number]; laneOf: (id: string) => NormalizedPlan['lanes'][number] | undefined; label: string; onOpen: (el: HTMLElement) => void }) {
-  const ref = useRef<HTMLButtonElement>(null);
   const work = item.work;
-  const shape = work.map((w) => `${laneOf(w.lane)?.name}:${w.days}:${w.after ?? ''}`).join('|');
-  const [squeezed, setSqueezed] = useState<string | null>(null);
-  const stacked = work.length > 2 || (work.length === 2 && squeezed === shape);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && work.length === 2 && squeezed !== shape && el.scrollWidth > el.clientWidth + 1) setSqueezed(shape);
-  });
   const color = (lane: string) => laneOf(lane)?.color ?? '#868e96';
   const name = (lane: string) => laneOf(lane)?.name ?? lane;
+  const one = work.length === 1 ? laneOf(work[0]!.lane) : undefined;
   return (
-    <button ref={ref} class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
-      {stacked ? (
-        <span class="who-part stack">
-          {work.slice(0, 3).map((w) => (
-            <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
-          ))}
-          {work.length > 3 && <span class="more">+{work.length - 3}</span>}
-          <span class="who-days">{fmtDays(work.reduce((t, w) => t + w.days, 0))}</span>
-        </span>
-      ) : work.length ? (
-        work.map((w, k) => {
-          const lane = laneOf(w.lane);
-          return (
-            <span key={w.lane} class="who-part">
-              {k > 0 && <span class="sep">{w.after ? '→' : '+'}</span>}
-              <Avatar name={name(w.lane)} color={color(w.lane)} />
-              {work.length === 1 && <span class="who-name">{name(w.lane)}</span>}
-              {work.length === 1 && lane?.kind === 'team' && <span class="who-team">×{fmtSize(lane.size)}</span>}
-              <span class="who-days">{fmtDays(w.days)}</span>
+    <button class="who-cell" data-who={item.id} title={label} aria-label={`Who works on ${item.name}: ${work.length ? label : 'nobody yet'}`} onClick={(e) => onOpen(e.currentTarget as HTMLElement)}>
+      {work.length ? (
+        <>
+          <span class={cx('who-people', work.length > 1 && 'who-stack')}>
+            {work.slice(0, 3).map((w) => (
+              <Avatar key={w.lane} name={name(w.lane)} color={color(w.lane)} />
+            ))}
+            {work.length > 3 && <span class="more">+{work.length - 3}</span>}
+          </span>
+          {work.length === 1 && <span class="who-name">{name(work[0]!.lane)}</span>}
+          {one?.kind === 'team' && <span class="who-team">×{fmtSize(one.size)}</span>}
+          {work.some((w) => w.after) && (
+            <span class="who-handoff" aria-hidden="true">
+              →
             </span>
-          );
-        })
+          )}
+          <span class="who-days">{fmtDays(work.reduce((t, w) => t + w.days, 0))}</span>
+        </>
       ) : (
         <span class="who-empty">+ who</span>
       )}
     </button>
+  );
+}
+
+/**
+ * Effort as a plain number in the row, for plans with one person: type the days, the way you would in a spreadsheet,
+ * and the item is theirs. (With several people or a team, the who cell and its editor take over.)
+ */
+function DaysCell({ item, lane, onChange, onFocus, onEnter }: { item: NormalizedPlan['items'][number] | null; lane: NormalizedPlan['lanes'][number]; onChange: (days: number) => void; onFocus?: () => void; onEnter?: () => void }) {
+  const part = item?.work.find((w) => w.lane === lane.id);
+  return (
+    <span class="days-cell" data-who={item?.id ?? ''}>
+      <input
+        type="number"
+        min="0"
+        max={LIMITS.maxDays}
+        step="0.5"
+        inputMode="decimal"
+        value={part && part.days > 0 ? part.days : ''}
+        placeholder="days"
+        aria-label={item ? `${item.name}: working days for ${lane.name}` : 'New item: working days'}
+        onFocus={onFocus}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
+        onInput={(e) => onChange(Math.min(LIMITS.maxDays, Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0)))}
+      />
+      <span class="unit" aria-hidden="true">
+        {part?.days === 1 ? 'day' : 'days'}
+      </span>
+    </span>
   );
 }
 

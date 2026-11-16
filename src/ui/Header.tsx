@@ -14,17 +14,18 @@ const LENS_HINT: Record<LensId, string> = {
 
 export type ExportKind = 'yaml' | 'json' | 'xlsx' | 'csv' | 'ics' | 'png' | 'svg' | 'md';
 
-const ALL_EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
-  { kind: 'json', label: 'Save plan', hint: '.json: reopen here or in Claude' },
-  { kind: 'yaml', label: 'Save plan as YAML', hint: '.yaml' },
-  { kind: 'xlsx', label: 'Excel', hint: '.xlsx with a Gantt sheet' },
-  { kind: 'png', label: 'Image', hint: '.png of the chart' },
-  { kind: 'ics', label: 'Calendar', hint: '.ics: dates into your calendar' },
-  { kind: 'csv', label: 'CSV', hint: 'one row per item' },
-  { kind: 'md', label: 'Summary', hint: '.md report' },
-  { kind: 'svg', label: 'Vector image', hint: '.svg' },
+const ALL_EXPORTS: { kind: ExportKind; label: string; hint: string; on: boolean }[] = [
+  { kind: 'json', label: 'Save plan', hint: '.json: reopen here or in Claude', on: true },
+  { kind: 'yaml', label: 'Save plan as YAML', hint: '.yaml', on: FEATURES.yamlExport },
+  { kind: 'xlsx', label: 'Excel', hint: '.xlsx with a Gantt sheet', on: true },
+  { kind: 'csv', label: 'CSV', hint: 'one row per item', on: true },
+  { kind: 'png', label: 'Image', hint: '.png of the chart', on: true },
+  { kind: 'md', label: 'Summary', hint: '.md report', on: true },
+  { kind: 'ics', label: 'Calendar', hint: '.ics: dates into your calendar', on: FEATURES.exportIcs },
+  { kind: 'svg', label: 'Vector image', hint: '.svg', on: FEATURES.exportSvg },
 ];
-export const EXPORTS = ALL_EXPORTS.filter((x) => x.kind !== 'yaml' || FEATURES.yamlExport);
+/** What the Export menu offers, in this order; switched-off formats stay exportable through `buildExport`. */
+export const EXPORTS = ALL_EXPORTS.filter((x) => x.on);
 
 interface Props {
   plan: NormalizedPlan;

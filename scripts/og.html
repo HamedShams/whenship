@@ -1,17 +1,18 @@
 <!doctype html>
-<!-- The link-preview image (docs/og.png, served as /og.png). Regenerate after changing it:
-     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars --window-size=1200,630 --screenshot=docs/og.png scripts/og.html -->
+<!-- The link-preview image (docs/og.png, served as /og.png): the name, the promise, and the README's screenshot from the
+     headline down. `npm run docs:pictures` takes both pictures. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <style>
-      html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #f6f7fb; font-family: Inter, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1d2433; }
-      .top { display: flex; align-items: center; gap: 22px; padding: 64px 72px 0; }
+      html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #0f1012; font-family: Inter, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #f1f3f6; }
+      .top { display: flex; align-items: center; gap: 22px; padding: 56px 72px 0; }
       h1 { margin: 0; font-size: 72px; letter-spacing: -0.03em; line-height: 1; }
-      p { margin: 22px 72px 0; font-size: 34px; color: #4a5468; letter-spacing: -0.01em; }
-      .chart { position: absolute; left: 48px; right: 48px; bottom: 0; height: 352px; overflow: hidden; border-radius: 18px 18px 0 0; background: #fff; box-shadow: 0 -2px 30px rgba(29, 36, 51, 0.12); }
-      .chart img { display: block; width: 1220px; margin: 14px 0 0 -6px; }
-      .url { position: absolute; right: 72px; top: 76px; font-size: 26px; color: #4f46e5; font-weight: 600; }
+      p { margin: 20px 72px 0; font-size: 34px; color: #aab0bb; letter-spacing: -0.01em; }
+      .chart { position: absolute; left: 48px; right: 48px; bottom: 0; height: 366px; overflow: hidden; border-radius: 18px 18px 0 0; border: 1px solid #33363d; border-bottom: 0; background: #17181b; box-shadow: 0 -2px 40px rgba(0, 0, 0, 0.5); }
+      /* the screenshot is 1280 wide and starts with the toolbar: shown from the headline down */
+      .chart img { display: block; width: 1104px; margin-top: -94px; }
+      .url { position: absolute; right: 72px; top: 70px; font-size: 26px; color: #a5b4fc; font-weight: 600; }
     </style>
   </head>
   <body>
@@ -27,6 +28,6 @@
     </div>
     <span class="url">whenship.app</span>
     <p>When will it ship, honestly? A live what-if Gantt for small teams.</p>
-    <div class="chart"><img src="../docs/example.svg" alt="" /></div>
+    <div class="chart"><img src="../docs/screenshot.png" alt="" /></div>
   </body>
 </html>

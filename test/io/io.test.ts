@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { strFromU8, unzipSync } from 'fflate';
-import { schedule, validatePlan } from '../../src/engine';
+import { analyze, findInsights, schedule, validatePlan } from '../../src/engine';
 import { decodeShareLink, encodeShareFragment, parsePlanText, shareUrl, toJson, toYaml } from '../../src/io/format';
 import { parseTable, toCsv } from '../../src/io/table';
 import { toIcs } from '../../src/io/ics';
@@ -206,5 +207,17 @@ describe('samples', () => {
       const sch = schedule(p);
       expect(sch.items.every((r) => r.status === 'scheduled'), s.id).toBe(true);
     }
+  });
+
+  it("the README's example plan (the one in its picture) reads cleanly and tells the story the caption does", () => {
+    const { plan: p, errors, warnings } = validatePlan(JSON.parse(readFileSync('docs/example.whenship.json', 'utf8')), { today: '2026-11-16' });
+    expect([errors, warnings]).toEqual([[], []]);
+    expect([p.lanes.length, p.items.length]).toEqual([4, 8]);
+    const a = analyze(p, 'planned');
+    expect([a.counts.late, a.counts.tight]).toEqual([1, 4]);
+    expect(a.status.get('apple-pay-checkout')).toBe('late');
+    const best = findInsights(p, 'planned')[0]!;
+    expect([best.kind, best.title]).toEqual(['reorder', 'Move "Apple Pay checkout" to the top']); // free, and it meets the deadline
+    expect(readFileSync('README.md', 'utf8')).toContain('](docs/screenshot.png)');
   });
 });

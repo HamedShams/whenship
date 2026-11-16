@@ -43,7 +43,7 @@ export const SAMPLES: Sample[] = [
   {
     id: 'squads',
     label: 'Product squads',
-    blurb: 'Back-end, front-end and data teams sharing a roadmap; some work can take two engineers at once.',
+    blurb: 'Back-end, front-end and data teams sharing a roadmap; some work can take two engineers at once, and one promise is already late.',
     build: (today) => {
       const s = nextMonday(today);
       return {
@@ -56,11 +56,11 @@ export const SAMPLES: Sample[] = [
         ],
         items: [
           { name: 'Checkout redesign', work: [{ lane: 'Back-end', days: 6, maxPeople: 2 }, { lane: 'Front-end', days: 10, maxPeople: 2 }], deadline: at(s, 25) },
-          { name: 'Subscriptions MVP', work: [{ lane: 'Back-end', days: 15, maxPeople: 2 }, { lane: 'Front-end', days: 5, after: 'Back-end' }], deadline: at(s, 45) },
-          { name: 'Usage dashboard', work: [{ lane: 'Data', days: 8 }, { lane: 'Front-end', days: 4, after: 'Data' }], deadline: at(s, 40) },
+          { name: 'Subscriptions MVP', work: [{ lane: 'Back-end', days: 15, maxPeople: 2 }, { lane: 'Front-end', days: 5, after: 'Back-end' }], deadline: at(s, 36) },
+          { name: 'Usage dashboard', work: [{ lane: 'Data', days: 8 }, { lane: 'Front-end', days: 4, after: 'Data' }], deadline: at(s, 20), note: 'Promised to the board' },
           { name: 'Search relevance', work: [{ lane: 'Back-end', days: 8 }, { lane: 'Data', days: 4 }] },
           { name: 'Dark mode', work: [{ lane: 'Front-end', days: 5 }] },
-          { name: 'Audit log', work: [{ lane: 'Back-end', days: 6 }, { lane: 'Front-end', days: 1 }], deadline: at(s, 50) },
+          { name: 'Audit log', work: [{ lane: 'Back-end', days: 6 }, { lane: 'Front-end', days: 1 }], deadline: at(s, 42) },
         ],
       };
     },
@@ -68,7 +68,7 @@ export const SAMPLES: Sample[] = [
   {
     id: 'solo',
     label: 'Solo founder',
-    blurb: 'One person at 70% (the rest is support and sales), shipping toward a launch date.',
+    blurb: 'One person at 70% (the rest is support and sales), shipping toward a launch date. Effort is a number you type into the row.',
     build: (today) => {
       const s = nextMonday(today);
       return {

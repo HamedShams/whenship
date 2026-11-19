@@ -157,9 +157,10 @@ function Web({ today }: { today: string }) {
 }
 
 /**
- * A tab left open across a release keeps running the old app (it is one page, loaded once). When the tab comes back
- * into view, ask this server which version it serves; if it isn't this one, offer a reload. Only on a server that
- * answers `/healthz` (not the offline file), and nothing about the visitor is sent.
+ * A tab left open across a deploy keeps running the old app (it is one page, loaded once). When the tab comes back
+ * into view, ask this server which build it serves now; if it isn't this one, offer a reload. Every deploy counts, not
+ * only a new version number. Only on a server that answers `/healthz` (not the offline file), and nothing about the
+ * visitor is sent.
  */
 function useNewerVersion(): boolean {
   const [stale, setStale] = useState(false);
@@ -171,8 +172,8 @@ function useNewerVersion(): boolean {
       last = Date.now();
       try {
         const r = await fetch(`${location.origin}/healthz`, { cache: 'no-store' });
-        const served = r.ok ? ((await r.json()) as { version?: string }).version : undefined;
-        if (served && served !== VERSION) setStale(true);
+        const served = r.ok ? ((await r.json()) as { version?: string; build?: string }) : {};
+        if (boot.build && served.build ? served.build !== boot.build : !!served.version && served.version !== VERSION) setStale(true);
       } catch {
         /* offline, or not a whenship server: nothing to say */
       }

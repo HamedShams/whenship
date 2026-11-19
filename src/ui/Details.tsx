@@ -122,7 +122,7 @@ export function ItemPanel({
         </span>
       </div>
 
-      <label class="ip-note">
+      <label class="ip-row ip-note">
         <span class="ip-note-head">
           <span class="ip-label">Note</span>
           <span class={cx('ip-count', note.length > NOTE_MAX && 'over')} aria-hidden="true">
@@ -132,6 +132,7 @@ export function ItemPanel({
         <textarea
           class="ip-input"
           rows={2}
+          wrap="soft"
           value={note}
           maxLength={NOTE_MAX}
           placeholder="Anything worth remembering"

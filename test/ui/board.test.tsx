@@ -37,6 +37,26 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+describe('the options stay live while only words change', () => {
+  it("renaming an item (like typing a note or the plan's name) pauses nothing; the options pick the new name up when the typing stops", async () => {
+    const { root } = mount();
+    await settle();
+    const apply = () => root.querySelector('.option .btn') as HTMLButtonElement;
+    const titles = () => [...root.querySelectorAll('.opt-title')].map((t) => t.textContent).join(' | ');
+    expect(titles()).toContain('Quick fix for Acme');
+    const name = rows(root)[0]!.querySelector('.cell-input') as HTMLInputElement;
+    for (const value of ['Quick fix for Acm', 'Quick fix for A', 'Hotfix']) {
+      name.value = value;
+      await act(() => void name.dispatchEvent(new Event('input', { bubbles: true })));
+      expect(apply().disabled).toBe(false); // never greyed while typing a name: no date depends on it
+    }
+    await settle();
+    expect(titles()).toContain('Hotfix');
+    expect(titles()).not.toContain('Quick fix for Acme');
+    expect(apply().disabled).toBe(false);
+  });
+});
+
 describe('the options rail', () => {
   it('sits under the chart; hovering a card previews it as a ghost on the chart, leaving clears it', async () => {
     const { root } = mount();
@@ -65,6 +85,45 @@ describe('the options rail', () => {
     expect(cards[0]!.querySelector('.opt-effect')!.textContent).not.toBe('');
     await act(() => (cards[0]!.querySelector('button') as HTMLButtonElement).click());
     expect(names(root)[0]).toBe('Appeal for Northwind');
+  });
+
+  it("an option from Claude is gone once applied (each Apply used to add the same person again), and comes back only with undo", async () => {
+    const hire = { title: 'Bring in Mo for the research', changes: [{ op: 'addLane' as const, lane: { id: 'mo', name: 'Mo' } }, { op: 'setEffort' as const, item: 'Research for Brightside', lane: 'Mo', days: 5 }, { op: 'setEffort' as const, item: 'Research for Brightside', lane: 'Sara', days: 0 }] };
+    // Claude's options are each written against the plan it saw, so the second brings Mo in as well
+    const first = { title: 'Appeal first, with Mo', changes: [{ op: 'addLane' as const, lane: { id: 'mo', name: 'Mo' } }, { op: 'setEffort' as const, item: 'Appeal for Northwind', lane: 'Mo', days: 1 }, { op: 'move' as const, item: 'Appeal for Northwind', to: 0 }] };
+    const { root, changes } = mount({ claudeOptions: [hire, first] });
+    await settle();
+    const claude = () => [...root.querySelectorAll('.option.from-claude .opt-title')].map((t) => t.textContent);
+    expect(claude()).toEqual(['Bring in Mo for the research', 'Appeal first, with Mo']);
+    const apply = (title: string) => act(() => ([...root.querySelectorAll('.option')].find((o) => o.querySelector('.opt-title')!.textContent === title)!.querySelector('button') as HTMLButtonElement).click());
+    await apply('Bring in Mo for the research');
+    await settle();
+    expect(claude()).toEqual(['Appeal first, with Mo']); // applied: not offered again
+    const lanes = () => (changes.at(-1) as { lanes: { name: string }[] }).lanes.map((l) => l.name);
+    expect(lanes()).toEqual(['Sara', 'Martin', 'Mo']); // one Mo
+    await apply('Appeal first, with Mo'); // still on offer, though Mo is in the plan by now: the rest of it stands
+    await settle();
+    expect(claude()).toEqual([]);
+    expect(lanes()).toEqual(['Sara', 'Martin', 'Mo']); // and still one Mo
+    // undo both: the plan is as it was, and so are Claude's options
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
+    await settle();
+    expect(claude()).toEqual(['Appeal first, with Mo']);
+    await act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true })));
+    await settle();
+    expect(claude()).toEqual(['Bring in Mo for the research', 'Appeal first, with Mo']);
+    expect(lanes()).toEqual(['Sara', 'Martin']);
+  });
+
+  it("an option from Claude that has nothing left to change isn't shown; Claude's own colour marks what comes from Claude", async () => {
+    const { root } = mount({ claudeOptions: [{ title: 'Keep the fix first', changes: [{ op: 'move', item: 'Quick fix for Acme', to: 0 }] }, { title: 'Sara is here already', changes: [{ op: 'addLane', lane: { id: 'x', name: 'Sara' } }] }] });
+    await settle();
+    expect(root.querySelectorAll('.option.from-claude')).toHaveLength(0); // the first is already so, the second adds someone who is there
+    const css = readFileSync('src/ui/styles.css', 'utf8');
+    expect(css).toMatch(/--claude: #d97757;/);
+    expect(css).toMatch(/\.option\.from-claude \{ border-color: color-mix\(in srgb, var\(--claude\) /);
+    expect(css).toMatch(/\.option\.from-claude \.opt-kind \{ color: var\(--claude\); \}/);
+    expect(css).toMatch(/\.options-title \.ask-claude \.btn \{ color: var\(--claude\);/);
   });
 
   it("never shows more than three cards: Claude's take the place of the engine's lowest-ranked ones", async () => {
@@ -140,6 +199,24 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(document.querySelector('.item-panel')).toBeNull();
   });
 
+  it('one thing open at a time, by construction: opening another closes the first, even with no press in between', async () => {
+    const { root } = mount();
+    const row = rows(root)[1]!;
+    const open = () => [...root.querySelectorAll('.docked')].map((d) => [...d.classList].find((c) => c.endsWith('-pop')));
+    // plain clicks, with no pointer press reaching the page first (the press is what closes things otherwise)
+    await act(() => (row.querySelector('.who-cell') as HTMLElement).click());
+    expect(open()).toEqual(['who-pop']);
+    await act(() => (row.querySelector('.cell-input') as HTMLElement).click());
+    expect(open()).toEqual(['item-pop']);
+    await act(() => (row.querySelector('button.status') as HTMLElement).click());
+    expect(open()).toEqual(['why-pop']);
+    await act(() => (row.querySelector('.due-cell .date-btn') as HTMLElement).click());
+    expect(open()).toEqual(['date-pop']);
+    await act(() => (rows(root)[3]!.querySelector('.who-cell') as HTMLElement).click()); // and another row's
+    expect(open()).toEqual(['who-pop']);
+    expect((root.querySelector('.docked') as HTMLElement).style.top).toBe(`${HEAD + 4 * ROW}px`);
+  });
+
   it('a name too long for its row is repeated in full on top of the settings; Enter in the name closes them and moves on', async () => {
     const { root } = mount();
     const name = rows(root)[2]!.querySelector('.cell-input') as HTMLInputElement;
@@ -167,7 +244,7 @@ describe('the dock holds the options; a row answers for itself', () => {
     const pop = () => root.querySelector('.docked') as HTMLElement;
     expect(pop().parentElement).toBe(wrap); // part of the chart: it scrolls with the page, with no script moving it
     expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '37px', '440px']); // under the second row; name → delete
-    expect(wrap.style.minHeight).toBe(`${HEAD + 2 * ROW + 12}px`); // the chart keeps room for it under its last row
+    expect(wrap.style.minHeight).toBe(''); // it takes no room of its own: nothing under the chart (the dock) is pushed away
     // a press elsewhere closes what is open; here it opens who works on it: from the Effort column to the row's end
     const press = (el: Element) => act(() => (el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), (el as HTMLElement).click()));
     await press(row.querySelector('.who-cell')!);
@@ -180,10 +257,20 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '177px', '300px']);
     await act(() => (pop().querySelector('.why-close') as HTMLButtonElement).click());
     expect(root.querySelector('.docked')).toBeNull();
-    expect(wrap.style.minHeight).toBe(''); // and gives the room back
+    // its deadline's calendar: under the row too (never above it), ending where the row ends
+    rect(row.querySelector('.due-cell .date-btn')!, { top: 907, bottom: 937, left: 393, right: 455 });
+    await press(row.querySelector('.due-cell .date-btn')!);
+    expect(pop().classList.contains('date-pop')).toBe(true);
+    expect([pop().style.top, pop().style.left, pop().style.width]).toEqual([`${HEAD + 2 * ROW}px`, '259px', '218px']);
+    expect(row.querySelector('.due-cell .date-btn')!.classList.contains('open')).toBe(true);
+    await act(() => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(root.querySelector('.docked')).toBeNull();
+    // the order of things: rows < the options dock < what a row opens < the chart's header < the toolbar
     const css = readFileSync('src/ui/styles.css', 'utf8');
-    expect(css).toMatch(/\n\.docked \{ position: absolute; z-index: 18;/); // under the chart's header (20) and the dock (25), over the rows
-    expect(css).toMatch(/\n\.board-head \{[^}]*z-index: 20;[^}]*height: 53px;/);
+    const z = (sel: string) => Number(new RegExp(`\\n${sel.replace('.', '\\.')} \\{[^}]*z-index: (\\d+)`).exec(css)![1]);
+    expect([z('.list'), z('.dock'), z('.docked'), z('.board-head'), z('.toolbar')]).toEqual([10, 25, 26, 27, 30]);
+    expect(css).toMatch(/\n\.docked \{ position: absolute;/);
+    expect(css).toMatch(/\n\.board-head \{[^}]*height: 53px;/);
     expect(HEAD).toBe(53);
     expect(css).not.toMatch(/\.docked[^{]*\{[^}]*(max-height|overflow-y)/); // it never scrolls inside
   });
@@ -250,7 +337,8 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(cell().querySelector('.who-handoff')).toBeNull();
     expect(cell().querySelector('.who-days')!.textContent).toBe('5d');
     const css = readFileSync('src/ui/styles.css', 'utf8');
-    expect(css).toMatch(/\.who-people \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/); // it is the faces that give way, never the days
+    expect(css).toMatch(/\n\.who-people \{[^}]*flex: none; \}/); // one face is never cut (a long name gives way instead)
+    expect(css).toMatch(/\.who-people\.who-stack \{[^}]*flex: 0 1 auto;[^}]*overflow: hidden;/); // a stack of faces gives way before the days do
     expect(css).toMatch(/\.who-days \{ flex: none;/);
     await act(() => ([...pop().querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Done') as HTMLButtonElement).click());
     expect(root.querySelector('.docked')).toBeNull();
@@ -261,6 +349,9 @@ describe('the dock holds the options; a row answers for itself', () => {
     await act(() => (rows(root)[0]!.querySelector('.cell-input') as HTMLInputElement).click());
     const note = root.querySelector('.item-panel textarea.ip-input') as HTMLTextAreaElement;
     expect([Number(note.getAttribute('rows')), note.maxLength]).toEqual([2, 120]); // two lines to write in, 120 characters
+    // it sits beside its label like the other settings, with the count under the label
+    expect(note.closest('.ip-row.ip-note')).not.toBeNull();
+    expect([...note.closest('.ip-note')!.querySelector('.ip-note-head')!.children].map((c) => c.className)).toEqual(['ip-label', 'ip-count']);
     const count = () => root.querySelector('.item-panel .ip-count')!.textContent;
     expect(count()).toBe('0/120');
     note.value = 'call Acme ';
@@ -282,6 +373,7 @@ describe('the dock holds the options; a row answers for itself', () => {
     const css = readFileSync('src/ui/styles.css', 'utf8');
     expect(css).toMatch(/\.ip-input, \.ip-select \{[^}]*color: var\(--fg\);/);
     expect(css).toMatch(/\.ip-count \{ font-size: 11px; color: var\(--fg3\);/); // the count is quiet
+    expect(css).toMatch(/textarea\.ip-input \{[^}]*overflow-wrap: anywhere; overflow-x: hidden;/); // it wraps; it never scrolls sideways
     expect(css).toMatch(/input::placeholder, textarea::placeholder \{ color: var\(--fg3\); opacity: 1; \}/);
     expect(note.closest('.note')).toBeNull();
   });
@@ -436,6 +528,34 @@ describe('a drag is always the row that was pressed, and always ends', () => {
     ptr('pointermove', document.body, 10, 300 - 6 * ROW);
     ptr('pointerup', document.body, 10, 300 - 6 * ROW);
     expect(names(root)[0]).toBe('Appeal for Kestrel'); // dropped into the first place all the same
+    scrollBy.mockRestore();
+  });
+
+  it('while a row is dragged the wheel is taken over: applied as an ordinary scroll, so a touch-surface gesture never starts', async () => {
+    const { root } = mount();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const wheel = (init: WheelEventInit) => {
+      const e = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+      act(() => void window.dispatchEvent(e));
+      return e;
+    };
+    expect(wheel({ deltaY: 30 }).defaultPrevented).toBe(false); // not dragging: the wheel is the browser's
+    expect(scrollBy).not.toHaveBeenCalled();
+    ptr('pointerdown', handle(root, 1), 10, 300);
+    ptr('pointermove', document.body, 10, 310);
+    await act(() => new Promise<void>((r) => setTimeout(r, 0)));
+    expect(wheel({ deltaY: 30 }).defaultPrevented).toBe(true);
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: 30, behavior: 'instant' });
+    expect(wheel({ deltaY: 2, deltaMode: 1 }).defaultPrevented).toBe(true); // lines, from a wheel mouse
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: 32, behavior: 'instant' });
+    scrollBy.mockClear();
+    const late = new WheelEvent('wheel', { bubbles: true, cancelable: false, deltaY: 30 }); // a gesture already under way can't be taken over
+    act(() => void window.dispatchEvent(late));
+    expect(scrollBy).not.toHaveBeenCalled(); // and isn't applied a second time
+    ptr('pointerup', document.body, 10, 310);
+    await act(() => new Promise<void>((r) => setTimeout(r, 0)));
+    expect(wheel({ deltaY: 30 }).defaultPrevented).toBe(false); // dropped: the wheel is the browser's again
+    expect(document.querySelector('.drag-log')).toBeNull(); // the drag recorder is off unless the address asks for it (#debug)
     scrollBy.mockRestore();
   });
 
@@ -737,7 +857,7 @@ describe('the calendar, scrolling while dragging, dates on demand, the column or
     const id = 'appeal-for-northwind'; // due 14 Oct
     const deadline = () => (changes.at(-1) as { items: { id: string; deadline?: string }[] }).items.find((i) => i.id === id)!.deadline;
     await act(() => dueBtn(root, id).click());
-    let pop = document.querySelector('.popover.date-pop')!;
+    let pop = document.querySelector('.docked.date-pop')!;
     expect(pop.querySelectorAll('.cal-day')).toHaveLength(42);
     expect(pop.querySelector('.cal-head b')!.textContent).toBe('Oct 2026');
     expect(pop.querySelector('.cal-day.sel')!.textContent).toBe('14');
@@ -745,15 +865,15 @@ describe('the calendar, scrolling while dragging, dates on demand, the column or
     expect(root.querySelector('.row.sel')).toBeNull(); // opening it doesn't select the row
     await act(() => day(pop, '20').click());
     expect(deadline()).toBe('2026-10-20');
-    expect(document.querySelector('.popover.date-pop')).toBeNull(); // picked: closed
+    expect(document.querySelector('.docked.date-pop')).toBeNull(); // picked: closed
     // a click anywhere else closes it (the chart included)
     await act(() => dueBtn(root, id).click());
-    expect(document.querySelector('.popover.date-pop')).not.toBeNull();
+    expect(document.querySelector('.docked.date-pop')).not.toBeNull();
     await act(() => void root.querySelector('.timeline')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
-    expect(document.querySelector('.popover.date-pop')).toBeNull();
+    expect(document.querySelector('.docked.date-pop')).toBeNull();
     // typed
     await act(() => dueBtn(root, id).click());
-    pop = document.querySelector('.popover.date-pop')!;
+    pop = document.querySelector('.docked.date-pop')!;
     const text = pop.querySelector('.cal-text') as HTMLInputElement;
     text.value = 'not a date';
     await act(() => void text.dispatchEvent(new Event('input', { bubbles: true })));
@@ -765,7 +885,7 @@ describe('the calendar, scrolling while dragging, dates on demand, the column or
     expect(deadline()).toBe('2026-11-07');
     // next month, and clearing
     await act(() => dueBtn(root, id).click());
-    pop = document.querySelector('.popover.date-pop')!;
+    pop = document.querySelector('.docked.date-pop')!;
     await act(() => (pop.querySelector('[aria-label="Next month"]') as HTMLButtonElement).click());
     expect(pop.querySelector('.cal-head b')!.textContent).toBe('Dec 2026');
     await act(() => ([...pop.querySelectorAll('button')].find((b) => b.textContent === 'Clear') as HTMLButtonElement).click());
@@ -894,18 +1014,20 @@ describe('quiet notes, grid lines, readable labels, the calendar everywhere', ()
   it("the calendar marks today with its own class, never scrolls, and serves the holidays editor too; Escape closes only the calendar", async () => {
     const { root } = mount();
     await act(() => (root.querySelector('.row.draft .due-cell .date-btn') as HTMLElement).click()); // no date yet: it opens on this month
-    let cal = document.querySelector('.popover.date-pop') as HTMLElement;
+    let cal = document.querySelector('.docked.date-pop') as HTMLElement; // a row's calendar is docked under the row (the empty row's too)
+    expect(cal.style.top).toBe(`${HEAD + (rows(root).length + 1) * ROW}px`);
     expect(cal.querySelector('.cal-day.is-today')!.textContent).toBe(String(dayParts(todayLocal()).day));
     expect(cal.querySelector('.today')).toBeNull(); // ".today" is the chart's today line: on a calendar cell it drew a stray line and number
-    expect(cal.style.maxHeight).toBe('none'); // it moves to fit; it never scrolls inside
+    expect([...cal.querySelectorAll('button')].some((b) => b.textContent === 'Clear')).toBe(false); // nothing to clear yet
     await act(() => void document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-    expect(document.querySelector('.popover.date-pop')).toBeNull();
+    expect(document.querySelector('.date-pop')).toBeNull();
     // holidays: the same calendar, without Clear; picking a day keeps the editor open
     await act(() => ([...root.querySelectorAll('.setup .chip')].find((b) => b.textContent === '+ holidays') as HTMLButtonElement).click());
     const editor = document.querySelector('.popover.holiday-pop')!;
     expect(editor.querySelector('input[type="date"]')!.closest('.date-btn.date-box')).not.toBeNull();
     await act(() => (editor.querySelector('.date-btn') as HTMLElement).click());
-    cal = document.querySelector('.popover.date-pop') as HTMLElement;
+    cal = document.querySelector('.popover.date-pop') as HTMLElement; // elsewhere it floats beside its field, and moves to fit
+    expect(cal.style.maxHeight).toBe('none'); // it never scrolls inside
     expect([...cal.querySelectorAll('button')].some((b) => b.textContent === 'Clear')).toBe(false);
     const twelve = [...cal.querySelectorAll('.cal-day')].find((b) => b.textContent === '12' && !b.classList.contains('out')) as HTMLButtonElement;
     await act(() => void twelve.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))); // a press inside the calendar is not a press outside the editor

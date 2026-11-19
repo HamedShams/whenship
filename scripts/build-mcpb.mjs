@@ -17,10 +17,11 @@ const manifest = {
   description: 'When will it ship, honestly? Plan small-team work: real finish dates, deadline risk and what-ifs in an interactive chart.',
   long_description:
     'whenship schedules work for small teams (people or teams, items in priority order, effort in working days, deadlines) and shows an interactive Gantt chart right in the conversation: finish dates, which deadlines slip and why, and the changes that would help. Edits in the chart reach Claude automatically. Nothing is stored on any server: this extension runs on your computer.',
-  author: { name: 'Seyed Hamed Shams', url: 'https://hamedshams.com' },
+  author: { name: 'Hamed Shams', url: 'https://hamedshams.com' },
   homepage: pkg.homepage,
   repository: { type: 'git', url: 'https://github.com/HamedShams/whenship.git' },
-  support: 'https://github.com/HamedShams/whenship/issues',
+  documentation: 'https://whenship.app/',
+  support: 'https://whenship.app/', // Claude shows this one link under "More info": it goes to the website, which links on to GitHub
   icon: 'icon.png',
   server: {
     type: 'node',

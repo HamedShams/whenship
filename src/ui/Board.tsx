@@ -10,9 +10,10 @@ import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
 import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { ItemPanel, WhyDate } from './Details';
-import { Docked, useAnchor } from './Popover';
+import { dragLog, dragLogOn } from './dragLog';
+import { Docked } from './Popover';
 import { Avatar, WhoEditor, whoShape } from './WhoEditor';
-import { cx, DateButton, Icon } from './lib';
+import { Calendar, cx, DateButton, Icon } from './lib';
 
 export const ROW = 44;
 /** The height of the chart's own header (column titles and the calendar scale): rows start right under it. */
@@ -121,6 +122,14 @@ interface Resize {
   width0: number;
   dx: number;
 }
+/** What a row has open. `id` is the item's, or `DRAFT` for the empty row at the bottom (its deadline's calendar). */
+interface RowPop {
+  kind: 'panel' | 'who' | 'why' | 'cal';
+  id: string;
+  el: HTMLElement;
+}
+const DRAFT = '';
+
 /** Dragging a deadline diamond moves the deadline. */
 interface DeadlineDrag {
   id: string;
@@ -148,11 +157,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const [resize, setResize] = useState<Resize | null>(null);
   const [dlDrag, setDlDrag] = useState<DeadlineDrag | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
-  const who = useAnchor<string>();
-  // Two things open from a row, each from the cell it belongs to: why its date is what it is (from the date), and
-  // the item's own settings (from its name).
-  const why = useAnchor<string>();
-  const panel = useAnchor<string>();
+  // What a row has open: its settings (from the name), who works on it (from Effort), why its date (from the date) or
+  // its deadline's calendar. One thing at a time, by construction: opening one is closing the other.
+  const [pop, setPop] = useState<RowPop | null>(null);
+  const openPop = (kind: RowPop['kind'], el: HTMLElement, id: string) => setPop({ kind, el, id });
+  const closePop = useCallback(() => setPop(null), []);
+  const isOpen = (kind: RowPop['kind'], id: string) => pop?.kind === kind && pop.id === id;
   const [draft, setDraft] = useState('');
   const draftRef = useRef<HTMLInputElement>(null);
   const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
@@ -322,7 +332,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     if (!openWhoFor) return;
     const cell = document.querySelector<HTMLElement>(`[data-who="${CSS.escape(openWhoFor)}"]`);
     if (cell) {
-      who.open(cell, openWhoFor);
+      openPop('who', cell, openWhoFor);
       setOpenWhoFor(null);
     }
   }, [openWhoFor, order]);
@@ -372,6 +382,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     }
   };
   const begin = (d: Drag, dy: number) => {
+    if (dragLogOn) {
+      const head = wrapRef.current?.querySelector('.board-head')?.getBoundingClientRect();
+      const rows = wrapRef.current?.querySelector('.list .rows')?.getBoundingClientRect();
+      dragLog('begin', { id: d.id, from: d.from, byBar: !!d.byBar, sy: Math.round(pageY()), max: document.documentElement.scrollHeight - window.innerHeight, vh: window.innerHeight, dpr: window.devicePixelRatio, head: head && Math.round(head.bottom), rowsTop: rows && Math.round(rows.top), agent: navigator.userAgent });
+    }
     startDragging(wrapRef.current);
     hover(null);
     dragRef.current = d;
@@ -441,6 +456,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const onMove = (e: PointerEvent) => {
     // No button is down, yet something is in progress: the release was missed. It ends where it stood, so a row never
     // goes on following a pointer that has let go of it.
+    if (dragLogOn && dragRef.current) dragLog('move', { y: Math.round(e.clientY * 10) / 10, buttons: e.buttons, trusted: e.isTrusted, type: e.pointerType });
     if (e.buttons === 0 && busy()) return onUp();
     const rs = resizeRef.current;
     if (rs) {
@@ -507,6 +523,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   useEffect(() => {
     if (!drag) return;
     let raf = 0;
+    let lastFrame = '';
     const step = () => {
       raf = requestAnimationFrame(step);
       const d = dragRef.current;
@@ -518,6 +535,12 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       const bottom = visibleBottom(top);
       const rowTopNow = rows.top + dragTop(d, dyRef.current);
       const last = rows.top + rowTop(plan.items.length); // the end of the last item's row
+      if (dragLogOn) {
+        // what the page believes is on screen, once a frame (only when something changed)
+        const el = wrap!.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(d.id)}"]`)?.getBoundingClientRect();
+        const line = JSON.stringify({ sy: Math.round(pageY() * 10) / 10, head: Math.round(top * 10) / 10, rowsTop: Math.round(rows.top * 10) / 10, row: el && Math.round(el.top * 10) / 10, wanted: Math.round(rowTopNow * 10) / 10, bottom: Math.round(bottom), y: Math.round(lastY.current), over: d.over, vv: window.visualViewport ? [Math.round(window.visualViewport.offsetTop), Math.round(window.visualViewport.pageTop), window.visualViewport.scale] : null });
+        if (line !== lastFrame) dragLog('frame', JSON.parse((lastFrame = line)));
+      }
       let v = 0;
       if (rowTopNow < top - 0.5) v = -Math.min(SCROLL_MAX, Math.ceil(top - rowTopNow));
       else if (rowTopNow + ROW > bottom + 0.5 && bottom - top >= ROW) v = Math.min(SCROLL_MAX, Math.ceil(rowTopNow + ROW - bottom));
@@ -526,15 +549,39 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         if ((v < 0 && rows.top >= top - 0.5) || (v > 0 && last <= bottom + 0.5)) v = 0;
       }
       if (!v) return;
+      const before = pageY();
       window.scrollBy({ top: v, behavior: 'instant' });
       followRef.current();
+      if (dragLogOn) dragLog('auto', { v, before: Math.round(before), after: Math.round(pageY()), head: Math.round(top), rowsTop: Math.round(rows.top), wanted: Math.round(rowTopNow), shown: Math.round(rows.top + shownTop.current), y: Math.round(lastY.current) });
     };
     raf = requestAnimationFrame(step);
-    const onScroll = () => followRef.current();
+    const onScroll = () => {
+      dragLog('scroll', { sy: Math.round(pageY() * 10) / 10 });
+      followRef.current();
+    };
+    // While a row is dragged the wheel is ours: a finger resting on a trackpad or a touch mouse sends scroll gestures
+    // during the drag, and a browser that scrolls on its own thread (Safari) then ignores the page's own scrolling
+    // until the gesture ends, leaving what is on screen and what the page believes out of step. Taken here and
+    // applied as an ordinary scroll, a gesture never starts, and wheeling through a long list mid-drag still works.
+    const onWheel = (e: WheelEvent) => {
+      dragLog('wheel', { dy: Math.round(e.deltaY * 10) / 10, mode: e.deltaMode, cancelable: e.cancelable });
+      if (!e.cancelable) return; // a gesture already under way: it can't be taken over, and mustn't be applied twice
+      e.preventDefault();
+      const by = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+      if (by) window.scrollBy({ top: by, behavior: 'instant' });
+      followRef.current();
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('wheel', onWheel, { passive: false });
+    // for the record only: whatever else the browser does during a drag
+    const others = dragLogOn ? ['selectstart', 'dragstart', 'pointercancel', 'lostpointercapture', 'blur', 'visibilitychange', 'gesturestart', 'gestureend', 'touchstart', 'mouseup', 'contextmenu'] : [];
+    const onOther = (e: Event) => dragLog(e.type, { on: (e.target as Element | null)?.nodeName ?? null });
+    for (const type of others) window.addEventListener(type, onOther, true);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('wheel', onWheel);
+      for (const type of others) window.removeEventListener(type, onOther, true);
     };
   }, [!!drag]);
   const onUp = (e?: PointerEvent) => {
@@ -562,6 +609,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       return;
     }
     dragRef.current = null;
+    dragLog('drop', { id: d.id, from: d.from, over: d.over, sy: Math.round(pageY()), y: e ? Math.round(e.clientY) : null, missedRelease: !e });
     try {
       for (const el of dragged(d.id)) el.style.top = `${rowTop(d.over)}px`; // drop into the slot
       if (d.over !== d.from) onCommit(moveItem(plan, d.id, d.over));
@@ -579,6 +627,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     else if (row.bottom > bottom + 0.5 && bottom - head.bottom >= ROW) window.scrollBy({ top: row.bottom - bottom, behavior: 'instant' });
   };
   const onCancel = () => {
+    if (dragRef.current) dragLog('cancel');
     pressed.current = null;
     resizeRef.current = null;
     dlRef.current = null;
@@ -649,16 +698,16 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   };
   const full = plan.items.length >= LIMITS.items;
 
-  const whyLines = why.key ? explain(analysis.current, why.key) : [];
+  const whyLines = pop?.kind === 'why' ? explain(analysis.current, pop.id) : [];
   // What a row opens is docked under it, inside the chart: its top comes from the row's place in the list (so it is
   // right under its row whatever the row is doing at that moment, and travels with it), its sides from the list's
   // columns: the settings run from the name to the row's end; the who editor from the Effort column to the row's end
   // (from the name once a hand-off needs the "Starts" column; a team's "People" column may take it past the list); why
-  // a date is what it is sits under that date, ending where the row ends.
-  const dockTop = (id: string) => HEAD + rowTop((slot.get(id) ?? 0) + 1);
-  const dockBox = (id: string, kind: 'panel' | 'who' | 'why'): { left?: number; width?: number; clipped: boolean } => {
+  // a date is what it is, and the deadline's calendar, end where the row ends.
+  const dockTop = (id: string) => HEAD + rowTop((id === DRAFT ? order.length : (slot.get(id) ?? 0)) + 1);
+  const dockBox = (id: string, kind: RowPop['kind']): { left?: number; width?: number; clipped: boolean } => {
     const wrap = wrapRef.current;
-    const row = wrap?.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(id)}"]`);
+    const row = wrap?.querySelector<HTMLElement>(id === DRAFT ? '.list .row.draft' : `.list .row[data-item="${CSS.escape(id)}"]`);
     const name = row?.querySelector<HTMLElement>('.cell-input');
     if (!wrap || !row || !name) return { clipped: false };
     const w = wrap.getBoundingClientRect();
@@ -669,6 +718,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     const fit = (left: number, width: number) => ({ left: Math.max(8, Math.min(left, w.width - width - 8)), width: Math.min(width, w.width - 16), clipped });
     if (kind === 'panel') return fit(nameLeft, Math.max(300, right - nameLeft));
     if (kind === 'why') return fit(right - 300, 300);
+    if (kind === 'cal') return fit(right - 218, 218);
     const shape = whoShape(plan, id);
     const cell = row.querySelector<HTMLElement>('[data-who]');
     const cellLeft = cell ? cell.getBoundingClientRect().left - w.left : nameLeft;
@@ -677,16 +727,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   };
   // Closing the settings from inside them (Escape, Done) hands the focus back to the name they opened from.
   const closePanel = useCallback(() => {
-    const input = panel.el;
+    const input = pop?.el;
     const inside = !!document.activeElement?.closest('.item-pop');
-    panel.close();
+    closePop();
     if (inside) input?.focus({ preventScroll: true });
-  }, [panel.el, panel.close]);
+  }, [pop?.el, closePop]);
   // an item that is gone (deleted, undone) takes whatever it had open with it
   useEffect(() => {
-    if (why.key && !slot.has(why.key)) why.close();
-    if (panel.key && !slot.has(panel.key)) panel.close();
-    if (who.key && !slot.has(who.key)) who.close();
+    if (pop && pop.id !== DRAFT && !slot.has(pop.id)) closePop();
   });
 
   const height = (order.length + 1) * ROW; // + the empty row for a new item
@@ -792,20 +840,20 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                       onCommit({ ...plan, items: plan.items.map((x) => (x.id === it.id ? { ...x, name } : x)) }, `name:${it.id}`);
                     }}
                     aria-haspopup="dialog"
-                    aria-expanded={panel.key === it.id}
+                    aria-expanded={isOpen('panel', it.id)}
                     onClick={(e) => {
                       onSelect(it.id);
-                      panel.open(e.currentTarget as HTMLElement, it.id);
+                      openPop('panel', e.currentTarget as HTMLElement, it.id);
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        panel.close();
+                        if (isOpen('panel', it.id)) closePop();
                         focusName(i + 1);
-                      } else if ((e.key === 'ArrowDown' && e.altKey) || (e.key === 'Tab' && !e.shiftKey && panel.key === it.id)) {
+                      } else if ((e.key === 'ArrowDown' && e.altKey) || (e.key === 'Tab' && !e.shiftKey && isOpen('panel', it.id))) {
                         // into the item's settings: Alt ↓ opens them, Tab goes on into them once they're open
                         e.preventDefault();
-                        if (panel.key !== it.id) panel.open(e.currentTarget as HTMLElement, it.id);
+                        if (!isOpen('panel', it.id)) openPop('panel', e.currentTarget as HTMLElement, it.id);
                         requestAnimationFrame(() => wrapRef.current?.querySelector<HTMLElement>('.item-pop button, .item-pop input, .item-pop select')?.focus());
                       }
                     }}
@@ -814,17 +862,17 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   {solo ? (
                     <DaysCell item={shownIt} lane={solo} onFocus={() => onSelect(it.id)} onEnter={() => focusDays(i + 1)} onChange={(days) => commitChange([{ op: 'setEffort', item: it.id, lane: solo.id, days }], `days:${it.id}`)} />
                   ) : (
-                    <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => who.open(el, it.id)} />
+                    <WhoCell item={shownIt} laneOf={laneOf} label={whoText} onOpen={(el) => openPop('who', el, it.id)} />
                   )}
                   {r.status === 'scheduled' || r.status === 'blocked' ? (
                     <button
-                      class={cx('status', why.key === it.id && 'open')}
+                      class={cx('status', isOpen('why', it.id) && 'open')}
                       aria-label={`${it.name}: why this date`}
-                      aria-expanded={why.key === it.id}
+                      aria-expanded={isOpen('why', it.id)}
                       onClick={(e) => {
-                        if (why.key === it.id) return why.close();
+                        if (isOpen('why', it.id)) return closePop();
                         onSelect(it.id);
-                        why.open(e.currentTarget as HTMLElement, it.id);
+                        openPop('why', e.currentTarget as HTMLElement, it.id);
                       }}
                     >
                       {delivery}
@@ -841,6 +889,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                       clearable
                       format={(d) => <DueLabel iso={d} year={year} />}
                       onChange={(date) => commitChange([{ op: 'setDeadline', item: it.id, date }])}
+                      open={isOpen('cal', it.id)}
+                      onOpen={(el) => (isOpen('cal', it.id) ? closePop() : openPop('cal', el, it.id))}
                     />
                   </div>
                   <button class="row-del icon-btn" aria-label={`Delete ${it.name}`} data-tip="Delete item" onClick={() => setConfirmDelete({ id: it.id, name: it.name })}>
@@ -902,6 +952,8 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                     if (!date) return;
                     setFocusReq({ id: createItem({ deadline: date }), mode: 'select' });
                   }}
+                  open={isOpen('cal', DRAFT)}
+                  onOpen={(el) => (isOpen('cal', DRAFT) ? closePop() : openPop('cal', el, DRAFT))}
                 />
               </div>
             </div>
@@ -967,19 +1019,39 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
           }}
         />
       )}
-      {why.key && slot.has(why.key) && whyLines.length > 0 && (
-        <Docked anchor={why.el} top={dockTop(why.key)} {...dockBox(why.key, 'why')} onClose={why.close} label="Why this date" className="why-pop">
-          <WhyDate lines={whyLines} blocked={analysis.current.byId.get(why.key)?.status === 'blocked'} onClose={why.close} />
-        </Docked>
-      )}
-      {panel.key && slot.has(panel.key) && (
-        <Docked anchor={panel.el} top={dockTop(panel.key)} {...dockBox(panel.key, 'panel')} onClose={closePanel} label="The item's settings" className="item-pop">
-          <ItemPanel plan={plan} schedule={analysis.current} id={panel.key} fullName={dockBox(panel.key, 'panel').clipped} onCommit={onCommit} onClose={closePanel} />
-        </Docked>
-      )}
-      {who.key && slot.has(who.key) && (
-        <Docked anchor={who.el} top={dockTop(who.key)} {...dockBox(who.key, 'who')} onClose={who.close} label="Who works on this item" className={cx('who-pop', whoShape(plan, who.key).multi && 'multi', whoShape(plan, who.key).team && 'team')}>
-          <WhoEditor plan={plan} itemId={who.key} onClose={who.close} onCommit={onCommit} />
+      {pop && (pop.id === DRAFT || slot.has(pop.id)) && (pop.kind !== 'why' || whyLines.length > 0) && (
+        <Docked
+          key={`${pop.kind}:${pop.id}`}
+          anchor={pop.el}
+          top={dockTop(pop.id)}
+          left={dockBox(pop.id, pop.kind).left}
+          width={dockBox(pop.id, pop.kind).width}
+          onClose={pop.kind === 'panel' ? closePanel : closePop}
+          label={{ panel: "The item's settings", who: 'Who works on this item', why: 'Why this date', cal: 'Deadline' }[pop.kind]}
+          className={{ panel: 'item-pop', why: 'why-pop', cal: 'date-pop', who: cx('who-pop', whoShape(plan, pop.id).multi && 'multi', whoShape(plan, pop.id).team && 'team') }[pop.kind]}
+          focus={pop.kind === 'cal' ? '.cal-day.sel, .cal-day.is-today' : undefined}
+        >
+          {pop.kind === 'why' && <WhyDate lines={whyLines} blocked={analysis.current.byId.get(pop.id)?.status === 'blocked'} onClose={closePop} />}
+          {pop.kind === 'panel' && <ItemPanel plan={plan} schedule={analysis.current} id={pop.id} fullName={dockBox(pop.id, 'panel').clipped} onCommit={onCommit} onClose={closePanel} />}
+          {pop.kind === 'who' && <WhoEditor plan={plan} itemId={pop.id} onClose={closePop} onCommit={onCommit} />}
+          {pop.kind === 'cal' && (
+            <Calendar
+              value={pop.id === DRAFT ? undefined : plan.items.find((x) => x.id === pop.id)?.deadline}
+              onPick={(iso) => {
+                closePop();
+                if (pop.id === DRAFT) setFocusReq({ id: createItem({ deadline: iso }), mode: 'select' });
+                else commitChange([{ op: 'setDeadline', item: pop.id, date: iso }]);
+              }}
+              onClear={
+                pop.id === DRAFT
+                  ? undefined
+                  : () => {
+                      closePop();
+                      commitChange([{ op: 'setDeadline', item: pop.id, date: null }]);
+                    }
+              }
+            />
+          )}
         </Docked>
       )}
     </div>

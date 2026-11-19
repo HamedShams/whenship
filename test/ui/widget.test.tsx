@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 // The Claude widget end to end: the real widget code talks MCP Apps to a real host bridge over an in-memory transport.
+import { readFileSync } from 'node:fs';
 import { InMemoryTransport } from '@modelcontextprotocol/client';
 import { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { act } from 'preact/test-utils';
@@ -102,6 +103,10 @@ describe('Claude widget (MCP App)', () => {
     await openFull(h);
     expect(h.log.modes).toEqual(['fullscreen']);
     expect(h.root.querySelector('.app')!.closest('[hidden]')).toBeNull();
+    // inside Claude the chart keeps to itself: no Open button (plans come from the conversation), and the options are part
+    // of the page, not stuck to the bottom of a window whose bottom already belongs to the chat's message box
+    expect([...h.root.querySelectorAll('.topbar .btn')].map((b) => b.textContent!.trim())).toEqual(['Export', 'Done']);
+    expect(readFileSync('src/ui/styles.css', 'utf8')).toMatch(/\n\.widget \.dock \{ position: static; \}/);
     await until(() => document.documentElement.style.getPropertyValue('--safe-bottom') === '120px');
   });
 

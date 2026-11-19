@@ -53,6 +53,7 @@
   --h-control: 32px;
   --h-small: 26px;
   --h-chip: 30px;
+  --claude: #d97757;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -164,7 +165,7 @@ button:disabled { cursor: default; }
 /* The column titles and calendar scale stick under the toolbar once the page scrolls past them. They tuck 1px under it,
    and while stuck they also paint the 8px above them, so no row shows through a seam between the two sticky layers
    (sub-pixel heights, or a browser repainting them a frame apart while scrolling). */
-.board-head { position: sticky; top: calc(var(--toolbar-h, 0px) - 1px); z-index: 20; display: flex; height: 53px; background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border2); }
+.board-head { position: sticky; top: calc(var(--toolbar-h, 0px) - 1px); z-index: 27; display: flex; height: 53px; background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border2); }
 .board-head.stuck { box-shadow: 0 -8px 0 var(--bg); }
 .board-head .list-head { flex: none; width: var(--list-w); border-right: 1px solid var(--border); }
 .tl-clip { flex: 1; min-width: 0; overflow: hidden; }
@@ -207,7 +208,8 @@ button:disabled { cursor: default; }
 .cell-input:hover { border-color: var(--border); }
 .cell-input:focus { border-color: var(--accent); background: var(--bg); outline: none; }
 .who-cell { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; border: 1px solid transparent; background: transparent; border-radius: var(--radius-sm); padding: 3px 5px; font-size: 12px; color: var(--fg); }
-.who-people { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px 0 2px 2px; margin-left: -2px; }
+.who-people { display: inline-flex; align-items: center; flex: none; }
+.who-people.who-stack { flex: 0 1 auto; min-width: 19px; overflow: hidden; padding: 2px 0 2px 2px; margin-left: -2px; }
 .who-stack .avatar + .avatar { margin-left: -5px; box-shadow: 0 0 0 1.5px var(--bg); }
 .who-stack .more { font-size: 10.5px; color: var(--fg3); margin-left: 3px; flex: none; }
 .who-handoff { color: var(--fg3); font-size: 11px; flex: none; }
@@ -356,7 +358,7 @@ button:disabled { cursor: default; }
 .who-row .na { color: var(--fg3); text-align: center; }
 .who-person { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
 .who-person > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.add-who { flex: 1 1 auto; height: var(--h-control); min-width: 0; max-width: 220px; border: 1px dashed var(--border2); background: var(--bg); border-radius: var(--radius-sm); padding: 0 10px; font-size: 13px; font-weight: 600; color: var(--fg); cursor: pointer; }
+.add-who { flex: 0 1 auto; width: auto; height: var(--h-control); min-width: 0; max-width: 100%; border: 1px dashed var(--border2); background: var(--bg); border-radius: var(--radius-sm); padding: 0 10px; font-size: 13px; font-weight: 600; color: var(--fg); cursor: pointer; }
 .add-who:hover { border-color: var(--fg3); background: var(--bg2); }
 .popover .actions, .docked .actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .menu { display: flex; flex-direction: column; min-width: 230px; padding: 6px; }
@@ -466,10 +468,12 @@ button:disabled { cursor: default; }
 .opt-title { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
 .opt-effect { margin: 0 0 2px; color: var(--fg2); font-size: 12.5px; line-height: 1.4; flex: 1; }
 .option .btn { align-self: flex-start; }
-.option.from-claude { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 5%, var(--bg)); }
-.option.from-claude .opt-kind { color: var(--accent); }
+/* what comes from Claude wears Claude's orange, so it is told apart from the engine's options at a glance */
+.option.from-claude { border-color: color-mix(in srgb, var(--claude) 60%, var(--border)); background: color-mix(in srgb, var(--claude) 8%, var(--bg)); }
+.option.from-claude .opt-kind { color: var(--claude); }
 .options-title .ask-claude { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.options-title .ask-claude .btn { color: var(--accent); }
+.options-title .ask-claude .btn { color: var(--claude); border-color: color-mix(in srgb, var(--claude) 55%, var(--border2)); }
+.options-title .ask-claude .btn:hover { background: color-mix(in srgb, var(--claude) 10%, var(--bg)); }
 .options-title .ask-claude svg { width: 13px; height: 13px; }
 .options-title .sub.err { color: var(--danger); }
 /* a previewed option: ghost bars (outlined, in the lane's colour) over the dimmed real ones */
@@ -504,10 +508,12 @@ button:disabled { cursor: default; }
 .dock .opt-title { font-size: 13px; }
 .dock .opt-effect { font-size: 12px; margin: 0 0 3px; }
 /* why a date is what it is: a short note opened from the date in the Expected delivery column */
-/* What a row opens (its settings from the name, who works on it from Effort, why its date from the date): docked
-   under the row, inside the chart. It scrolls with the page: under the chart's header (z 20) and the options dock
-   (z 25), over the rows. It never flips above its row or moves to stay on screen, and never scrolls inside. */
-.docked { position: absolute; z-index: 18; left: 37px; max-width: calc(100vw - 16px); background: var(--bg); border: 1px solid var(--border2); border-top: 2px solid var(--accent); border-radius: 0 0 var(--radius) var(--radius); box-shadow: var(--shadow); font-size: 13px; transition: top .16s ease; }
+/* What a row opens (its settings from the name, who works on it from Effort, why its date from the date, its
+   deadline's calendar): docked under the row, inside the chart. It scrolls with the page: under the chart's header
+   (z 27), over the rows and over the options dock (z 25), which it never pushes away. It never flips above its row or
+   moves to stay on screen, and never scrolls inside. */
+.docked { position: absolute; z-index: 26; left: 37px; max-width: calc(100vw - 16px); background: var(--bg); border: 1px solid var(--border2); border-top: 2px solid var(--accent); border-radius: 0 0 var(--radius) var(--radius); box-shadow: var(--shadow); font-size: 13px; transition: top .16s ease; }
+.docked.date-pop { left: 259px; }
 .why-pop { left: 177px; width: 300px; padding: 9px 14px 12px; }
 .why-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .why h4 { margin: 0; font-size: 13px; font-weight: 650; }
@@ -538,12 +544,13 @@ button:disabled { cursor: default; }
 .ip-deps .dep-chip { height: 28px; padding-left: 10px; font-size: 12.5px; }
 .ip-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding-top: 11px; border-top: 1px solid var(--border); }
 .ip-foot .ip-close { margin-left: auto; }
-/* the note: a label line with a quiet count, then two lines to write in, as wide as the panel */
-.ip-note { display: flex; flex-direction: column; gap: 5px; }
-.ip-note-head { display: flex; align-items: baseline; justify-content: space-between; }
+/* the note: beside its label like the other settings (the count sits under the label), two lines to write in. It
+   wraps and never scrolls sideways (half a pixel of overflow at a zoomed size gave Safari a scrollbar for it). */
+.ip-note { align-items: start; }
+.ip-note-head { display: flex; flex-direction: column; gap: 1px; padding-top: 6px; }
 .ip-count { font-size: 11px; color: var(--fg3); font-variant-numeric: tabular-nums; }
 .ip-count.over { color: var(--warn); }
-textarea.ip-input { height: calc(2 * 1.45em + 14px); padding: 6px 10px; line-height: 1.45; resize: none; font-family: inherit; }
+textarea.ip-input { height: calc(2 * 1.45em + 14px); padding: 6px 10px; line-height: 1.45; resize: none; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; overflow-y: auto; }
 /* our own hints: a native tooltip makes macOS swap the pointing hand back to an arrow the moment it shows */
 .tip { position: fixed; z-index: 300; max-width: 280px; padding: 5px 8px; border-radius: 6px; background: var(--fg); color: var(--bg); font-size: 12px; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); }
 .done-toggle svg { width: 15px; height: 15px; }
@@ -668,3 +675,12 @@ textarea.ip-input { height: calc(2 * 1.45em + 14px); padding: 6px 10px; line-hei
 }
 /* a tab left open across a release: one quiet line with a way to catch up */
 .update-note { position: fixed; top: 10px; left: 50%; z-index: 120; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 7px 8px 7px 14px; border: 1px solid var(--border2); border-radius: 999px; background: var(--bg2); box-shadow: var(--shadow); font-size: 13px; white-space: nowrap; }
+/* Inside Claude the dock is part of the page: the chat's own message box already sits at the bottom of the window,
+   and a second thing stuck there left the chart a few rows to show itself in. */
+.widget .dock { position: static; }
+/* Dropdowns draw their own arrow: the system's differs from one browser to the next (in Claude it sat on the border). */
+select:not(.zoom-select) { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23878a93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); background-repeat: no-repeat; background-position: right 9px center; background-size: 10px 6px; padding-right: 27px; text-overflow: ellipsis; }
+/* the drag recorder (only with #debug in the address) */
+.drag-log { position: fixed; left: 10px; bottom: 10px; z-index: 400; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border2); border-radius: 8px; background: var(--bg2); box-shadow: var(--shadow); font-size: 12px; }
+.drag-log button { height: 24px; padding: 0 8px; border: 1px solid var(--border2); border-radius: 6px; background: var(--bg); font-size: 12px; }
+.drag-log textarea { width: 260px; height: 80px; font: 11px var(--mono); }

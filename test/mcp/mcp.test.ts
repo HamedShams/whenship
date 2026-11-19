@@ -225,7 +225,11 @@ describe('web server', () => {
     expect(html).not.toContain('<!--WHENSHIP_BOOT-->');
   });
   it('serves health, privacy and the offline download; 404s the rest', async () => {
-    expect(await (await fetch(`${base}/healthz`)).json()).toEqual({ ok: true, version: '1.0.0-test' });
+    const health = (await (await fetch(`${base}/healthz`)).json()) as { ok: boolean; version: string; build: string };
+    expect(health).toMatchObject({ ok: true, version: '1.0.0-test' });
+    // which build of the page is being served: the page carries the same mark, so one left open across a deploy can tell
+    expect(health.build).toMatch(/^[0-9a-f]{10}$/);
+    expect(await (await fetch(`${base}/`)).text()).toContain(`"build":"${health.build}"`);
     expect(await (await fetch(`${base}/privacy`)).text()).toContain('stores nothing');
     expect((await fetch(`${base}/whenship.html`)).headers.get('content-disposition')).toContain('whenship.html');
     expect((await fetch(`${base}/nope`)).status).toBe(404);
@@ -316,7 +320,12 @@ describe.skipIf(!existsSync('dist/whenship.mcpb'))('Claude Desktop extension (di
     const { tools } = await client.listTools();
     expect(manifest.tools.map((t) => t.name).sort()).toEqual(tools.map((t) => t.name).sort());
     expect(manifest.tools.find((t) => t.name === 'what_if')!.description).toMatch(/alternative plan/);
-    expect(manifest).toMatchObject({ license: 'BSD-3-Clause', author: { name: 'Seyed Hamed Shams', url: 'https://hamedshams.com' } });
+    // what Claude shows on the extension's page: who made it, and "More info" going to the website
+    expect(manifest).toMatchObject({ license: 'BSD-3-Clause', author: { name: 'Hamed Shams', url: 'https://hamedshams.com' }, support: 'https://whenship.app/', homepage: 'https://whenship.app' });
+    // the icon's corners are clear, not white: a PNG with an alpha channel whose very first pixel is transparent
+    const icon = files['icon.png']!;
+    expect(icon[25]).toBe(6); // colour type: RGB with alpha
+    expect(Buffer.from(icon).equals(readFileSync('packaging/icon.png'))).toBe(true);
     expect(strFromU8(files['LICENSE']!)).toMatch(/^BSD 3-Clause License/);
   });
 });
@@ -435,7 +444,7 @@ describe('the website page and the license', () => {
     expect(license).toMatch(/^BSD 3-Clause License\n\nCopyright \(c\) 2026, Seyed Hamed Shams \(https:\/\/hamedshams\.com\)\nAll rights reserved\.\n/);
     expect(license).toContain('Neither the name of the copyright holder nor the names of its');
     const plugin = JSON.parse(readFileSync('plugin/.claude-plugin/plugin.json', 'utf8')) as { license: string; author: { name: string } };
-    expect([plugin.license, plugin.author.name]).toEqual(['BSD-3-Clause', 'Seyed Hamed Shams']);
+    expect([plugin.license, plugin.author.name]).toEqual(['BSD-3-Clause', 'Hamed Shams']);
     expect(readFileSync('README.md', 'utf8')).toMatch(/## License\n\n\[BSD 3-Clause\]\(LICENSE\)/);
   });
 });

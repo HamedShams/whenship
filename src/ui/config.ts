@@ -4,6 +4,8 @@ export interface BootConfig {
   /** Public address of this whenship instance, used for share links and "Open in whenship". */
   publicUrl?: string;
   version?: string;
+  /** Which build of the page this is (set by the server that serves it; `/healthz` reports the one it serves now). */
+  build?: string;
 }
 
 export const boot: BootConfig = (globalThis as { __WHENSHIP__?: BootConfig }).__WHENSHIP__ ?? {};

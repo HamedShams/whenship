@@ -69,8 +69,10 @@ export interface AppProps {
   onHome?: () => void;
 }
 
-/** Everything the schedule and its suggestions depend on: the plan without its name and the items' notes. */
-const schedulingKey = (p: NormalizedPlan) => JSON.stringify({ ...p, title: '', items: p.items.map(({ note: _note, ...it }) => it) });
+/** Everything the schedule depends on: the plan without its name, and its items without their names and notes. */
+const schedulingKey = (p: NormalizedPlan) => JSON.stringify({ ...p, title: '', items: p.items.map(({ note: _note, name: _name, ...it }) => it) });
+/** What the options' wording depends on as well: the items' names (an option names the items it moves). */
+const wordingKey = (p: NormalizedPlan) => JSON.stringify({ ...p, title: '', items: p.items.map(({ note: _note, ...it }) => it) });
 
 /** How long the intro strip takes to fold away (matches the stylesheet). */
 const INTRO_EXIT_MS = 260;
@@ -130,25 +132,37 @@ export function App(props: AppProps) {
 
   const analysis = useMemo(() => analyze(plan, lens), [plan, lens]);
   const [zoom, setZoom] = useState<Zoom>(props.initialZoom ?? 'fit');
-  // Suggestions follow the plan after a short pause, and only when something the schedule depends on has changed:
-  // typing a note or the plan's name re-checks nothing (and doesn't make the Apply buttons blink).
+  // Suggestions follow the plan after a short pause. They are held back (Apply greyed) only while something the
+  // schedule depends on is changing: typing a note, the plan's name or an item's name moves no date, so the options
+  // stay live; a renamed item is picked up in their wording once the typing stops.
   const planKey = useMemo(() => schedulingKey(plan), [plan]);
   const debounced = useDebounced(plan, 180);
   const debouncedKey = useMemo(() => schedulingKey(debounced), [debounced]);
-  const settled = useMemo(() => debounced, [debouncedKey]);
+  const debouncedWording = useMemo(() => wordingKey(debounced), [debounced]);
+  const settled = useMemo(() => debounced, [debouncedWording]);
   const insights: Insight[] = useMemo(() => findInsights(settled, lens), [settled, lens]);
   const pending = debouncedKey !== planKey;
+  // Claude's options that have been applied, each with the plan it was applied to: an applied option is gone (it was
+  // offered again and again, and each Apply added the same person once more) for as long as that step is part of the
+  // plan's history; undoing it brings the option back, redoing it takes it away again. A new set from Claude starts afresh.
+  const [applied, setApplied] = useState<Map<string, NormalizedPlan>>(new Map());
+  useEffect(() => setApplied(new Map()), [props.claudeOptions]);
   // One rail of at most three cards: Claude's options (measured against the plan as it is now) take the place of the
   // engine's lowest-ranked suggestions, so the rail never grows.
   const options = useMemo<Option[]>(() => {
     const own: Option[] = insights.map((s) => ({ id: s.id, kind: s.kind, title: s.title, effect: s.effect, changes: s.changes }));
+    const now = schedulingKey(settled);
     const fromClaude: Option[] = (props.claudeOptions ?? []).flatMap((c, i) => {
+      const key = JSON.stringify(c.changes);
+      const before = applied.get(key);
+      if (before && h.past.includes(before)) return []; // applied, and not undone
       const a = assess(settled, c.changes, lens);
-      if (a.skipped.length) return []; // it no longer applies (the item or person is gone)
-      return [{ id: `claude:${i}:${JSON.stringify(c.changes)}`, kind: 'claude', title: c.title, effect: a.effect, changes: c.changes }];
+      if (a.skipped.length) return []; // it no longer applies (an item or a person it names is gone)
+      if (schedulingKey(a.plan) === now) return []; // nothing left for it to change
+      return [{ id: `claude:${i}:${key}`, kind: 'claude', title: c.title, effect: a.effect, changes: c.changes }];
     });
     return [...fromClaude, ...own].slice(0, MAX_OPTIONS);
-  }, [insights, props.claudeOptions, settled, lens]);
+  }, [insights, props.claudeOptions, settled, lens, applied, h.past]);
   // the option under the pointer, re-planned, drawn as a ghost on the chart
   const previewPlan = useMemo(() => (previewOpt ? applyChanges(plan, previewOpt.changes).plan : null), [previewOpt, plan]);
 
@@ -252,7 +266,7 @@ export function App(props: AppProps) {
           onRedo={h.redo}
           onExport={doExport}
           onCopyLink={copyLink}
-          onOpen={() => openDialog('paste')}
+          {...(host.mode === 'widget' ? {} : { onOpen: () => openDialog('paste') })}
           onHome={props.onHome}
           extra={props.headerExtra}
           empty={empty}
@@ -290,6 +304,7 @@ export function App(props: AppProps) {
                 onPreview={setPreviewOpt}
                 onApply={(o) => {
                   setPreviewOpt(null);
+                  if (o.kind === 'claude') setApplied((m) => new Map(m).set(JSON.stringify(o.changes), plan));
                   commit(applyChanges(plan, o.changes).plan);
                   setToast(`Applied: ${o.title}. Undo with ⌘/Ctrl Z`);
                 }}

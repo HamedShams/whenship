@@ -37,5 +37,5 @@ export function usePlanHistory(initial: NormalizedPlan) {
     setH((prev) => (prev.future.length ? { plan: prev.future[0]!, past: [...prev.past, prev.plan], future: prev.future.slice(1) } : prev));
   }, []);
 
-  return { plan: h.plan, commit, reset, undo, redo, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+  return { plan: h.plan, past: h.past, commit, reset, undo, redo, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
 }

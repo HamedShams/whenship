@@ -32,11 +32,11 @@ function useDismiss(ref: { current: HTMLElement | null }, anchor: HTMLElement | 
 }
 
 /**
- * What a row opens (its settings, who works on it, why its date): docked under the row, part of the page. It is
- * placed from the row's place in the list, not from where the row happens to be drawn at that moment, so it is always
- * right under its row and travels with it. It never flips above the row, never moves to stay on screen and never
- * scrolls inside: it scrolls with the page, under the chart's header and under the options dock, and the chart makes
- * room below its last row for whatever hangs past it.
+ * What a row opens (its settings, who works on it, why its date, its deadline's calendar): docked under the row, part
+ * of the page. It is placed from the row's place in the list, not from where the row happens to be drawn at that
+ * moment, so it is always right under its row and travels with it. It never flips above the row, never moves to stay
+ * on screen and never scrolls inside: it scrolls with the page, under the chart's header and over the options dock,
+ * which it never pushes away (past the end of the page, the page simply gets that much longer).
  */
 export function Docked({
   anchor,
@@ -46,6 +46,7 @@ export function Docked({
   onClose,
   label,
   className,
+  focus,
   children,
 }: {
   /** What was clicked to open it: a press there is not a press outside. */
@@ -57,28 +58,15 @@ export function Docked({
   onClose: () => void;
   label: string;
   className?: string;
+  /** What gets the focus when it opens (a selector); nothing by default, so typing goes on where it was. */
+  focus?: string | undefined;
   children: ComponentChildren;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, anchor, onClose);
-  // the chart keeps room for it under its last row (a popup past the end of the page could never be scrolled to)
-  useLayoutEffect(() => {
-    const el = ref.current;
-    const wrap = el?.parentElement;
-    if (!el || !wrap) return;
-    const room = () => (wrap.style.minHeight = `${top + el.offsetHeight + 12}px`);
-    room();
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(room);
-    ro?.observe(el);
-    return () => ro?.disconnect();
-  }, [top]);
-  useLayoutEffect(
-    () => () => {
-      const wrap = ref.current?.parentElement;
-      if (wrap) wrap.style.minHeight = '';
-    },
-    [],
-  );
+  useEffect(() => {
+    if (focus) ref.current?.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+  }, []);
   return (
     <div
       ref={ref}

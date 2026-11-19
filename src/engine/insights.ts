@@ -197,7 +197,7 @@ export function assess(plan: NormalizedPlan, changes: Change[], lens: LensId = '
   };
   let effect = describe(deltas, newlyMet, newlyMissed, nameOf, plan, nextLens.label, features.itemValue);
   if (!effect) effect = deltas.endDays < 0 ? `all done ${-deltas.endDays} working day${deltas.endDays === -1 ? '' : 's'} later` : 'no deadline or end-date change';
-  return { effect, deltas, newlyMet, newlyMissed, plan: applied.plan, skipped: applied.skipped.map((s) => s.reason) };
+  return { effect, deltas, newlyMet, newlyMissed, plan: applied.plan, skipped: applied.skipped.filter((s) => !s.harmless).map((s) => s.reason) };
 }
 
 function describe(

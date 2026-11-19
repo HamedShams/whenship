@@ -88,7 +88,7 @@ The skills are plain Markdown: [plugin/skills/whenship](plugin/skills/whenship/S
 
 Tools: `show_plan` (schedule and chart), `what_if` (compare a list of changes, or a whole alternative version of the plan), `find_options` (changes that meet more deadlines), `export_plan` (JSON, CSV, iCalendar, Markdown, link). All are read-only.
 
-In the chart, **Ask Claude for better options** (a button above the options) posts a request to the chat. Claude tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and sends its best one or two back through `show_plan`: they appear in the chart as options with their exact effects, in place of the lowest-ranked built-in ones, so the chart never shows more than three. Claude's reply stays short, and nothing leaves the chart: it exports itself.
+In the chart, **Ask Claude for better options** (a button above the options) posts a request to the chat. Claude tries what the built-in suggestions can't (moving work between people, splitting or cutting items, combinations), checks each idea with `what_if`, and sends its best one or two back through `show_plan`: they appear in the chart as options with their exact effects, in place of the lowest-ranked built-in ones, so the chart never shows more than three. An option of Claude's that you apply leaves the list (undo brings it back), and one that brings in someone who is already in the plan uses that person instead of adding a second one. Claude's reply stays short, and nothing leaves the chart: it exports itself.
 
 ## How the forecast works
 
@@ -130,16 +130,18 @@ A small key under the chart repeats this, and hovering any mark gives its dates.
 | Add an item | Type in the empty row at the bottom. Enter moves down a row. |
 | Reprioritise | Drag a row by its ⠿ handle, or drag its bar up or down. Every date updates before you drop, and the page scrolls with you on a long list. |
 | Change the effort | With one person in the plan, type the days into the row. With several people or a team, click the Effort cell: who does how many days, and who starts after whom. Or drag a bar's right edge. |
-| Set or move a deadline | Click the Deadline cell: a small calendar opens (you can also type a date, "7 Dec"). Or drag the ◆ on the chart. |
+| Set or move a deadline | Click the Deadline cell: a small calendar opens under the row (you can also type a date, "7 Dec"). Or drag the ◆ on the chart. |
 | See why a date is what it is | Click the date under Expected delivery: a short note lists the reasons in plain words (who it waits for, what it starts after, how far it is from its deadline). |
-| Open an item's settings | Click its name: *can't start before*, *starts after*, a note (up to 120 characters), and **Mark as done** (a finished item takes no more time, and whatever waited for it can start). |
+| Open an item's settings | Click its name: *can't start before*, *starts after*, a note (up to 120 characters), and **Mark as done** (a finished item takes no more time, and whatever waited for it can start). Names and notes are only words: editing them never re-plans anything. |
 | Try an option | The dock under the chart holds up to three options, each an exact re-plan. Hover one to see it on the chart as dashed bars, Apply to keep it, ⌘/Ctrl Z to take it back. |
 | Change the scale | The chart fits the whole plan to the width it has. The Zoom menu offers fixed day, week and month scales. |
 | See what sets the end date | Click *what sets the end date?* next to the headline: the chain of work behind the last finish lights up. |
 
-What a row opens (its settings, who works on it, why its date) is docked right under that row and stays there: it scrolls with the page, and the page makes room below the last row for it. The options dock stays on top, so near the bottom of the window you scroll to see the rest.
+What a row opens (its settings, who works on it, why its date, the deadline calendar) is docked right under that row and stays there: it scrolls with the page and lies over the options dock, which never moves. One is open at a time.
 
 Undo is ⌘/Ctrl Z, redo ⇧⌘Z (Ctrl Y). Export gives the plan file, Excel, CSV, an image of the chart (with the same columns and key) and a Markdown summary.
+
+If dragging ever misbehaves in your browser, add `#debug` to the address, drag once, press **Copy drag log** in the corner and paste the result into [an issue](https://github.com/HamedShams/whenship/issues): it records which browser it is, what it sent and where the page drew the row, and nothing about your plan beyond the dragged row's name.
 
 ## How the dates and suggestions work
 

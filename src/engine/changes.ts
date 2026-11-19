@@ -20,7 +20,8 @@ export type Change =
 export interface ApplyResult {
   plan: NormalizedPlan;
   /** Changes that referenced something missing (reported, not fatal). */
-  skipped: { change: Change; reason: string }[];
+  /** Changes that were not made, and why. `harmless`: the plan already is the way the change wanted it (the person is there). */
+  skipped: { change: Change; reason: string; harmless?: true }[];
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -38,7 +39,7 @@ function findLane(plan: NormalizedPlan, ref: string) {
 export function applyChanges(base: NormalizedPlan, changes: Change[]): ApplyResult {
   const plan = clone(base);
   const skipped: ApplyResult['skipped'] = [];
-  const skip = (change: Change, reason: string) => skipped.push({ change, reason });
+  const skip = (change: Change, reason: string, harmless?: true) => skipped.push({ change, reason, ...(harmless ? { harmless } : {}) });
   for (const c of changes) {
     switch (c.op) {
       case 'move': {
@@ -85,9 +86,14 @@ export function applyChanges(base: NormalizedPlan, changes: Change[]): ApplyResu
         if (c.name) lane.name = c.name;
         break;
       }
-      case 'addLane':
+      case 'addLane': {
+        // Adding someone who is already there changes nothing (and says so): applied twice, a change that brings in
+        // "Mo" must not leave the plan with two people called Mo. The rest of a set of changes still stands.
+        const name = String((c.lane as { name?: unknown }).name ?? (c.lane as { id?: unknown }).id ?? '');
+        if (name && findLane(plan, name)) { skip(c, `"${name}" is already in the plan`, true); break; }
         plan.lanes.push(c.lane as NormalizedPlan['lanes'][number]);
         break;
+      }
       case 'addDaysOff': {
         if (!FEATURES.personDaysOff) { skip(c, 'days off per person are turned off for now (use a holiday)'); break; }
         const lane = findLane(plan, c.lane);

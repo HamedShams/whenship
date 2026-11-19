@@ -59,6 +59,17 @@ describe('changes (shared by the chart, the suggestions and what_if)', () => {
     expect(team.lanes[0]).toMatchObject({ kind: 'team', size: 3 });
   });
 
+  it('adding someone who is already in the plan changes nothing and says so: applied twice, a change leaves one Lea, not two', () => {
+    const add = { op: 'addLane' as const, lane: { id: 'lea', name: 'Lea' } };
+    const once = applyChanges(base(), [add]);
+    expect(once.skipped).toEqual([]);
+    const twice = applyChanges(once.plan, [add, { op: 'addLane', lane: { id: 'someone-else', name: 'lea' } }]); // the same name, whatever the id or the case
+    expect(twice.plan.lanes.map((l) => l.name)).toEqual(once.plan.lanes.map((l) => l.name));
+    expect(twice.skipped.map((x) => x.reason)).toEqual(['"Lea" is already in the plan', '"lea" is already in the plan']);
+    expect(twice.skipped.every((x) => x.harmless)).toBe(true); // a note, not a failure: the rest of the changes stand
+    expect(applyChanges(base(), [{ op: 'move', item: 'Nothing by that name', to: 0 }]).skipped[0]!.harmless).toBeUndefined();
+  });
+
   it('addLane, setWorkdays, addHoliday and setStart reshape the calendar and the people', () => {
     const p = applyChanges(base(), [
       { op: 'addLane', lane: { id: 'lea', name: 'Lea' } },

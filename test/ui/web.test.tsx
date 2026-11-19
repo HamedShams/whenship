@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 // The website shell: the home page, what it remembers, shared links, opening plans and downloads.
+import { readFileSync } from 'node:fs';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -288,8 +289,9 @@ describe('website', () => {
     expect(document.querySelector('.dialog')).toBeNull();
   });
 
-  it('a tab left open across a release says so, with a way to reload; the same version says nothing', async () => {
-    const served = { version: VERSION };
+  it('a tab left open across a deploy says so, with a way to reload; the same build says nothing', async () => {
+    (globalThis as { __WHENSHIP__?: unknown }).__WHENSHIP__ = undefined;
+    const served: { version: string; build?: string } = { version: VERSION };
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => served }) as Response);
     vi.stubGlobal('fetch', fetchMock);
     await bootExample();
@@ -305,6 +307,12 @@ describe('website', () => {
     expect(document.querySelector('.update-note')!.textContent).toMatch(/has been updated since this tab was opened/);
     expect(button('Reload', document.querySelector('.update-note')!)).toBeTruthy();
     vi.unstubAllGlobals();
+  });
+
+  it('every deploy counts, not only a new version number: the page and the server compare builds', () => {
+    const src = readFileSync('src/ui/web.tsx', 'utf8');
+    expect(src).toMatch(/boot\.build && served\.build \? served\.build !== boot\.build : !!served\.version && served\.version !== VERSION/);
+    expect(readFileSync('src/mcp/http.ts', 'utf8')).toMatch(/withBoot\(opts\.html, \{ mode, publicUrl, version: opts\.version, build \}\)/);
   });
 });
 

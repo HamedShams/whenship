@@ -143,7 +143,7 @@ const DOW2 = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
  * A month to pick a day from: Monday first, today and the chosen day marked, arrow keys move between days, and a field
  * that takes a typed date ("7 Dec", "2026-12-07"). Used by `DateButton` wherever there's a mouse.
  */
-function Calendar({ value, onPick, onClear }: { value: string | undefined; onPick: (iso: string) => void; onClear?: (() => void) | undefined }) {
+export function Calendar({ value, onPick, onClear }: { value: string | undefined; onPick: (iso: string) => void; onClear?: (() => void) | undefined }) {
   const today = todayLocal();
   const shown = dayParts(value ?? today);
   const [ym, setYm] = useState({ y: shown.year, m: shown.month });
@@ -234,7 +234,18 @@ function Calendar({ value, onPick, onClear }: { value: string | undefined; onPic
  * Under a finger it's the system's picker, which is better there. Keyboard: Tab to it and type the date, or press
  * Enter for the calendar. `clearable` adds "Clear" (`onChange(null)`).
  */
-export function DateButton(props: { value: string | undefined; onChange: (v: string | null) => void; label: string; placeholder: string; format: (iso: string) => ComponentChildren; class?: string; clearable?: boolean }) {
+export function DateButton(props: {
+  value: string | undefined;
+  onChange: (v: string | null) => void;
+  label: string;
+  placeholder: string;
+  format: (iso: string) => ComponentChildren;
+  class?: string;
+  clearable?: boolean;
+  /** The owner shows the calendar itself (a row's deadline: docked under the row); `open` says when it is showing. */
+  onOpen?: (el: HTMLElement) => void;
+  open?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -247,12 +258,13 @@ export function DateButton(props: { value: string | undefined; onChange: (v: str
     last.current = v;
     props.onChange(v || null);
   };
+  const show = () => (props.onOpen && ref.current ? props.onOpen(ref.current) : setOpen(true));
   return (
     <span
       ref={ref}
-      class={cx('date-btn', !props.value && 'empty', open && 'open', native && 'native', props.class)}
+      class={cx('date-btn', !props.value && 'empty', (open || props.open) && 'open', native && 'native', props.class)}
       onClick={() => {
-        if (!native) setOpen(true);
+        if (!native) show();
       }}
     >
       <span aria-hidden="true">{props.value ? props.format(props.value) : props.placeholder}</span>
@@ -271,7 +283,7 @@ export function DateButton(props: { value: string | undefined; onChange: (v: str
         onKeyDown={(e) => {
           if (!native && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
-            setOpen(true);
+            show();
           }
         }}
         onInput={(e) => emit((e.currentTarget as HTMLInputElement).value)}

@@ -1,4 +1,5 @@
 import { createServer as createNodeServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { localhostHostValidation, localhostOriginValidation, toNodeHandler } from '@modelcontextprotocol/node';
@@ -113,12 +114,14 @@ export function createHttpServer(opts: HttpOptions): Server {
   const log = opts.log ?? (() => undefined);
   const validateHost = localhostHostValidation();
   const validateOrigin = localhostOriginValidation();
+  // which build of the page this server hands out: a page left open across a deploy asks, and offers a reload
+  const build = createHash('sha256').update(opts.html).digest('hex').slice(0, 10);
   const pages = new Map<string, string>();
   const page = (publicUrl: string, mode: 'web' | 'widget') => {
     const k = `${mode} ${publicUrl}`;
     let html = pages.get(k);
     if (!html) {
-      html = withBoot(opts.html, { mode, publicUrl, version: opts.version });
+      html = withBoot(opts.html, { mode, publicUrl, version: opts.version, build });
       if (pages.size > 20) pages.clear();
       pages.set(k, html);
     }
@@ -171,7 +174,7 @@ export function createHttpServer(opts: HttpOptions): Server {
       case '/privacy':
         return send(req, res, 200, 'text/html; charset=utf-8', PRIVACY(attr(publicUrl)));
       case '/healthz':
-        return send(req, res, 200, 'application/json', JSON.stringify({ ok: true, version: opts.version }));
+        return send(req, res, 200, 'application/json', JSON.stringify({ ok: true, version: opts.version, build }));
       case '/robots.txt':
         return send(req, res, 200, 'text/plain', `User-agent: *\nAllow: /\nDisallow: /mcp\nSitemap: ${publicUrl}sitemap.xml\n`);
       case '/llms.txt':

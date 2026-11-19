@@ -10,7 +10,7 @@ import { fitPpd, ZOOM_PPD, type Zoom } from '../io/view';
 import { LIMITS } from '../engine/validate';
 import type { NormalizedPlan } from '../engine/types';
 import { ItemPanel, WhyDate } from './Details';
-import { dragLog, dragLogOn } from './dragLog';
+import { dragLog, dragLogAfter, dragLogOn, dragOverlay } from './dragLog';
 import { Docked } from './Popover';
 import { Avatar, WhoEditor, whoShape } from './WhoEditor';
 import { Calendar, cx, DateButton, Icon } from './lib';
@@ -160,12 +160,24 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   // What a row has open: its settings (from the name), who works on it (from Effort), why its date (from the date) or
   // its deadline's calendar. One thing at a time, by construction: opening one is closing the other.
   const [pop, setPop] = useState<RowPop | null>(null);
-  const openPop = (kind: RowPop['kind'], el: HTMLElement, id: string) => setPop({ kind, el, id });
+  const popRow = (id: string) => wrapRef.current?.querySelector<HTMLElement>(id === DRAFT ? '.list .row.draft' : `.list .row[data-item="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+  /** How far a row's lower edge (where its popup hangs) is behind the dock, or below the window: 0 when it is in sight. */
+  const behindDock = (id: string) => {
+    const row = popRow(id);
+    const head = wrapRef.current?.querySelector('.board-head')?.getBoundingClientRect();
+    return row && head ? Math.max(0, row.bottom - visibleBottom(head.bottom)) : 0;
+  };
+  const openPop = (kind: RowPop['kind'], el: HTMLElement, id: string) => {
+    // a popup hangs from its row's lower edge: a row half behind the dock comes up whole first
+    const by = behindDock(id);
+    if (by > 0.5) window.scrollBy({ top: by, behavior: 'instant' });
+    setPop({ kind, el, id });
+  };
   const closePop = useCallback(() => setPop(null), []);
   const isOpen = (kind: RowPop['kind'], id: string) => pop?.kind === kind && pop.id === id;
   const [draft, setDraft] = useState('');
   const draftRef = useRef<HTMLInputElement>(null);
-  const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select' } | null>(null);
+  const [focusReq, setFocusReq] = useState<{ id: string; mode: 'end' | 'select'; panel?: boolean } | null>(null);
   const [openWhoFor, setOpenWhoFor] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -182,8 +194,13 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const lastY = useRef(0); // the pointer's last position in the window, for scrolling while it rests near an edge
   const pageY = () => window.scrollY || 0;
   const followScroll = () => {
-    if (boardRef.current && scaleRef.current) scaleRef.current.style.transform = `translateX(${-boardRef.current.scrollLeft}px)`;
+    const b = boardRef.current;
+    // The board scrolls sideways only. It clips its height, and a clipped box can still be scrolled by the browser
+    // (to reveal a focused field, or dragging near its edge): that would slide rows up under the chart's header.
+    if (b && b.scrollTop) b.scrollTop = 0;
+    if (b && scaleRef.current) scaleRef.current.style.transform = `translateX(${-b.scrollLeft}px)`;
   };
+  useEffect(() => dragOverlay(), []);
   useLayoutEffect(followScroll);
   // a sideways swipe over the scale scrolls the board
   const scrollFromHead = (e: WheelEvent) => {
@@ -326,6 +343,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     el.focus();
     if (focusReq.mode === 'end') el.setSelectionRange(el.value.length, el.value.length);
     else el.select();
+    if (focusReq.panel) openPop('panel', el, focusReq.id); // a new item, named: its settings open as if its name had been clicked
     setFocusReq(null);
   }, [focusReq, order]);
   useEffect(() => {
@@ -616,16 +634,54 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     } finally {
       setDrag(null); // whatever happens, the drag is over: the list never stays in a previewed order
     }
-    // A row dropped while still cut off (the page hadn't finished scrolling) is shown whole at once: under the chart's
-    // header at the top, above the dock at the bottom. At once, not gliding: a page still moving after a drop puts
-    // the next press on the wrong row.
-    const row = wrapRef.current?.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(d.id)}"]`)?.getBoundingClientRect();
-    const head = wrapRef.current?.querySelector('.board-head')?.getBoundingClientRect();
-    if (!row || !head) return;
-    const bottom = visibleBottom(head.bottom);
-    if (row.top < head.bottom - 0.5) window.scrollBy({ top: row.top - head.bottom, behavior: 'instant' });
-    else if (row.bottom > bottom + 0.5 && bottom - head.bottom >= ROW) window.scrollBy({ top: row.bottom - bottom, behavior: 'instant' });
+    keepInView(d.id);
+    dragLogAfter(() => {
+      const wrap = wrapRef.current;
+      const head = wrap?.querySelector('.board-head')?.getBoundingClientRect();
+      const rows = wrap?.querySelector('.list .rows')?.getBoundingClientRect();
+      const row = wrap?.querySelector(`.list .row[data-item="${CSS.escape(d.id)}"]`)?.getBoundingClientRect();
+      const r1 = (n: number | undefined) => (n === undefined ? null : Math.round(n * 10) / 10);
+      const under = head ? document.elementFromPoint(head.left + 150, head.bottom + 10)?.closest<HTMLElement>('.row')?.dataset.item ?? null : null;
+      return { sy: r1(pageY()), inner: boardRef.current?.scrollTop ?? null, head: r1(head?.bottom), rowsTop: r1(rows?.top), row: r1(row?.top), underHeader: under, max: document.documentElement.scrollHeight - window.innerHeight, focus: document.activeElement?.className?.split(' ')[0] || document.activeElement?.nodeName };
+    });
   };
+  // A row that was just dropped stays in sight. It is shown whole at once (under the chart's header at the top, above
+  // the dock at the bottom; at once, not gliding: a page still moving after a drop puts the next press on the wrong
+  // row), and for a moment after, whatever else moves the page or the list (something above the chart folding away
+  // on the first edit, a browser adjusting the scroll by itself) is put right the same way. Any input ends the watch.
+  const guard = useRef<{ raf: number; stop: () => void } | null>(null);
+  const keepInView = (id: string) => {
+    guard.current?.stop();
+    const until = performance.now() + 900;
+    const inputs = ['wheel', 'pointerdown', 'keydown', 'touchstart'];
+    const me = { raf: 0, stop: () => {} };
+    me.stop = () => {
+      cancelAnimationFrame(me.raf);
+      for (const type of inputs) window.removeEventListener(type, me.stop, true);
+      if (guard.current === me) guard.current = null;
+    };
+    for (const type of inputs) window.addEventListener(type, me.stop, { capture: true, passive: true });
+    guard.current = me;
+    const step = () => {
+      const wrap = wrapRef.current;
+      if (!wrap || dragRef.current) return me.stop();
+      if (boardRef.current?.scrollTop) boardRef.current.scrollTop = 0;
+      const row = wrap.querySelector<HTMLElement>(`.list .row[data-item="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+      const head = wrap.querySelector('.board-head')?.getBoundingClientRect();
+      if (row && head) {
+        const bottom = visibleBottom(head.bottom);
+        const by = row.top < head.bottom - 0.5 ? row.top - head.bottom : row.bottom > bottom + 0.5 && bottom - head.bottom >= ROW ? row.bottom - bottom : 0;
+        if (by) {
+          dragLog('kept-in-view', { by: Math.round(by * 10) / 10, sy: Math.round(pageY()) });
+          window.scrollBy({ top: by, behavior: 'instant' });
+        }
+      }
+      if (performance.now() >= until) return me.stop();
+      me.raf = requestAnimationFrame(step);
+    };
+    step();
+  };
+  useEffect(() => () => guard.current?.stop(), []);
   const onCancel = () => {
     if (dragRef.current) dragLog('cancel');
     pressed.current = null;
@@ -732,6 +788,21 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     closePop();
     if (inside) input?.focus({ preventScroll: true });
   }, [pop?.el, closePop]);
+  // A popup lives while the line that joins it to its row is in sight. Scrolling the row behind the dock closes it:
+  // it lies over the dock, and without its row it would hang there over the options, belonging to nothing. (A row
+  // going up behind the chart's header takes its popup along under the header, like the rest of the page.)
+  useEffect(() => {
+    if (!pop) return;
+    const check = () => {
+      if (behindDock(pop.id) > 0.5) closePop();
+    };
+    window.addEventListener('scroll', check, { passive: true });
+    window.addEventListener('resize', check);
+    return () => {
+      window.removeEventListener('scroll', check);
+      window.removeEventListener('resize', check);
+    };
+  }, [pop]);
   // an item that is gone (deleted, undone) takes whatever it had open with it
   useEffect(() => {
     if (pop && pop.id !== DRAFT && !slot.has(pop.id)) closePop();
@@ -925,7 +996,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   }
                   const id = createItem({ name: v });
                   setDraft('');
-                  setFocusReq({ id, mode: 'end' });
+                  setFocusReq({ id, mode: 'end', panel: true });
                 }}
               />
               {solo ? (

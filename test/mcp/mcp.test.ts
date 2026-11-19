@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8, unzipSync, unzlibSync } from 'fflate';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,6 +11,50 @@ import { compare, UI_URI } from '../../src/mcp/server';
 import { decodeShareLink } from '../../src/io/format';
 import { applyChanges } from '../../src/engine';
 import { plan } from '../helpers';
+
+/** The pixel at (x, y) of an 8-bit PNG without interlacing, as [r, g, b, a]: enough to look at an icon's corners. */
+function pngPixel(png: Uint8Array, x: number, y: number): number[] {
+  const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  let width = 0;
+  let bpp = 4;
+  const idat: Uint8Array[] = [];
+  for (let p = 8; p < png.length; ) {
+    const len = dv.getUint32(p);
+    const type = String.fromCharCode(...png.subarray(p + 4, p + 8));
+    const data = png.subarray(p + 8, p + 8 + len);
+    if (type === 'IHDR') {
+      width = dv.getUint32(p + 8);
+      if (data[8] !== 8 || data[12] !== 0 || (data[9] !== 6 && data[9] !== 2)) throw new Error('not an 8-bit RGB(A) PNG');
+      bpp = data[9] === 6 ? 4 : 3;
+    }
+    if (type === 'IDAT') idat.push(data);
+    p += 12 + len;
+  }
+  const packed = new Uint8Array(idat.reduce((n, d) => n + d.length, 0));
+  idat.reduce((at, d) => (packed.set(d, at), at + d.length), 0);
+  const raw = unzlibSync(packed);
+  const stride = width * bpp;
+  let prev = new Uint8Array(stride);
+  let line = prev;
+  for (let row = 0; row <= y; row++) {
+    const at = row * (stride + 1);
+    const filter = raw[at]!;
+    line = new Uint8Array(stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? line[i - bpp]! : 0;
+      const b = prev[i]!;
+      const c = i >= bpp ? prev[i - bpp]! : 0;
+      const pa = Math.abs(b - c);
+      const pb = Math.abs(a - c);
+      const pc = Math.abs(a + b - 2 * c);
+      const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      line[i] = (raw[at + 1 + i]! + [0, a, b, (a + b) >> 1, paeth][filter]!) & 255;
+    }
+    prev = line;
+  }
+  const px = [...line.subarray(x * bpp, x * bpp + bpp)];
+  return bpp === 3 ? [...px, 255] : px;
+}
 
 const HTML = '<!doctype html><html><head><!--WHENSHIP_BOOT--></head><body><div id="app"></div></body></html>';
 
@@ -243,13 +287,26 @@ describe('web server', () => {
     expect(html).toMatch(/Add custom connector/);
     expect(html).toContain('content="noindex"');
     expect((await fetch(`${base}/mcp`, { headers: { accept: 'text/event-stream' } })).status).toBe(405);
+    // the picture on it: a conversation with the chart in it, drawn in HTML and CSS (the page's rules allow no script
+    // and no outside file), described for screen readers, reflowing on a phone
+    expect(html).toContain('<figure class="demo">');
+    expect(html).toMatch(/role="img" aria-label="A conversation in Claude:/);
+    expect(html.match(/class="demo-row"/g)).toHaveLength(5);
+    expect(html).toMatch(/1 of 4 deadlines late as planned/);
+    expect(html).toMatch(/<figcaption>The chart is live inside the conversation/);
+    expect(html).toMatch(/@media\(max-width:480px\)\{[^@]*\.demo-row \.d\{display:none\}/);
+    expect(html).not.toMatch(/<script|<img|url\(/);
+    // the other plain pages don't carry its styles
+    expect(await (await fetch(`${base}/privacy`)).text()).not.toContain('.demo');
   });
   it('gives the website its own address in link-preview tags, a sitemap and robots rules; the widget gets none', async () => {
     const html = await (await fetch(`${base}/`)).text();
     expect(html).toContain(`<link rel="canonical" href="${base}/">`);
     expect(html).toContain(`<meta property="og:image" content="${base}/og.png">`);
     expect(html).not.toMatch(/<link rel="icon" href="data:/); // the website's icon is the PNG file: search engines can't use a data: URI
-    expect(html).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${base}/icon.png">`);
+    // the icons' addresses carry a number that goes up with the picture: browsers keep a site's icon for weeks otherwise
+    expect(html).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${base}/icon.png?v=2">`);
+    expect(html).toContain(`<link rel="apple-touch-icon" href="${base}/apple-touch-icon.png?v=2">`);
     expect(await (await fetch(`${base}/robots.txt`)).text()).toContain(`Sitemap: ${base}/sitemap.xml`);
     expect(await (await fetch(`${base}/sitemap.xml`)).text()).toContain(`<loc>${base}/privacy</loc>`);
     expect((await fetch(`${base}/og.png`)).status).toBe(404); // this test server has no images
@@ -267,15 +324,18 @@ describe('web server', () => {
   it('serves the link-preview image and the icon, and escapes an address taken from request headers', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     const icon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1]);
-    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, images: { og: png, icon } });
+    const touch = Buffer.from([0x89, 0x50, 0x4e, 0x47, 2]);
+    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, images: { og: png, icon, touch } });
     await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
     const at = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
     try {
       const img = await fetch(`${at}/og.png`);
       expect(img.headers.get('content-type')).toBe('image/png');
       expect(Buffer.from(await img.arrayBuffer())).toEqual(png);
-      for (const p of ['/icon.png', '/favicon.ico']) expect(Buffer.from(await (await fetch(`${at}${p}`)).arrayBuffer())).toEqual(icon);
-      expect(await (await fetch(`${at}/`)).text()).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${at}/icon.png">`);
+      for (const p of ['/icon.png', '/icon.png?v=2', '/favicon.ico']) expect(Buffer.from(await (await fetch(`${at}${p}`)).arrayBuffer())).toEqual(icon);
+      // a phone's home screen gets the edge-to-edge picture (it rounds the corners itself)
+      for (const p of ['/apple-touch-icon.png', '/apple-touch-icon.png?v=2', '/apple-touch-icon-precomposed.png']) expect(Buffer.from(await (await fetch(`${at}${p}`)).arrayBuffer())).toEqual(touch);
+      expect(await (await fetch(`${at}/`)).text()).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${at}/icon.png?v=2">`);
       const html = await (await fetch(`${at}/`, { headers: { 'x-forwarded-host': 'evil.example"><script>x()</script>' } })).text();
       expect(html).not.toContain('"><script>x()');
       expect(html).toContain('evil.example&quot;&gt;&lt;script&gt;');
@@ -326,6 +386,7 @@ describe.skipIf(!existsSync('dist/whenship.mcpb'))('Claude Desktop extension (di
     const icon = files['icon.png']!;
     expect(icon[25]).toBe(6); // colour type: RGB with alpha
     expect(Buffer.from(icon).equals(readFileSync('packaging/icon.png'))).toBe(true);
+    expect(pngPixel(icon, 0, 0)[3]).toBe(0);
     expect(strFromU8(files['LICENSE']!)).toMatch(/^BSD 3-Clause License/);
   });
 });
@@ -360,7 +421,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
       const html = await (await fetch(at)).text();
       expect(html).toContain(`<meta property="og:image" content="${at}og.png">`);
       expect(html).toContain('<meta name="author" content="Seyed Hamed Shams"');
-      for (const path of ['og.png', 'icon.png', 'favicon.ico']) {
+      for (const path of ['og.png', 'icon.png', 'favicon.ico', 'apple-touch-icon.png']) {
         const r = await fetch(`${at}${path}`);
         expect([path, r.status, r.headers.get('content-type')]).toEqual([path, 200, 'image/png']);
       }
@@ -380,7 +441,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
   it('the npm package ships what `npx whenship` needs, and nothing else', () => {
     const r = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { encoding: 'utf8', timeout: 60_000 });
     const files = (JSON.parse(r.stdout) as { files: { path: string }[] }[])[0]!.files.map((f) => f.path).sort();
-    expect(files).toEqual(['LICENSE', 'README.md', 'dist/app.html', 'dist/cli.js', 'dist/cli.js.LEGAL.txt', 'dist/icon.png', 'dist/og.png', 'dist/whenship.html', 'package.json']);
+    expect(files).toEqual(['LICENSE', 'README.md', 'dist/app.html', 'dist/cli.js', 'dist/cli.js.LEGAL.txt', 'dist/icon-touch.png', 'dist/icon.png', 'dist/og.png', 'dist/whenship.html', 'package.json']);
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { bin: Record<string, string>; dependencies?: object; license: string; mcpName: string };
     expect(pkg.bin).toEqual({ whenship: 'dist/cli.js' });
     expect(readFileSync('dist/cli.js', 'utf8')).toMatch(/^#!\/usr\/bin\/env node\n/);
@@ -446,5 +507,21 @@ describe('the website page and the license', () => {
     const plugin = JSON.parse(readFileSync('plugin/.claude-plugin/plugin.json', 'utf8')) as { license: string; author: { name: string } };
     expect([plugin.license, plugin.author.name]).toEqual(['BSD-3-Clause', 'Hamed Shams']);
     expect(readFileSync('README.md', 'utf8')).toMatch(/## License\n\n\[BSD 3-Clause\]\(LICENSE\)/);
+  });
+});
+
+
+describe('the icons', () => {
+  it("the tab icon and the extension's icon have see-through corners (they were white); the home-screen icon runs edge to edge", () => {
+    for (const [file, size] of [['packaging/icon-192.png', 192], ['packaging/icon.png', 512]] as const) {
+      const png = readFileSync(file);
+      for (const [x, y] of [[0, 0], [size - 1, 0], [0, size - 1], [size - 1, size - 1]] as const) expect([file, x, y, pngPixel(png, x, y)[3]]).toEqual([file, x, y, 0]);
+      expect(pngPixel(png, size / 2, 2)).toEqual([76, 110, 245, 255]); // the tile itself, solid
+    }
+    const touch = readFileSync('packaging/icon-touch.png');
+    for (const [x, y] of [[0, 0], [179, 0], [0, 179], [179, 179]] as const) expect(pngPixel(touch, x, y)).toEqual([76, 110, 245, 255]);
+    // what the server sends is what the build copied from these files
+    if (existsSync('dist/icon.png')) expect(readFileSync('dist/icon.png').equals(readFileSync('packaging/icon-192.png'))).toBe(true);
+    if (existsSync('dist/icon-touch.png')) expect(readFileSync('dist/icon-touch.png').equals(touch)).toBe(true);
   });
 });

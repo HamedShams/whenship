@@ -127,7 +127,7 @@ A small key under the chart repeats this, and hovering any mark gives its dates.
 
 | To | Do this |
 |---|---|
-| Add an item | Type in the empty row at the bottom. Enter moves down a row. |
+| Add an item | Type in the empty row at the bottom. Its settings open as you name it; Enter closes them and moves down a row. |
 | Reprioritise | Drag a row by its ⠿ handle, or drag its bar up or down. Every date updates before you drop, and the page scrolls with you on a long list. |
 | Change the effort | With one person in the plan, type the days into the row. With several people or a team, click the Effort cell: who does how many days, and who starts after whom. Or drag a bar's right edge. |
 | Set or move a deadline | Click the Deadline cell: a small calendar opens under the row (you can also type a date, "7 Dec"). Or drag the ◆ on the chart. |
@@ -137,11 +137,11 @@ A small key under the chart repeats this, and hovering any mark gives its dates.
 | Change the scale | The chart fits the whole plan to the width it has. The Zoom menu offers fixed day, week and month scales. |
 | See what sets the end date | Click *what sets the end date?* next to the headline: the chain of work behind the last finish lights up. |
 
-What a row opens (its settings, who works on it, why its date, the deadline calendar) is docked right under that row and stays there: it scrolls with the page and lies over the options dock, which never moves. One is open at a time.
+What a row opens (its settings, who works on it, why its date, the deadline calendar) is docked right under that row and stays there: it scrolls with the page and lies over the options dock, which never moves. One is open at a time, and it closes by itself when its row scrolls out of sight behind the dock.
 
 Undo is ⌘/Ctrl Z, redo ⇧⌘Z (Ctrl Y). Export gives the plan file, Excel, CSV, an image of the chart (with the same columns and key) and a Markdown summary.
 
-If dragging ever misbehaves in your browser, add `#debug` to the address, drag once, press **Copy drag log** in the corner and paste the result into [an issue](https://github.com/HamedShams/whenship/issues): it records which browser it is, what it sent and where the page drew the row, and nothing about your plan beyond the dragged row's name.
+If dragging ever misbehaves in your browser, add `#debug` to the address. Every row then carries a small tag at the place the page has measured it to be, and each drag is written down (until two seconds after the drop). Drag once, take a screenshot if rows and tags don't line up, press **Copy drag log** in the corner, and put both into [an issue](https://github.com/HamedShams/whenship/issues). The record holds which browser it is, what it sent and where the page drew the row, and nothing about your plan beyond the rows' names.
 
 ## How the dates and suggestions work
 

@@ -99,7 +99,7 @@ function main() {
   if (!args) return;
   const html = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
   const image = (name: string) => (existsSync(new URL(name, import.meta.url)) ? readFileSync(new URL(name, import.meta.url)) : undefined);
-  const images = { og: image('./og.png'), icon: image('./icon.png') };
+  const images = { og: image('./og.png'), icon: image('./icon.png'), touch: image('./icon-touch.png') };
   // stderr for problems; the start-up banner goes to stdout (hosts like Railway show stderr as errors)
   const log = (msg: string) => process.stderr.write(`${msg}\n`);
 

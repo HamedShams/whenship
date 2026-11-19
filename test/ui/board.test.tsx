@@ -199,6 +199,63 @@ describe('the dock holds the options; a row answers for itself', () => {
     expect(document.querySelector('.item-panel')).toBeNull();
   });
 
+  it('a popup lives while its row is in sight above the dock: a half-hidden row comes up whole first, and a row scrolled behind the dock takes its popup with it', async () => {
+    const { root } = mount();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const rect = (el: Element, r: Partial<DOMRect>) => vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(r as DOMRect);
+    const dock = root.querySelector('.dock') as HTMLElement;
+    dock.style.position = 'sticky';
+    rect(dock, { top: 500, bottom: 660 });
+    rect(root.querySelector('.board-head')!, { top: 100, bottom: 153 });
+    const row = rows(root)[3]!;
+    const box = rect(row, { top: 470, bottom: 514 }); // its lower 14 px are behind the dock
+    const scroll = () => act(() => void window.dispatchEvent(new Event('scroll')));
+    await act(() => (row.querySelector('.cell-input') as HTMLElement).click());
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: 14, behavior: 'instant' }); // brought up whole, then its settings open
+    expect(root.querySelector('.docked.item-pop')).not.toBeNull();
+    box.mockReturnValue({ top: 300, bottom: 344 } as DOMRect);
+    await scroll();
+    expect(root.querySelector('.docked.item-pop')).not.toBeNull(); // above the dock: it stays, wherever the page goes
+    box.mockReturnValue({ top: 60, bottom: 104 } as DOMRect);
+    await scroll();
+    expect(root.querySelector('.docked.item-pop')).not.toBeNull(); // behind the chart's header: it goes under the header with its row
+    box.mockReturnValue({ top: 458, bottom: 502 } as DOMRect);
+    await scroll();
+    expect(root.querySelector('.docked')).toBeNull(); // the line that joined it to its row is behind the dock: closed
+    // the same for the others: who works on it, why its date, the calendar
+    for (const [cell, pop] of [['.who-cell', '.who-pop'], ['button.status', '.why-pop'], ['.due-cell .date-btn', '.date-pop']] as const) {
+      box.mockReturnValue({ top: 300, bottom: 344 } as DOMRect);
+      await act(() => (row.querySelector(cell) as HTMLElement).click());
+      expect(root.querySelector(`.docked${pop}`)).not.toBeNull();
+      box.mockReturnValue({ top: 470, bottom: 514 } as DOMRect);
+      await scroll();
+      expect(root.querySelector('.docked')).toBeNull();
+    }
+    scrollBy.mockRestore();
+  });
+
+  it('naming a new item opens its settings, as if its name had been clicked; the typing goes on in the name', async () => {
+    const { root } = mount();
+    const before = rows(root).length;
+    const draft = root.querySelector('.row.draft .cell-input') as HTMLInputElement;
+    draft.value = 'N';
+    await act(() => void draft.dispatchEvent(new Event('input', { bubbles: true })));
+    const row = rows(root).at(-1)!;
+    const name = row.querySelector('.cell-input') as HTMLInputElement;
+    expect([rows(root).length, name.value]).toEqual([before + 1, 'N']);
+    expect(document.activeElement).toBe(name); // the next letter lands in the name
+    const pop = root.querySelector('.docked.item-pop') as HTMLElement;
+    expect(pop.style.top).toBe(`${HEAD + (before + 1) * ROW}px`); // under the new row
+    expect(pop.querySelector('.ip-row')!.textContent).toMatch(/Can't start before/);
+    // Enter: done with this one, on to the next (the settings close, the empty row has the cursor)
+    await act(() => void name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(root.querySelector('.docked')).toBeNull();
+    expect(document.activeElement).toBe(root.querySelector('.row.draft .cell-input'));
+    // an item begun from its deadline or its effort opens nothing by itself
+    await act(() => (root.querySelector('.row.draft .who-cell, .row.draft .days-cell input') as HTMLElement).focus());
+    expect(root.querySelector('.docked.item-pop')).toBeNull();
+  });
+
   it('one thing open at a time, by construction: opening another closes the first, even with no press in between', async () => {
     const { root } = mount();
     const row = rows(root)[1]!;
@@ -1008,6 +1065,74 @@ describe('quiet notes, grid lines, readable labels, the calendar everywhere', ()
     ptr('pointermove', document.body, 10, 300 - 2 * ROW);
     ptr('pointerup', document.body, 10, 300 - 2 * ROW);
     expect(scrollBy).toHaveBeenLastCalledWith({ top: 78 - 100, behavior: 'instant' });
+    scrollBy.mockRestore();
+  });
+
+  it('a row that was just dropped stays in sight for a moment after: whatever shifts the page then is put right, until the next input', async () => {
+    const { root } = mount();
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const rect = (el: Element, r: Partial<DOMRect>) => vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(r as DOMRect);
+    const frames = () => act(() => new Promise<void>((r) => setTimeout(r, 80)));
+    rect(root.querySelector('.board-head')!, { top: 40, bottom: 100 });
+    rect(root.querySelector('.list .rows')!, { top: 100, bottom: 600 });
+    const row = rows(root)[2]!;
+    const box = rect(row, { top: 100, bottom: 144 }); // it lands in sight
+    ptr('pointerdown', row.querySelector('[data-handle]')!, 10, 300);
+    ptr('pointermove', document.body, 10, 300 - 2 * ROW);
+    ptr('pointerup', document.body, 10, 300 - 2 * ROW);
+    await frames();
+    expect(scrollBy).not.toHaveBeenCalled();
+    // something above the list goes (a strip folding away on the first edit, a browser moving the page by itself):
+    // the row is now 30 px behind the chart's header, and is brought back at once
+    box.mockReturnValue({ top: 70, bottom: 114 } as DOMRect);
+    await frames();
+    expect(scrollBy).toHaveBeenCalledWith({ top: -30, behavior: 'instant' });
+    // the board itself never scrolls up and down inside its own box (a browser can do that to a box that only clips)
+    const board = root.querySelector('.board') as HTMLElement;
+    board.scrollTop = 44;
+    await act(() => void board.dispatchEvent(new Event('scroll')));
+    expect(board.scrollTop).toBe(0);
+    // the next input ends the watch: from here the page is the user's again
+    await act(() => void window.dispatchEvent(new WheelEvent('wheel', { bubbles: true })));
+    scrollBy.mockClear();
+    box.mockReturnValue({ top: 50, bottom: 94 } as DOMRect);
+    await frames();
+    expect(scrollBy).not.toHaveBeenCalled();
+    expect(readFileSync('src/ui/styles.css', 'utf8')).toMatch(/\n\.board-wrap \{[^}]*overflow-anchor: none; \}/); // no row is a browser's scroll anchor
+    scrollBy.mockRestore();
+  });
+
+  it("an example's strip that is out of sight goes without moving the page; one in sight folds away", async () => {
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const setup = (stripBottom: number) => {
+      const m = mount({ intro: true });
+      const strip = m.root.querySelector('.intro')!;
+      vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue({ top: stripBottom - 46, bottom: stripBottom, height: 46 } as DOMRect);
+      vi.spyOn(m.root.querySelector('.toolbar')!, 'getBoundingClientRect').mockReturnValue({ top: 0, bottom: 117 } as DOMRect);
+      // the chart sits 57 px lower while the strip is there
+      vi.spyOn(m.root.querySelector('.board-wrap')!, 'getBoundingClientRect').mockImplementation(() => ({ top: m.root.querySelector('.intro') ? 150 : 93, bottom: 700, left: 0, right: 1200, width: 1200 }) as DOMRect);
+      return m;
+    };
+    const edit = (root: Element) => {
+      const name = rows(root)[0]!.querySelector('.cell-input') as HTMLInputElement;
+      name.value = 'Renamed';
+      return act(() => void name.dispatchEvent(new Event('input', { bubbles: true })));
+    };
+    // scrolled past it (it is behind the toolbar): gone at once, and the page scrolled by what it took
+    const hidden = setup(60);
+    await edit(hidden.root);
+    expect(hidden.root.querySelector('.intro')).toBeNull();
+    expect(scrollBy).toHaveBeenCalledWith({ top: -57, behavior: 'instant' });
+    act(() => render(null, hidden.root));
+    hidden.root.remove();
+    // in sight: it folds away, and the page is left alone
+    scrollBy.mockClear();
+    const seen = setup(190);
+    await edit(seen.root);
+    expect(seen.root.querySelector('.intro.leaving')).not.toBeNull();
+    expect(scrollBy).not.toHaveBeenCalled();
+    act(() => render(null, seen.root));
+    seen.root.remove();
     scrollBy.mockRestore();
   });
 

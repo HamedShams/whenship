@@ -112,16 +112,32 @@ export function App(props: AppProps) {
     if (props.externalPlan) h.reset(props.externalPlan);
   }, [props.externalVersion]);
 
-  // The first edit ends the intro: the example became the user's plan. The strip folds away rather than vanishing,
-  // so the chart doesn't jump under the pointer right after a drop.
+  // The first edit ends the intro: the example became the user's plan. A strip in sight folds away rather than
+  // vanishing, so the chart doesn't jump under the pointer. A strip already scrolled out of sight (behind the toolbar)
+  // goes at once, and the page is scrolled by what it took, so nothing on screen moves: folding it there slid the
+  // list up under the chart's header right after a drop (a row dragged to the top ended out of sight, in Safari whole).
+  const introKeep = useRef<number | null>(null);
   const endIntro = useCallback(() => {
     setIntro((state) => {
       if (state !== 'on') return state;
       props.onIntroDone?.();
+      const strip = document.querySelector('.intro')?.getBoundingClientRect();
+      const bar = document.querySelector('.toolbar')?.getBoundingClientRect();
+      if (strip && bar && strip.height > 0 && strip.bottom <= bar.bottom + 0.5) {
+        introKeep.current = document.querySelector('.board-wrap')?.getBoundingClientRect().top ?? null;
+        return 'off';
+      }
       setTimeout(() => setIntro('off'), INTRO_EXIT_MS);
       return 'leaving';
     });
   }, [props.onIntroDone]);
+  useLayoutEffect(() => {
+    const was = introKeep.current;
+    introKeep.current = null;
+    if (was === null || intro !== 'off') return;
+    const now = document.querySelector('.board-wrap')?.getBoundingClientRect().top;
+    if (now !== undefined && Math.abs(now - was) > 0.5) window.scrollBy({ top: now - was, behavior: 'instant' });
+  }, [intro]);
   const commit = useCallback(
     (next: NormalizedPlan, key?: string) => {
       h.commit(next, key);

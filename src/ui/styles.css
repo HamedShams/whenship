@@ -161,7 +161,9 @@ button:disabled { cursor: default; }
 .link-btn { border: none; background: transparent; padding: 0 2px; color: var(--accent); font-size: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── board: list + timeline ───────────────────────────── */
-.board-wrap { --list-w: 484px; position: relative; display: flex; flex-direction: column; flex: 1; margin-top: 8px; }
+/* Rows here move by design (a drag makes room, an undo puts them back): no browser may take one of them as its scroll
+   anchor and move the page to hold it still. */
+.board-wrap { --list-w: 484px; position: relative; display: flex; flex-direction: column; flex: 1; margin-top: 8px; overflow-anchor: none; }
 /* The column titles and calendar scale stick under the toolbar once the page scrolls past them. They tuck 1px under it,
    and while stuck they also paint the 8px above them, so no row shows through a seam between the two sticky layers
    (sub-pixel heights, or a browser repainting them a frame apart while scrolling). */
@@ -684,3 +686,6 @@ select:not(.zoom-select) { -webkit-appearance: none; appearance: none; backgroun
 .drag-log { position: fixed; left: 10px; bottom: 10px; z-index: 400; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border2); border-radius: 8px; background: var(--bg2); box-shadow: var(--shadow); font-size: 12px; }
 .drag-log button { height: 24px; padding: 0 8px; border: 1px solid var(--border2); border-radius: 6px; background: var(--bg); font-size: 12px; }
 .drag-log textarea { width: 260px; height: 80px; font: 11px var(--mono); }
+.drag-overlay { position: fixed; inset: 0; z-index: 390; pointer-events: none; }
+.drag-overlay b { position: fixed; padding: 0 3px; border-radius: 2px; background: #d6249f; color: #fff; font: 600 9px/12px var(--mono); white-space: nowrap; opacity: .92; }
+.drag-overlay .line { position: fixed; left: 0; right: 0; height: 1px; background: #d6249f; }

@@ -1,6 +1,6 @@
 {
   "name": "whenship",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "When will it ship, honestly? A tiny planner for small teams: live what-if Gantt, deadline risk and realistic dates. Works in the browser, offline, and inside Claude as an MCP App.",
   "license": "BSD-3-Clause",
   "mcpName": "io.github.HamedShams/whenship",
@@ -40,7 +40,8 @@
     "README.md",
     "LICENSE",
     "dist/og.png",
-    "dist/icon.png"
+    "dist/icon.png",
+    "dist/icon-touch.png"
   ],
   "scripts": {
     "dev": "vite",

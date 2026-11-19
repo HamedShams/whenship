@@ -53,4 +53,51 @@ describe('the drag recorder', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect((document.querySelector('.drag-log textarea') as HTMLTextAreaElement).value).toContain('"what":"drop"');
   });
+
+  it("after a drop the record goes on for a while: every scroll, of the page or of anything inside it, and the page's own picture when it changes", async () => {
+    location.hash = '#debug';
+    const m = await import('../../src/ui/dragLog');
+    let sy = 86;
+    m.dragLogAfter(() => ({ sy, row: 170 }));
+    await new Promise((r) => setTimeout(r, 40));
+    const inner = document.createElement('div');
+    inner.className = 'board';
+    document.body.appendChild(inner);
+    inner.scrollTop = 44;
+    inner.dispatchEvent(new Event('scroll'));
+    sy = 130; // the page moved by itself
+    window.dispatchEvent(new Event('scroll'));
+    await new Promise((r) => setTimeout(r, 60));
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    (document.querySelector('.drag-log button') as HTMLButtonElement).click();
+    await Promise.resolve();
+    const lines = writeText.mock.calls[0]![0].split('\n').map((l) => JSON.parse(l) as { what: string; sy?: number; on?: string; top?: number });
+    expect(lines.filter((l) => l.what === 'after').map((l) => l.sy)).toEqual([86, 130]); // written only when it changes
+    expect(lines.filter((l) => l.what === 'scroll-after').map((l) => l.on)).toEqual(['board', 'page']);
+    expect(lines.find((l) => l.what === 'scroll-after')!.top).toBe(44);
+  });
+
+  it('with #debug the page draws what it believes: a tag on every row at the place it has measured the row to be', async () => {
+    document.body.innerHTML = '<div class="board-head"></div><div class="board"></div><div class="list"><div class="row" data-item="first"></div><div class="row" data-item="second"></div><div class="row" data-item="far-below"></div></div>';
+    const rect = (sel: string, r: Partial<DOMRect>) => vi.spyOn(document.querySelector(sel)!, 'getBoundingClientRect').mockReturnValue(r as DOMRect);
+    rect('.board-head', { left: 0, bottom: 170.3 });
+    rect('[data-item="first"]', { left: 0, top: 170.3, bottom: 214.3 });
+    rect('[data-item="second"]', { left: 0, top: 214.3, bottom: 258.3 });
+    rect('[data-item="far-below"]', { left: 0, top: 5000, bottom: 5044 });
+    const off = await import('../../src/ui/dragLog');
+    off.dragOverlay();
+    expect(document.querySelector('.drag-overlay')).toBeNull(); // nothing without #debug
+    vi.resetModules();
+    location.hash = '#debug';
+    const m = await import('../../src/ui/dragLog');
+    m.dragOverlay();
+    m.dragOverlay(); // once
+    await new Promise((r) => setTimeout(r, 60));
+    expect(document.querySelectorAll('.drag-overlay')).toHaveLength(1);
+    const tags = [...document.querySelectorAll<HTMLElement>('.drag-overlay b')].map((b) => [b.textContent, b.style.top]);
+    expect(tags[0]![0]).toMatch(/^header ends 170\.3 · page scroll 0 · inner 0$/);
+    expect(tags.slice(1)).toEqual([['first 170.3', '171.3px'], ['second 214.3', '215.3px']]); // rows out of the window get no tag
+    expect((document.querySelector('.drag-overlay .line') as HTMLElement).style.top).toBe('170.3px');
+  });
 });

@@ -14,4 +14,4 @@ export const boot: BootConfig = (globalThis as { __WHENSHIP__?: BootConfig }).__
 export const FALLBACK_URL = 'https://whenship.app/';
 export const REPO_URL = 'https://github.com/HamedShams/whenship';
 /** Keep in step with package.json (a test checks it). */
-export const VERSION = boot.version ?? '1.6.2';
+export const VERSION = boot.version ?? '1.6.3';

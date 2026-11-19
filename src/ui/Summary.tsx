@@ -18,7 +18,10 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
   const c = analysis.counts;
   return (
     <section class="summary" aria-live="polite">
+      {/* Two columns: the sentence and its counts wrap on the left as they need; the zoom keeps the top right corner
+          whatever the sentence does (it used to drop to the start of a second line as soon as the sentence grew). */}
       <div class="headline">
+        <div class="headline-main">
         <span class="headline-text">
           {text.charAt(0).toUpperCase() + text.slice(1)}
           {analysis.current.endDate && (
@@ -39,7 +42,7 @@ export function Headline({ analysis, chainOn, onChain, zoom, onZoom }: { analysi
             ) : null,
           )}
         </span>
-        <span class="spacer" />
+        </div>
         <label class="zoom" data-tip={ZOOMS.find(([z]) => z === zoom)?.[2]}>
           <span class="label">Zoom</span>
           <select class="zoom-select" aria-label="Timeline zoom" value={zoom} onChange={(e) => onZoom(toZoom((e.currentTarget as HTMLSelectElement).value) ?? 'fit')}>

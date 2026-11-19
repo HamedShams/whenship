@@ -44,6 +44,15 @@ let lastSynced = '';
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
 /** The full chart was opened at least once: it then stays mounted (hidden behind the card), so undo survives "Done". */
 let opened = false;
+/**
+ * The full chart is wanted in THIS chart: the user opened it here, or it was born into a pane that is already
+ * fullscreen (Claude answering from inside the open chart). A host tells every chart of a conversation that the pane
+ * is fullscreen; when each of them took that as its own cue, every earlier chart opened too, one under the other, and
+ * stayed open after "Done".
+ */
+let wantFull = false;
+/** A result this old was not made for the pane the user is looking at now: it is an earlier chart being shown again. */
+const FRESH_MS = 120_000;
 
 // ── single live chart (supersession) ───────────────────────────────────────
 let key: { createdAt: number; seq: number; id: string } | null = null;
@@ -55,6 +64,7 @@ channel?.addEventListener('message', (ev: MessageEvent) => {
   if (younger(other.key, key)) {
     if (!state.superseded) {
       state.superseded = true;
+      wantFull = false;
       draw();
     }
   } else if (younger(key, other.key)) channel?.postMessage({ type: 'hello', key });
@@ -241,6 +251,7 @@ function Card({ plan, lens }: { plan: NormalizedPlan; lens: LensId }) {
 }
 
 async function openFull() {
+  wantFull = true;
   if (state.canFullscreen) {
     try {
       const res = await app.requestDisplayMode({ mode: 'fullscreen' });
@@ -256,6 +267,7 @@ async function openFull() {
 }
 
 async function closeFull() {
+  wantFull = false;
   if (state.displayMode === 'fullscreen') {
     try {
       const res = await app.requestDisplayMode({ mode: 'inline' });
@@ -288,7 +300,7 @@ function draw() {
     );
     return;
   }
-  const full = state.displayMode === 'fullscreen' || state.displayMode === 'inline-full';
+  const full = wantFull && (state.displayMode === 'fullscreen' || state.displayMode === 'inline-full');
   if (full) opened = true;
   render(
     <>
@@ -336,7 +348,10 @@ function applyHost(ctx: McpUiHostContext | undefined) {
   if (ctx.theme) applyDocumentTheme(ctx.theme);
   if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
   if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
-  if (ctx.displayMode && state.displayMode !== 'inline-full') state.displayMode = ctx.displayMode;
+  if (ctx.displayMode && state.displayMode !== 'inline-full') {
+    if (ctx.displayMode !== 'fullscreen') wantFull = false; // the pane was left: the next fullscreen is whoever asks for it
+    state.displayMode = ctx.displayMode;
+  }
   if (ctx.availableDisplayModes) state.canFullscreen = ctx.availableDisplayModes.includes('fullscreen');
 }
 
@@ -387,6 +402,9 @@ export async function bootWidget(root: HTMLElement, transport?: Transport) {
     }
     if (sc && Number.isFinite(sc.createdAt)) {
       const id = String(app.getHostContext()?.toolInfo?.id ?? Math.random());
+      // a chart made just now, in a pane that is already fullscreen, is the answer to something asked from the open
+      // chart: it opens in its place (the chart it replaces folds to a line)
+      if (!key && (app.getHostContext()?.displayMode ?? state.displayMode) === 'fullscreen' && Math.abs(Date.now() - sc.createdAt!) < FRESH_MS) wantFull = true;
       key = { createdAt: sc.createdAt!, seq: Number(sc.seq ?? 0), id };
       announce();
     }
@@ -396,6 +414,9 @@ export async function bootWidget(root: HTMLElement, transport?: Transport) {
     applyHost(ctx as McpUiHostContext);
     draw();
   });
+
+  // a chart shown again (the conversation scrolled back to it, the tab came back) says so, and learns if a newer one is there
+  document.addEventListener('visibilitychange', () => !document.hidden && announce());
 
   draw();
   await app.connect(transport);

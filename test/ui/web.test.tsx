@@ -309,6 +309,35 @@ describe('website', () => {
     vi.unstubAllGlobals();
   });
 
+  it('on the home page what looks like the app can be pressed: the picture opens that very plan, and each example says it opens', async () => {
+    boot();
+    const picture = document.querySelector('button.lp-picture') as HTMLButtonElement;
+    expect(picture.getAttribute('aria-label')).toBe('Open this example plan: App launch');
+    expect(picture.querySelector('.lp-tag')!.textContent).toMatch(/Example plan\s*Open it/);
+    expect([...document.querySelectorAll('.lp-example .lp-go')].map((g) => g.textContent!.trim())).toEqual(['Open this example →', 'Open this example →', 'Open this example →']);
+    await act(() => picture.click());
+    expect((document.querySelector('.title-input') as HTMLInputElement).value).toBe('App launch');
+    expect(document.querySelectorAll('.list .row:not(.draft)')).toHaveLength(5);
+    expect(document.querySelector('.intro')).not.toBeNull(); // opened as an example, with the note that it is one
+  });
+
+  it('"#home" in the address is the home page even with a plan kept (the connector page links there); the plan is offered, not dropped', async () => {
+    localStorage.setItem(PLAN_KEY, JSON.stringify(SAMPLES[0]!.build(today)));
+    location.hash = '#home';
+    boot();
+    expect(document.querySelector('.landing')).not.toBeNull();
+    expect(location.hash).toBe('');
+    expect(button('Continue with', document.querySelector('.lp-cta')!)!.textContent).toMatch(/Continue with "Client deliverables"/);
+    // without it, the same browser opens straight on the plan
+    unmount();
+    boot();
+    expect(document.querySelector('.landing')).toBeNull();
+    // and followed while the app is open, it goes home too
+    location.hash = '#home';
+    await act(() => void window.dispatchEvent(new Event('hashchange')));
+    expect(document.querySelector('.landing')).not.toBeNull();
+  });
+
   it('every deploy counts, not only a new version number: the page and the server compare builds', () => {
     const src = readFileSync('src/ui/web.tsx', 'utf8');
     expect(src).toMatch(/boot\.build && served\.build \? served\.build !== boot\.build : !!served\.version && served\.version !== VERSION/);

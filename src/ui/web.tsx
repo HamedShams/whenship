@@ -46,12 +46,29 @@ function firstPlan(today: string): { plan: NormalizedPlan | null; lens?: LensId 
  * Local-first: browser storage, files and share links; no account, no server state.
  */
 function Web({ today }: { today: string }) {
+  // "#home" asks for the home page even when this browser holds a plan (the connector's page links here: a visitor
+  // reading about Claude shouldn't land in the middle of a plan they tried earlier). The plan is kept and offered.
+  const askedHome = useMemo(() => {
+    if (location.hash !== '#home') return false;
+    history.replaceState(null, '', location.pathname + location.search);
+    return true;
+  }, []);
   const first = useMemo(() => firstPlan(today), []);
   // what the app opens on next: set by the first load and by every way in from the home page
   const [session, setSession] = useState<{ plan: NormalizedPlan; example?: boolean; fresh?: boolean; notice?: string | null; n: number } | null>(
     first.plan ? { plan: first.plan, notice: first.notice, n: 0 } : null,
   );
-  const [home, setHome] = useState(!first.plan);
+  const [home, setHome] = useState(!first.plan || askedHome);
+  useEffect(() => {
+    // the same address typed or followed while the app is open
+    const onHash = () => {
+      if (location.hash !== '#home') return;
+      history.replaceState(null, '', location.pathname + location.search);
+      setHome(true);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const latest = useRef<NormalizedPlan | null>(first.plan); // the plan as the app last reported it
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const stale = useNewerVersion();

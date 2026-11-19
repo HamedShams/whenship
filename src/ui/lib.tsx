@@ -5,6 +5,17 @@ import { Popover } from './Popover';
 
 export const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(' ');
 
+/**
+ * Scrolls the page by `dy`, at once. Always as a place to go to, never as a step (`window.scrollBy`): Safari hands a
+ * step to its scrolling thread in CSS pixels where zoomed pixels are expected (WebKit: `LocalDOMWindow::scrollBy` passes
+ * the raw delta on as a `DeltaUpdate`), so at any page zoom but 100% the screen moves less than the page believes it
+ * did. Dragging a row up a long list at 125% scrolled the page a little every frame, and afterwards everything was drawn
+ * a row or two above where presses landed. A place to go to is the same number for both.
+ */
+export function scrollPageBy(dy: number) {
+  if (dy) window.scrollTo({ left: window.scrollX || 0, top: (window.scrollY || 0) + dy, behavior: 'instant' });
+}
+
 export function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
   useEffect(() => {

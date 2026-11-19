@@ -80,8 +80,23 @@ whenship is a deterministic scheduler, not an estimate from a language model: ev
  * so it is sharp at any size and reflows on a phone. The plan is the first example of the web app.
  */
 const DEMO_CSS = `
-.demo{margin:22px 0 26px;padding:0}
-.demo-chat{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:16px;background:#14161c;color:#e6e9f0;border:1px solid #2a2f3b;font-size:14px;line-height:1.45;box-shadow:0 12px 32px rgba(15,18,28,.18)}
+.top{display:flex;align-items:center;margin:-12px 0 28px}
+.top a{display:inline-flex;align-items:center;gap:8px;font-weight:700;color:inherit;text-decoration:none}
+.top a:hover{text-decoration:underline}
+h2{font-size:18px;margin:30px 0 8px}
+.go{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0 8px}
+.go a{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid #c9cfdb;border-radius:8px;color:inherit;text-decoration:none;font-size:14.5px;font-weight:600}
+.go a:hover,.go a:focus-visible{border-color:#4f46e5;color:#4f46e5}
+.go a.main{background:#4f46e5;border-color:#4f46e5;color:#fff}
+.go a.main:hover,.go a.main:focus-visible{background:#4338ca;color:#fff}
+@media(prefers-color-scheme:dark){.go a{border-color:#3a4050}.go a:hover,.go a:focus-visible{border-color:#91a7ff;color:#91a7ff}.go a.main:hover,.go a.main:focus-visible{color:#fff}}
+.demo{margin:22px 0 26px;padding:0;cursor:default;-webkit-user-select:none;user-select:none}
+.demo-win{border-radius:14px;border:1px solid #2a2f3b;background:#14161c;overflow:hidden;box-shadow:0 12px 32px rgba(15,18,28,.18);pointer-events:none}
+.demo-bar{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;background:#1b1e26;border-bottom:1px solid #2a2f3b;color:#9aa3b5;font-size:11.5px;letter-spacing:.02em}
+.demo-bar i{width:9px;height:9px;border-radius:50%;background:#3a4050}
+.demo-bar span{margin-left:8px}
+.demo-bar b{margin-left:auto;padding:1px 8px;border-radius:999px;border:1px solid #3a4050;font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.08em}
+.demo-chat{display:flex;flex-direction:column;gap:12px;padding:16px;color:#e6e9f0;font-size:13.5px;line-height:1.45}
 .demo-you{align-self:flex-end;max-width:82%;margin:0;padding:8px 12px;border-radius:14px 14px 4px 14px;background:#262b38}
 .demo-who{display:flex;align-items:center;gap:7px;color:#9aa3b5;font-size:12px}
 .demo-who i{width:9px;height:9px;border-radius:50%;background:#d97757}
@@ -103,13 +118,15 @@ const DEMO_CSS = `
 .demo-opt span{flex:1 1 200px;min-width:0}
 .demo-opt small{display:block;color:#d97757;font-size:11px}
 .demo-opt em{display:block;color:#9aa3b5;font-style:normal;font-size:12px}
-.demo-opt b{flex:none;padding:3px 12px;border:1px solid #3a4050;border-radius:8px;font-weight:600;font-size:12.5px}
+.demo-opt b{flex:none;padding:3px 12px;border:1px solid #3a4050;border-radius:8px;font-weight:600;font-size:12.5px;color:#9aa3b5}
 .demo-say{margin:0}
 .demo-box{padding:9px 12px;border-radius:12px;border:1px solid #2a2f3b;color:#6f7889}
 .demo figcaption{margin-top:9px;font-size:13.5px;opacity:.75;text-align:center}
 @media(max-width:480px){.demo-chat{padding:12px;font-size:13px}.demo-you{max-width:92%}.demo-row{grid-template-columns:minmax(0,42%) minmax(0,1fr);padding:0 10px}.demo-row .d{display:none}}`;
 
 const DEMO = `<figure class="demo">
+<div class="demo-win">
+<div class="demo-bar" aria-hidden="true"><i></i><i></i><i></i><span>A conversation in Claude</span><b>Preview</b></div>
 <div class="demo-chat" role="img" aria-label="A conversation in Claude: someone asks whether Sara will make her deadlines, and the answer contains the whenship chart with five items, one of them a day late, and an option that fixes it.">
 <p class="demo-you">Sara has five client deliverables due this month. Will she make the deadlines?</p>
 <div class="demo-who"><i></i>Claude · whenship</div>
@@ -125,22 +142,32 @@ const DEMO = `<figure class="demo">
 <p class="demo-say">One promise slips: the Lumen proposal lands a day late. Doing the quick fix after the dated work saves it. Drag anything in the chart to try your own change.</p>
 <div class="demo-box" aria-hidden="true">Reply…</div>
 </div>
-<figcaption>The chart is live inside the conversation: drag, edit, apply an option. Claude sees what you change.</figcaption>
+</div>
+<figcaption>A picture of it, not the thing itself. In Claude the chart is live: drag, edit, apply an option, and Claude sees what you change.</figcaption>
 </figure>`;
 
-/** What a browser sees at /mcp: the address is for Claude, so show what it does there and say how to add it. */
-const CONNECTOR = (publicUrl: string) => doc('whenship connector for Claude', `<h1>whenship connector for Claude</h1>
+const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#4c6ef5"/><rect x="6" y="8" width="13" height="4" rx="2" fill="#fff"/><rect x="11" y="14" width="15" height="4" rx="2" fill="#fff" opacity=".85"/><rect x="9" y="20" width="9" height="4" rx="2" fill="#fff" opacity=".7"/><path d="M24 20.5l2.5 2.5-2.5 2.5-2.5-2.5z" fill="#ffd43b"/></svg>`;
+
+/**
+ * What a browser sees at /mcp: the address is for Claude, so show what it does there and say how to add it. What can be
+ * pressed looks like a button or a link; the picture sits in a window frame marked "Preview" and takes no presses. The
+ * ways on lead to the home page ("#home"), never into the middle of a plan the visitor tried earlier.
+ */
+const CONNECTOR = (publicUrl: string) => doc('whenship connector for Claude', `<div class="top"><a href="${publicUrl}#home">${LOGO} whenship</a></div>
+<h1>whenship connector for Claude</h1>
 <p>Ask Claude <i>"will we make the deadline?"</i> and get a chart you can work in, right in the conversation. Every date comes from whenship's scheduling engine, not from a guess.</p>
 ${DEMO}
-<p>This address is the connector itself. Claude talks to it; a browser can't open it. To use whenship inside Claude:</p>
+<h2>Add it to Claude</h2>
+<p>This address is the connector itself. Claude talks to it; a browser can't open it.</p>
 <ol>
 <li>In Claude (web or desktop), open <b>Settings → Connectors → Add custom connector</b>.</li>
 <li>Name it <b>whenship</b> and paste this address: <code>${publicUrl}mcp</code></li>
 <li>Click <b>Add</b>, then ask Claude, for example: <i>"Sara has five client deliverables due this month. Will she make the deadlines? Show it with whenship."</i></li>
 </ol>
 <p>On a Team or Enterprise plan, an owner adds it once under <b>Organization settings → Connectors</b>; everyone else then clicks <b>Connect</b>.</p>
-<p>No sign-in and nothing stored (see <a href="${publicUrl}privacy">privacy</a>). Prefer to run it on your own computer? See the <a href="https://github.com/HamedShams/whenship#use-it-in-claude">other ways to use it in Claude</a>.</p>
-<p><a href="${publicUrl}">Open the whenship app</a></p>`, 'noindex', DEMO_CSS);
+<p>No sign-in and nothing stored (see <a href="${publicUrl}privacy">privacy</a>).</p>
+<h2>Or use it without Claude</h2>
+<div class="go"><a class="main" href="${publicUrl}#home">Open whenship in the browser →</a><a href="https://github.com/HamedShams/whenship#use-it-in-claude">Run it on your own computer →</a></div>`, 'noindex', DEMO_CSS);
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',

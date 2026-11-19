@@ -293,7 +293,16 @@ describe('web server', () => {
     expect(html).toMatch(/role="img" aria-label="A conversation in Claude:/);
     expect(html.match(/class="demo-row"/g)).toHaveLength(5);
     expect(html).toMatch(/1 of 4 deadlines late as planned/);
-    expect(html).toMatch(/<figcaption>The chart is live inside the conversation/);
+    expect(html).toMatch(/<figcaption>A picture of it, not the thing itself\./);
+    // a picture that looks like the app must not pass for the app: it sits in a window frame marked "Preview" and takes no presses
+    expect(html).toMatch(/<div class="demo-bar" aria-hidden="true">.*<b>Preview<\/b><\/div>/);
+    expect(html).toMatch(/\.demo-win\{[^}]*pointer-events:none\}/);
+    // and what can be pressed looks like it: a way home at the top, two buttons at the end. They lead to the home page
+    // ("#home"), never into the middle of a plan the visitor tried earlier
+    expect(html).toContain(`<div class="top"><a href="${base}/#home">`);
+    expect(html).toContain(`<a class="main" href="${base}/#home">Open whenship in the browser →</a>`);
+    expect(html).not.toMatch(/Open the whenship app/);
+    expect(html).toMatch(/<h2>Add it to Claude<\/h2>/);
     expect(html).toMatch(/@media\(max-width:480px\)\{[^@]*\.demo-row \.d\{display:none\}/);
     expect(html).not.toMatch(/<script|<img|url\(/);
     // the other plain pages don't carry its styles

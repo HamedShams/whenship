@@ -65,14 +65,14 @@ async function start(o: Options = {}) {
 type Host = Awaited<ReturnType<typeof start>>;
 
 /** What Claude's show_plan call sends: the arguments, then the result with the plan for the chart. */
-async function show(h: Host, extra: { lens?: string; createdAt?: number; seq?: number } = {}) {
+async function show(h: Host, extra: { lens?: string; createdAt?: number; seq?: number; opens?: boolean } = {}) {
   const plan = validatePlan(input(), { today }).plan;
   await h.bridge.sendToolInput({ arguments: { plan: input(), ...(extra.lens ? { lens: extra.lens } : {}) } });
   await h.bridge.sendToolResult({
     content: [{ type: 'text', text: 'summary' }],
     structuredContent: { plan: compactPlan(plan), lens: extra.lens ?? 'planned', publicUrl: 'https://whenship.example/', createdAt: extra.createdAt ?? Date.now(), seq: extra.seq ?? 1 },
   } as never);
-  await until(() => h.root.querySelector('.card'));
+  await until(() => (extra.opens ? h.root.querySelector('.app') && !h.root.querySelector('.card') : h.root.querySelector('.card')));
 }
 async function openFull(h: Host) {
   await act(() => button(h.root, 'Open interactive chart')!.click());
@@ -94,6 +94,37 @@ describe('Claude widget (MCP App)', () => {
     expect(h.root.querySelector('.card h2')!.textContent).toBe('Client deliverables');
     expect(h.root.querySelectorAll('.mini-row')).toHaveLength(7);
     expect(h.root.querySelectorAll('.risk').length).toBeGreaterThan(0);
+  });
+
+  it('only the chart the user opened shows the full view: a pane going fullscreen opens no other chart, and a chart made from inside the open one takes its place', async () => {
+    const pane = (displayMode: string) => ({ theme: 'light', displayMode, availableDisplayModes: ['inline', 'fullscreen'], userAgent: 'Claude test host' }) as never;
+    const longAgo = Date.now() - 10 * 60_000;
+    // an earlier chart of the conversation, never opened: the host tells it, too, that the pane is now fullscreen
+    const earlier = await start();
+    await show(earlier, { createdAt: longAgo });
+    earlier.bridge.setHostContext(pane('fullscreen'));
+    await tick(40);
+    expect(earlier.root.querySelector('.card')).not.toBeNull(); // still its summary (every chart used to open, one under the other)
+    expect(earlier.root.querySelector('.app')).toBeNull();
+    // an earlier chart drawn again while the pane is fullscreen (the conversation scrolled back to it): its summary, too
+    const again = await start({ ctx: { displayMode: 'fullscreen' } });
+    await show(again, { createdAt: longAgo });
+    expect(again.root.querySelector('.app')).toBeNull();
+    // a chart made just now in the fullscreen pane (Claude answering from the open chart) opens at once
+    const fresh = await start({ ctx: { displayMode: 'fullscreen' } });
+    await show(fresh, { createdAt: Date.now(), opens: true });
+    expect(fresh.root.querySelector('.app')!.closest('[hidden]')).toBeNull();
+    // the pane is left (the host says so): back to the summary; the pane going fullscreen later, for another chart, doesn't reopen it
+    fresh.bridge.setHostContext(pane('inline'));
+    await until(() => fresh.root.querySelector('.card'));
+    fresh.bridge.setHostContext(pane('fullscreen'));
+    await tick(40);
+    expect(fresh.root.querySelector('.card')).not.toBeNull();
+    expect(fresh.root.querySelector('.app')!.closest('[hidden]')).not.toBeNull(); // kept behind the card, with its undo history
+    // "Open interactive chart" is what opens one, and Done closes it for good
+    await openFull(fresh);
+    await act(() => button(fresh.root, 'Done')!.click());
+    await until(() => fresh.root.querySelector('.card'));
   });
 
   it('opens the full chart in fullscreen and keeps the strip under Claude’s message box clear', async () => {

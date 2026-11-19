@@ -145,16 +145,21 @@ export function Landing({
               </button>
             </div>
           </div>
-          <div class="lp-picture">
+          {/* The picture is a way in, not a dead end: it looks like the app, so pressing it opens this very plan in the
+              app. A tag says so; nothing on this page looks pressable without being it. */}
+          <button class="lp-picture" onClick={() => onStart(hero, { example: true })} aria-label={`Open this example plan: ${hero.title}`}>
+            <span class="lp-tag">
+              Example plan <b>Open it <span aria-hidden="true">→</span></b>
+            </span>
             <PlanSketch plan={hero} today={today} />
             {tip && (
-              <div class="lp-option" aria-hidden="true">
+              <span class="lp-option" aria-hidden="true">
                 <span class="lp-option-kind">An option whenship found</span>
                 <b>{tip.title}</b>
                 <span>{tip.effect}</span>
-              </div>
+              </span>
             )}
-          </div>
+          </button>
         </section>
 
         <section class="lp-start" aria-labelledby="lp-start-h">
@@ -165,6 +170,9 @@ export function Landing({
                 <PlanSketch plan={s.plan} today={today} compact />
                 <b>{s.label}</b>
                 <span>{s.blurb}</span>
+                <span class="lp-go">
+                  Open this example <span aria-hidden="true">→</span>
+                </span>
               </button>
             ))}
           </div>

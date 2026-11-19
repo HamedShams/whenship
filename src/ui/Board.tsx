@@ -13,7 +13,7 @@ import { ItemPanel, WhyDate } from './Details';
 import { dragLog, dragLogAfter, dragLogOn, dragOverlay } from './dragLog';
 import { Docked } from './Popover';
 import { Avatar, WhoEditor, whoShape } from './WhoEditor';
-import { Calendar, cx, DateButton, Icon } from './lib';
+import { Calendar, cx, DateButton, Icon, scrollPageBy } from './lib';
 
 export const ROW = 44;
 /** The height of the chart's own header (column titles and the calendar scale): rows start right under it. */
@@ -170,7 +170,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   const openPop = (kind: RowPop['kind'], el: HTMLElement, id: string) => {
     // a popup hangs from its row's lower edge: a row half behind the dock comes up whole first
     const by = behindDock(id);
-    if (by > 0.5) window.scrollBy({ top: by, behavior: 'instant' });
+    if (by > 0.5) scrollPageBy(by);
     setPop({ kind, el, id });
   };
   const closePop = useCallback(() => setPop(null), []);
@@ -568,7 +568,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       }
       if (!v) return;
       const before = pageY();
-      window.scrollBy({ top: v, behavior: 'instant' });
+      scrollPageBy(v);
       followRef.current();
       if (dragLogOn) dragLog('auto', { v, before: Math.round(before), after: Math.round(pageY()), head: Math.round(top), rowsTop: Math.round(rows.top), wanted: Math.round(rowTopNow), shown: Math.round(rows.top + shownTop.current), y: Math.round(lastY.current) });
     };
@@ -586,7 +586,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
       if (!e.cancelable) return; // a gesture already under way: it can't be taken over, and mustn't be applied twice
       e.preventDefault();
       const by = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
-      if (by) window.scrollBy({ top: by, behavior: 'instant' });
+      if (by) scrollPageBy(by);
       followRef.current();
     };
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -673,7 +673,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
         const by = row.top < head.bottom - 0.5 ? row.top - head.bottom : row.bottom > bottom + 0.5 && bottom - head.bottom >= ROW ? row.bottom - bottom : 0;
         if (by) {
           dragLog('kept-in-view', { by: Math.round(by * 10) / 10, sy: Math.round(pageY()) });
-          window.scrollBy({ top: by, behavior: 'instant' });
+          scrollPageBy(by);
         }
       }
       if (performance.now() >= until) return me.stop();
@@ -730,6 +730,9 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
   };
 
   const topOf = (id: string, i: number) => (drag && drag.id === id ? shownTop.current : rowTop(i));
+  // With the end-date chain lit, what is outside it fades. An item with no effort yet has no place in the schedule to
+  // set against the chain; faded, its name read as placeholder text, as if what had been typed wasn't taken.
+  const fades = (it: NormalizedPlan['items'][number]) => !!highlight && !highlight.has(it.id) && !it.done && it.work.some((w) => w.days > 0);
   const year = dayParts(plan.start).year;
   const todayDay = parseISO(today);
   const todayX = parseISO(today) !== null && parseISO(today)! >= geo.start && parseISO(today)! <= geo.end ? x(today) : null;
@@ -879,7 +882,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                   key={it.id}
                   role="listitem"
                   data-item={it.id}
-                  class={cx('row', selected === it.id && 'sel', it.done && 'done', (i + 1) % 3 === 0 && 'g3', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', highlight && !highlight.has(it.id) && 'dim')}
+                  class={cx('row', selected === it.id && 'sel', it.done && 'done', (i + 1) % 3 === 0 && 'g3', isDragged && 'dragging', isDragged && drag?.byBar && 'by-bar', fades(it) && 'dim')}
                   style={{ top: `${topOf(it.id, i)}px` }}
                   onPointerEnter={() => hover(it.id)}
                   onClick={(e) => {
@@ -1063,7 +1066,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 dragging={!!drag}
                 isDragged={drag?.id === it.id}
                 resizing={resize?.id === it.id ? resize : null}
-                dim={!!highlight && !highlight.has(it.id)}
+                dim={fades(it)}
                 chain={!!highlight && highlight.has(it.id)}
                 year={year}
                 sel={selected === it.id}

@@ -15,7 +15,7 @@ import { Setup } from './Setup';
 import { usePlanHistory } from './state';
 import { Headline, MAX_OPTIONS, Options, type Option } from './Summary';
 import { EmptyState, IntroStrip, OpenDialog, TextDialog, type OpenTab } from './Welcome';
-import { installTips, useDebounced } from './lib';
+import { installTips, useDebounced, scrollPageBy } from './lib';
 
 /** What differs between the website, the offline file and the Claude widget. */
 export interface Host {
@@ -136,7 +136,7 @@ export function App(props: AppProps) {
     introKeep.current = null;
     if (was === null || intro !== 'off') return;
     const now = document.querySelector('.board-wrap')?.getBoundingClientRect().top;
-    if (now !== undefined && Math.abs(now - was) > 0.5) window.scrollBy({ top: now - was, behavior: 'instant' });
+    if (now !== undefined && Math.abs(now - was) > 0.5) scrollPageBy(now - was);
   }, [intro]);
   const commit = useCallback(
     (next: NormalizedPlan, key?: string) => {

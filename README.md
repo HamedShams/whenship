@@ -22,7 +22,7 @@
 | **Claude** | Add the connector or the desktop extension ([two ways](#use-it-in-claude)) and ask: *"Sara has these five client deliverables… will she make the deadlines?"* |
 | **Your own server** | One small Node service, no database, no Docker. See [Self-host](#self-host). |
 
-The `npx whenship` commands below need the npm package, which isn't published yet. Until it is, run the same thing from a clone: `npm ci && npm run build`, then `node dist/cli.js` (add `--stdio` for the MCP server).
+`npx whenship` runs the [npm package](https://www.npmjs.com/package/whenship). From a clone it is the same thing: `npm ci && npm run build`, then `node dist/cli.js` (add `--stdio` for the MCP server).
 
 **Bring your plan in any shape:** paste a list (`Grant draft for Acme, 5d, due 7 Oct`), spreadsheet rows, CSV, a Markdown table, or open a saved plan file.
 

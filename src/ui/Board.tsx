@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Analysis } from '../engine/analysis';
 import { applyChanges, moveItem, type Change } from '../engine/changes';
 import { addDays, dayParts, formatDay, monthName, parseISO, toISO, weekdayIndex } from '../engine/dates';
-import { badgeLabel, chanceLabel, explain } from '../engine/analysis';
+import { analyze, badgeLabel, chanceLabel, explain } from '../engine/analysis';
 import { lensById, type Badge, type LensId } from '../engine/lens';
 import { describeWork } from '../engine/report';
 import { schedule, type Schedule } from '../engine/schedule';
@@ -237,10 +237,14 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
     return null;
   }, [resize?.id, resize?.lane, resize?.days, dlDrag?.id, dlDrag?.date]);
   const livePlan = useMemo(() => (liveChanges ? applyChanges(plan, liveChanges).plan : null), [plan, liveChanges]);
-  const preview = useMemo(
-    () => (drag && drag.over !== drag.from ? schedule(moveItem(plan, drag.id, drag.over), { factor }) : livePlan ? schedule(livePlan, { factor }) : null),
-    [plan, drag?.id, drag?.over, drag?.from, livePlan, factor],
+  // The whole verdict is re-worked for a live edit, not only the dates: a late item dragged into time shows its new
+  // date in the colour of its new standing, before the drop (it used to keep the old colour until then).
+  const liveAnalysis = useMemo(
+    () => (drag && drag.over !== drag.from ? analyze(moveItem(plan, drag.id, drag.over), analysis.lens) : livePlan ? analyze(livePlan, analysis.lens) : null),
+    [plan, drag?.id, drag?.over, drag?.from, livePlan, analysis.lens],
   );
+  const preview = liveAnalysis?.current ?? null;
+  const shownAnalysis = liveAnalysis ?? analysis;
   // an option being previewed: its schedule is drawn as a ghost over the real bars (rows stay put)
   const ghost = useMemo(() => (previewPlan && !preview ? schedule(previewPlan, { factor }) : null), [previewPlan, preview, factor]);
   const shown: Schedule = preview ?? analysis.current;
@@ -872,11 +876,11 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
             {plan.items.map((it) => {
               const i = slot.get(it.id)!;
               const r = shown.byId.get(it.id)!;
-              const o = analysis.outlook.get(it.id);
+              const o = shownAnalysis.outlook.get(it.id);
               const isDragged = drag?.id === it.id;
               const shownIt = shownPlan.items.find((x) => x.id === it.id) ?? it;
               const whoText = describeWork(shownPlan, it.id);
-              const delivery = <Delivery status={r.status} problem={r.problem} badge={analysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={shownIt.deadline} year={year} />;
+              const delivery = <Delivery status={r.status} problem={r.problem} badge={shownAnalysis.status.get(it.id)} base={o?.badge} chance={o?.chance} lens={analysis.lens} endDate={r.endDate} deadline={shownIt.deadline} year={year} />;
               return (
                 <div
                   key={it.id}
@@ -1057,7 +1061,7 @@ export function Board({ plan, analysis, selected, highlight, today, onSelect, on
                 ghost={ghost}
                 base={analysis.current}
                 planned={analysis.planned}
-                analysis={analysis}
+                analysis={shownAnalysis}
                 lensActive={factor !== 1}
                 x={x}
                 ppd={geo.ppd}

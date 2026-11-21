@@ -660,6 +660,25 @@ describe('a drag is always the row that was pressed, and always ends', () => {
     scrolled.mockRestore();
   });
 
+  it("while a row is dragged its verdict is live too: an item dragged into time shows its new date in its new colour before the drop", async () => {
+    const { root } = mount();
+    const row = rows(root).find((r) => (r.querySelector('.cell-input') as HTMLInputElement).value === 'Revise Lumen proposal')!;
+    const index = rows(root).indexOf(row);
+    const pill = () => row.querySelector('.pill.delivery')!;
+    const mark = () => /late/.test((root.querySelector(`.bars[data-item="${row.dataset.item}"] .deadline`) as HTMLElement).getAttribute('data-tip')!); // its diamond on the chart
+    const date = pill().textContent;
+    expect([pill().classList.contains('late'), mark()]).toEqual([true, true]); // a day late as planned
+    ptr('pointerdown', row.querySelector('[data-handle]')!, 10, 400);
+    ptr('pointermove', document.body, 10, 400 - index * ROW); // held over the first place, not dropped
+    await act(() => new Promise<void>((r) => setTimeout(r, 0)));
+    expect(pill().textContent).not.toBe(date); // the date it would have...
+    expect([pill().classList.contains('late'), mark()]).toEqual([false, false]); // ...and what that means for its deadline
+    ptr('pointermove', document.body, 10, 400); // back where it was: late again
+    await act(() => new Promise<void>((r) => setTimeout(r, 0)));
+    expect([pill().textContent, pill().classList.contains('late')]).toEqual([date, true]);
+    ptr('pointerup', document.body, 10, 400);
+  });
+
   it('a move with no button down ends a drag whose release was missed: the row is dropped where it stood', () => {
     const { root } = mount();
     ptr('pointerdown', handle(root, 0), 10, 300);
@@ -724,6 +743,10 @@ describe('hints and cursors', () => {
     // moving on to something with no hint clears a pending one
     await act(() => void handle.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
     await act(() => void root.querySelector('.timeline')!.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await act(() => new Promise((r) => setTimeout(r, 650)));
+    expect(document.querySelector('.tip')).toBeNull();
+    // and none pops up mid-press: a drag passes over many things with hints (one used to open over the list while a row was held)
+    await act(() => void handle.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, buttons: 1 })));
     await act(() => new Promise((r) => setTimeout(r, 650)));
     expect(document.querySelector('.tip')).toBeNull();
   });

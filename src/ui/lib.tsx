@@ -363,6 +363,7 @@ export function installTips() {
     'pointerover',
     (e) => {
       if ((e as PointerEvent).pointerType === 'touch') return;
+      if ((e as PointerEvent).buttons) return; // mid-press (a drag passing over things): no hint pops up over the work
       const el = e.target instanceof Element ? e.target.closest('[data-tip]') : null;
       if (el === target) return;
       hide();

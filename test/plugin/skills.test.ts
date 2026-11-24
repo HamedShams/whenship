@@ -52,17 +52,21 @@ describe('plugin skills', () => {
 
   it('the plugin folder is what the Claude directory asks of a bundle: a manifest, a readme, a license, the connector by address, and nothing stray', () => {
     const manifest = JSON.parse(readFileSync('plugin/.claude-plugin/plugin.json', 'utf8')) as Record<string, unknown>;
-    expect(manifest).toMatchObject({ name: 'whenship', displayName: 'whenship', license: 'BSD-3-Clause', author: { name: 'Hamed Shams' } });
+    expect(manifest).toMatchObject({ name: 'whenship', displayName: 'WhenShip', license: 'BSD-3-Clause', author: { name: 'Hamed Shams' } }); // the display name is the one on the connector's directory listing
     expect(String(manifest.name)).toMatch(/^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/);
+    // what the directory reads for the listing: an icon inside the folder, and where the docs, support and privacy policy are
+    // (the privacy policy is asked of every plugin that talks to a server)
+    expect(manifest).toMatchObject({ icon: './icon.png', documentationUrl: 'https://github.com/HamedShams/whenship#use-it-in-claude', supportUrl: 'https://github.com/HamedShams/whenship/issues', privacyPolicyUrl: 'https://whenship.app/privacy' });
+    expect(readFileSync('plugin/icon.png').equals(readFileSync('packaging/icon.png'))).toBe(true); // the extension's icon: 512 px, see-through corners
     // the skills point at the same connector the directory lists, so someone with both sees one set of tools
     expect(JSON.parse(readFileSync('plugin/.mcp.json', 'utf8'))).toEqual({ mcpServers: { whenship: { type: 'http', url: 'https://whenship.app/mcp' } } });
     // a readme of at least 40 words outside code blocks, saying what it does, how to use it and what it sends
     const readme = readFileSync('plugin/README.md', 'utf8');
     expect(readme.replace(/```[\s\S]*?```/g, '').split(/\s+/).filter(Boolean).length).toBeGreaterThan(40);
     for (const part of [/^# whenship\n/, /## How to use it/, /## What data it sends/, /not stored or logged/, /https:\/\/whenship\.app\/privacy/]) expect(readme).toMatch(part);
-    // only text files the directory's scan can read, each well under its size limit, and no secrets in the connector file
+    // only what the directory's scan accepts: text files, each well under its size limit, and one PNG; no secrets in the connector file
     const files = (readdirSync('plugin', { recursive: true }) as string[]).filter((f) => /\.[a-z]+$/i.test(f) && !f.endsWith('.DS_Store'));
-    expect(files.sort()).toEqual(['.claude-plugin/plugin.json', '.mcp.json', 'README.md', 'skills/whenship-insights/SKILL.md', 'skills/whenship/SKILL.md']);
+    expect(files.sort()).toEqual(['.claude-plugin/plugin.json', '.mcp.json', 'README.md', 'icon.png', 'skills/whenship-insights/SKILL.md', 'skills/whenship/SKILL.md']);
     for (const f of files) expect(readFileSync(`plugin/${f}`).length).toBeLessThan(256 * 1024);
     expect(readFileSync('plugin/.mcp.json', 'utf8')).not.toMatch(/key|token|secret|authorization/i);
   });

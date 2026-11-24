@@ -1,6 +1,6 @@
 {
   "name": "whenship",
-  "displayName": "whenship",
+  "displayName": "WhenShip",
   "version": "1.6.3",
   "description": "When will it ship, honestly? Skills that make Claude plan small-team work with the whenship engine: real finish dates, deadline risk, what-ifs and options, instead of guessed dates. Pair it with the whenship connector for the interactive chart.",
   "author": {
@@ -9,6 +9,10 @@
   },
   "homepage": "https://whenship.app",
   "repository": "https://github.com/HamedShams/whenship",
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/HamedShams/whenship#use-it-in-claude",
+  "supportUrl": "https://github.com/HamedShams/whenship/issues",
+  "privacyPolicyUrl": "https://whenship.app/privacy",
   "license": "BSD-3-Clause",
   "keywords": [
     "planning",

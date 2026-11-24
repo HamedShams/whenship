@@ -10,6 +10,14 @@ Tell Claude who is on the team, what needs doing, roughly how long each thing ta
 - **whenship-insights**: turns the schedule into decisions: which deadlines to protect, what to reorder, defer, cut or negotiate, whether another person would help, and how to say it to a client.
 - **The whenship connector** (on this plugin's Connectors tab, no sign-in): the engine itself and the interactive chart.
 
+## Install
+
+From the Claude directory, or in Claude Code:
+
+```
+/plugin install whenship --marketplace HamedShams/whenship
+```
+
 ## How to use it
 
 Connect the whenship connector, then ask in your own words:

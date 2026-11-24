@@ -19,6 +19,11 @@ export interface HttpOptions {
    * served at /icon.png and /favicon.ico) and the edge-to-edge home-screen icon (dist/icon-touch.png, /apple-touch-icon.png).
    */
   images?: { og?: Buffer; icon?: Buffer; touch?: Buffer };
+  /**
+   * Pictures for a directory listing (dist/directory/*.png), served at /directory/<name>.png: the Claude directory's form
+   * takes the addresses of its carousel screenshots and icon, on a domain the publisher controls, not uploads.
+   */
+  directory?: Record<string, Buffer>;
 }
 
 const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -251,6 +256,13 @@ export function createHttpServer(opts: HttpOptions): Server {
       return;
     }
     const publicUrl = opts.publicUrl ?? originOf(req);
+    // only the names loaded at start-up are ever served: nothing in the address reaches the file system
+    const picture = /^\/directory\/([a-z0-9][a-z0-9-]*\.png)$/.exec(path);
+    if (picture) {
+      const file = opts.directory?.[picture[1]!];
+      if (file) return send(req, res, 200, 'image/png', file, { 'cache-control': 'public, max-age=86400' });
+      return send(req, res, 404, 'text/plain; charset=utf-8', 'Not found');
+    }
     switch (path) {
       case '/':
       case '/index.html':

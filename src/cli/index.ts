@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { createHttpServer, withBoot } from '../mcp/http';
 import { createServer } from '../mcp/server';
@@ -100,6 +100,9 @@ function main() {
   const html = readFileSync(new URL('./app.html', import.meta.url), 'utf8');
   const image = (name: string) => (existsSync(new URL(name, import.meta.url)) ? readFileSync(new URL(name, import.meta.url)) : undefined);
   const images = { og: image('./og.png'), icon: image('./icon.png'), touch: image('./icon-touch.png') };
+  // the directory listing's pictures: there on a server built from the repository, not in the npm package
+  const pictures = new URL('./directory/', import.meta.url);
+  const directory = existsSync(pictures) ? Object.fromEntries(readdirSync(pictures).filter((f) => f.endsWith('.png')).map((f) => [f, readFileSync(new URL(f, pictures))])) : {};
   // stderr for problems; the start-up banner goes to stdout (hosts like Railway show stderr as errors)
   const log = (msg: string) => process.stderr.write(`${msg}\n`);
 
@@ -111,7 +114,7 @@ function main() {
   }
 
   const local = args.host === '127.0.0.1' || args.host === 'localhost' || args.host === '::1';
-  const server = createHttpServer({ html, version: VERSION, local, log, images, ...(args.publicUrl ? { publicUrl: args.publicUrl } : {}) });
+  const server = createHttpServer({ html, version: VERSION, local, log, images, directory, ...(args.publicUrl ? { publicUrl: args.publicUrl } : {}) });
   server.on('error', (err: NodeJS.ErrnoException) => {
     log(err.code === 'EADDRINUSE' ? `Port ${args.port} is busy. Try: npx whenship --port ${args.port + 1}` : err.message);
     process.exit(1);

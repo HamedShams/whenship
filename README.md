@@ -64,6 +64,12 @@ To update, install the newer file over the old one. To build the file yourself: 
 claude mcp add whenship -- npx -y whenship --stdio
 ```
 
+Or the hosted connector, with nothing to install:
+
+```bash
+claude mcp add --transport http whenship https://whenship.app/mcp
+```
+
 **Cursor, VS Code and other MCP clients (local)**
 
 ```json

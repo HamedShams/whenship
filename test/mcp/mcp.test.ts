@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { strFromU8, unzipSync, unzlibSync } from 'fflate';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -334,7 +334,8 @@ describe('web server', () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     const icon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1]);
     const touch = Buffer.from([0x89, 0x50, 0x4e, 0x47, 2]);
-    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, images: { og: png, icon, touch } });
+    const shot = Buffer.from([0x89, 0x50, 0x4e, 0x47, 3]);
+    const other = createHttpServer({ html: HTML, version: '1.0.0-test', local: false, images: { og: png, icon, touch }, directory: { '1-answer.png': shot } });
     await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
     const at = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
     try {
@@ -345,6 +346,11 @@ describe('web server', () => {
       // a phone's home screen gets the edge-to-edge picture (it rounds the corners itself)
       for (const p of ['/apple-touch-icon.png', '/apple-touch-icon.png?v=2', '/apple-touch-icon-precomposed.png']) expect(Buffer.from(await (await fetch(`${at}${p}`)).arrayBuffer())).toEqual(touch);
       expect(await (await fetch(`${at}/`)).text()).toContain(`<link rel="icon" type="image/png" sizes="192x192" href="${at}/icon.png?v=2">`);
+      // the pictures a directory listing links to: only the names handed to the server, as PNGs, and nothing else under that address
+      const listed = await fetch(`${at}/directory/1-answer.png`);
+      expect([listed.status, listed.headers.get('content-type'), listed.headers.get('cache-control')]).toEqual([200, 'image/png', 'public, max-age=86400']);
+      expect(Buffer.from(await listed.arrayBuffer())).toEqual(shot);
+      for (const p of ['/directory/nope.png', '/directory/', '/directory/1-answer.png/x', '/directory/..%2Ficon.png', '/directory/1-ANSWER.png']) expect([p, (await fetch(`${at}${p}`)).status]).toEqual([p, 404]);
       const html = await (await fetch(`${at}/`, { headers: { 'x-forwarded-host': 'evil.example"><script>x()</script>' } })).text();
       expect(html).not.toContain('"><script>x()');
       expect(html).toContain('evil.example&quot;&gt;&lt;script&gt;');
@@ -430,7 +436,7 @@ describe.skipIf(!existsSync('dist/cli.js'))('npx whenship (built CLI)', () => {
       const html = await (await fetch(at)).text();
       expect(html).toContain(`<meta property="og:image" content="${at}og.png">`);
       expect(html).toContain('<meta name="author" content="Seyed Hamed Shams"');
-      for (const path of ['og.png', 'icon.png', 'favicon.ico', 'apple-touch-icon.png']) {
+      for (const path of ['og.png', 'icon.png', 'favicon.ico', 'apple-touch-icon.png', 'directory/1-answer-in-the-conversation.png', 'directory/icon-square.png']) {
         const r = await fetch(`${at}${path}`);
         expect([path, r.status, r.headers.get('content-type')]).toEqual([path, 200, 'image/png']);
       }
@@ -519,6 +525,23 @@ describe('the website page and the license', () => {
   });
 });
 
+
+describe('the pictures for the Claude directory listing', () => {
+  it('are in the repository as the listing needs them: five carousel screenshots of at least 1,000 px, and the icon with see-through and with filled corners', () => {
+    const files = readdirSync('docs/directory').filter((f) => f.endsWith('.png')).sort();
+    expect(files).toEqual(['1-answer-in-the-conversation.png', '2-the-chart-you-work-in.png', '3-drag-and-see-before-you-drop.png', '4-options-measured-and-previewed.png', '5-the-honest-forecast.png', 'icon-square.png', 'icon.png']);
+    for (const f of files) {
+      const png = readFileSync(`docs/directory/${f}`);
+      expect([f, png.subarray(1, 4).toString()]).toEqual([f, 'PNG']);
+      expect(f).toMatch(/^[a-z0-9][a-z0-9-]*\.png$/); // a name the server's address pattern accepts
+      if (/^\d/.test(f)) expect(png.readUInt32BE(16)).toBeGreaterThanOrEqual(1000); // the carousel's minimum width
+    }
+    expect(readFileSync('docs/directory/icon.png').equals(readFileSync('packaging/icon.png'))).toBe(true);
+    expect(pngPixel(readFileSync('docs/directory/icon-square.png'), 0, 0)).toEqual([76, 110, 245, 255]); // the tile, edge to edge
+    // they are not part of the npm package (a megabyte and a half nobody running `npx whenship` needs)
+    expect((JSON.parse(readFileSync('package.json', 'utf8')) as { files: string[] }).files.some((f) => f.includes('directory'))).toBe(false);
+  });
+});
 
 describe('the icons', () => {
   it("the tab icon and the extension's icon have see-through corners (they were white); the home-screen icon runs edge to edge", () => {

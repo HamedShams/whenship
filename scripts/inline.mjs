@@ -1,6 +1,6 @@
 // Inlines the built JS and CSS into one HTML file: dist/app.html (served as the website and the Claude widget)
 // and dist/whenship.html (the offline, double-click version), plus dist/og.png for link previews and dist/icon.png.
-import { readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dir = 'dist/ui';
@@ -16,4 +16,7 @@ copyFileSync('dist/app.html', 'dist/whenship.html');
 copyFileSync('docs/og.png', 'dist/og.png'); // the link-preview image, served at /og.png
 copyFileSync('packaging/icon-192.png', 'dist/icon.png'); // the app icon for browser tabs and search results (see-through corners), served at /icon.png
 copyFileSync('packaging/icon-touch.png', 'dist/icon-touch.png'); // the same, edge to edge, for phone home screens, served at /apple-touch-icon.png
+// the pictures the Claude directory's listing links to (its form takes addresses, not uploads), served at /directory/<name>.png
+mkdirSync('dist/directory', { recursive: true });
+for (const f of readdirSync('docs/directory')) if (f.endsWith('.png')) copyFileSync(join('docs/directory', f), join('dist/directory', f));
 console.log(`dist/app.html ${(Buffer.byteLength(html) / 1024).toFixed(0)} KB`);
